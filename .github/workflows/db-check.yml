@@ -1,0 +1,52 @@
+# database/ 폴더의 TypeORM 엔티티·마이그레이션·연동 테스트를 PR마다 자동 검증
+name: db-check
+on:
+  pull_request:
+    paths: ["database/**", ".github/workflows/db-check.yml"]
+  push:
+    branches: [main]
+    paths: ["database/**", ".github/workflows/db-check.yml"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: database
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: leren_admin
+          POSTGRES_PASSWORD: admin_ci
+          POSTGRES_DB: leren
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U leren_admin -d leren"
+          --health-interval 5s --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: leren
+      DB_USER: app_user
+      DB_PASSWORD: app_local
+      DB_MIGRATION_USER: migrator
+      DB_MIGRATION_PASSWORD: migrator_local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: database/package-lock.json
+      - run: npm ci
+      - name: 1. 스키마·계정 생성
+        run: PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -v ON_ERROR_STOP=1 -f db/init/01_app_schema.sql
+      - name: 2. 컴파일
+        run: npm run build
+      - name: 3. 마이그레이션 실행 (migrator)
+        run: npx typeorm migration:run -d dist/migration-data-source.js
+      - name: 4. 엔티티-DB 차이 없음 확인
+        run: npm run migration:check
+      - name: 5. 연동 테스트 (app_user)
+        run: npm run test:db
