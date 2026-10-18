@@ -1,0 +1,20 @@
+# 로컬 검증용 PostgreSQL 16 (RDS와 같은 메이저 버전)
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: leren_admin
+      POSTGRES_PASSWORD: admin_local
+      POSTGRES_DB: leren
+      TZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d   # 최초 1회: app 스키마·계정 생성
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leren_admin -d leren"]
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:
