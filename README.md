@@ -1,6 +1,7 @@
 # Leren BackEnd
 
-Leren 서비스의 Node.js/Express 백엔드입니다. DB는 PostgreSQL 16 + TypeORM이며, 엔티티·마이그레이션은 `database/` 패키지(`@leren/database`)에 있습니다.
+Leren 서비스의 Node.js/Express 백엔드입니다. 
+DB는 PostgreSQL 16 + TypeORM이며, 엔티티·마이그레이션은 `database/` 패키지(`@leren/database`)에 있습니다.
 
 ## 실행
 
