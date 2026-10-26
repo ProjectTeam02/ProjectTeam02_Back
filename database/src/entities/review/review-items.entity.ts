@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.review_items)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.review_items)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { AnswerResult, ReviewFirstReason } from '../common/enums';
 import { Question } from '../content/questions.entity';

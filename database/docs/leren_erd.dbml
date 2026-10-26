@@ -4,7 +4,9 @@
 // rev.2 (2026-10-25): API 필드명·Enum 표기 일치 — itemId, submissionId, requestId, contentPosition, mode, Enum 대문자
 // rev.3 (2026-10-25): 무결성 제약 — 진행 중 응시 1개, 보유 코스튬만 장착(복합 FK), 선택지는 해당 문항 것만(복합 FK)
 // rev.4 (2026-10-25): 조회 인덱스 3개, 회원 탈퇴(users), 약관·개인정보 동의(terms, user_terms_agreements)
-// rev.5 최종 (2026-10-25): 코스튬을 직업과 무관하게 상의(TOP)·하의(BOTTOM)로 분류, 부위별 장착 테이블(user_equipped_costumes)
+// rev.5 (2026-10-25): 코스튬을 직업과 무관하게 상의(TOP)·하의(BOTTOM)로 분류, 부위별 장착 테이블(user_equipped_costumes)
+// rev.6 (2026-10-26): AI 내부 API 계약 반영 — ai_message_sources.document_version 문자열·null 허용, chunk_id 필수, (message_id, document_id, chunk_id) 유니크
+//                     ai 스키마는 FastAPI(ai_user) 소유로 분리 (database/sql/init/02_ai_schema.sql)
 // 변경 요약
 //   1) 용어를 API 명세에 맞춤: region→topic, step→stage, job→class,
 //      concept_auto_review→review_mission, review_session→review_attempt,
@@ -1006,15 +1008,18 @@ Table ai_messages {
 Table ai_message_sources {
   message_source_id uuid [pk, default: `gen_random_uuid()`]
   message_id uuid [not null, ref: > ai_messages.message_id]
-  document_id varchar(100) [not null, note: '논리 참조: ai.knowledge_documents.document_id']
-  document_version integer [not null]
-  chunk_id varchar(100) [note: 'v3 추가. 논리 참조: ai 스키마의 청크 ID']
+  document_id varchar(100) [not null, note: '논리 참조: ai 스키마 문서 ID (AI 응답 documentId, 예: bok2026-0154)']
+  document_version varchar(50) [note: 'rev.6 integer NOT NULL → 문자열·null 허용 (AI 응답 documentVersion, 예: 2026)']
+  chunk_id varchar(100) [not null, note: 'rev.6 필수. 논리 참조: ai 스키마 청크 ID (AI 응답 chunkId)']
   title_snapshot varchar(255)
   concept_code varchar(30) [note: '논리 참조: concepts.concept_code']
   rank smallint [not null]
   relevance_score numeric(5,4)
   created_at timestamptz [not null, default: `now()`]
-  Note: 'API 응답의 검색 출처 / 인용 근거'
+  indexes {
+    (message_id, document_id, chunk_id) [unique, name: 'uq_ai_message_sources_message_document_chunk', note: 'rev.6 같은 답변에 같은 근거 중복 저장 방지']
+  }
+  Note: 'API 응답의 검색 출처 / 인용 근거. AI 내부 API 응답 sources[]를 그대로 저장'
 }
 
 Table ai_requests {

@@ -20,14 +20,14 @@
 
 ## 2. 설계 DB와 비교
 
-`leren_erd_v3.dbml`로 만든 SQL(`leren_v3_schema.sql`)의 DB와 엔티티 마이그레이션 DB를 카탈로그로 비교했습니다 (컬럼 타입·NOT NULL·기본값·생성 컬럼, 제약·인덱스 이름과 정의, Enum 값).
+rev.5 DBML로 만든 SQL(`leren_v3_schema.sql`)의 DB와 엔티티 마이그레이션 DB를 카탈로그로 비교했습니다 (컬럼 타입·NOT NULL·기본값·생성 컬럼, 제약·인덱스 이름과 정의, Enum 값).
 
 | 비교 항목 | 결과 |
 |---|---|
 | 624개 항목 | 617개 완전 일치 |
 | 차이 7개 | smallint 기본값 표기만 다름 (`0` ↔ `'0'::smallint`, 같은 값) |
 
-## 3. SQL 제약 테스트 (`database/sql/test/v3_constraint_test.sql`, app_user)
+## 3. SQL 제약 테스트 (`database/sql/test/constraint_test.sql`, app_user)
 
 엔티티 마이그레이션으로 만든 빈 DB에서 **43/43 PASS** (설계 DB와 같은 결과).
 
@@ -65,3 +65,15 @@
 | 기존 CI `npm test` | 통과 (테스트 파일 0개, 실패 0) |
 | `require('@leren/database')` | 엔티티 40개, AppDataSource, Enum 로드 |
 | `npm start` → DB 연결 → `GET /health` | 200 응답 / 잘못된 비밀번호면 즉시 종료 |
+
+## 6. rev.6 변경 검증 (2026-10-26, AI 내부 API 계약 반영)
+
+| 항목 | 결과 |
+|---|---|
+| 새 마이그레이션 `AiMessageSourcesContract` (빈 DB, Init → rev.6 순서) | 통과, `db:check` 차이 없음 |
+| 기존 DB(Init + 데이터)에 적용 | 통과. `document_version` 값 보존 (2026 → '2026'), 행 삭제 없음 |
+| `chunk_id`가 NULL인 기존 행이 있을 때 | 안내 메시지와 함께 중단, DB 변경 없음 (트랜잭션 롤백) |
+| 되돌리기 → 다시 실행 | 통과 (문자·null 버전은 0으로 복귀) |
+| SQL 제약 테스트 | **47/47 PASS** (추가 4개: 문자열 버전 저장, null 버전 허용, chunkId 없음 거부, 같은 근거 중복 거부) |
+| ai 스키마 검증 (`sql/test/ai_schema_test.sql`, ai_user) | **8/8 PASS** (pgvector 설치, 기본 스키마 ai, 1536차원 벡터 저장·검색, 차원 불일치 거부, app 스키마 접근 거부, public 생성 거부) |
+| 연동 테스트 | 19/19 PASS |

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준. 앱·AI 서버와 공유하는 Enum 정의
+// 자동 생성: leren_erd.dbml (rev.5) 기준. 앱·AI 서버와 공유하는 Enum 정의
 // 값은 모두 대문자 SNAKE_CASE이며 API에서도 같은 값을 그대로 주고받는다.
 
 /** 권한 — DB 타입: user_role */

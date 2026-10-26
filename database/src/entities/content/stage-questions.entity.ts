@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.stage_questions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.stage_questions)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { Question } from './questions.entity';
 import { Stage } from './stages.entity';

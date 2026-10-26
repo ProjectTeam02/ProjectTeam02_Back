@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.user_characters)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_characters)
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { CharacterClass } from './character-classes.entity';
 import { User } from '../account/users.entity';

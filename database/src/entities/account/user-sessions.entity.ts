@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.user_sessions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_sessions)
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { LoginMethod, SessionRevokeReason } from '../common/enums';
 import { User } from './users.entity';

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.stages)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.stages)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { PublishStatus, StageType } from '../common/enums';
 import { Topic } from './topics.entity';

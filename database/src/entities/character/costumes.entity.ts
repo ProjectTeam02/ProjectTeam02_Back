@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.costumes)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.costumes)
 import { Check, Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { CostumeCategory } from '../common/enums';
 

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.terms)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.terms)
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import { TermsType } from '../common/enums';
 

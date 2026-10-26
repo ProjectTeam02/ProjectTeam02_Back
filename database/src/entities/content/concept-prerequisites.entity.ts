@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.concept_prerequisites)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.concept_prerequisites)
 import { Check, Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
 
 /** 개념 선수관계. 개념이 새 버전이 되어도 유지되도록 concept_code로 연결합니다. */

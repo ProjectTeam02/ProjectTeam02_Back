@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.stage_concepts)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.stage_concepts)
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { Concept } from './concepts.entity';
 import { Stage } from './stages.entity';

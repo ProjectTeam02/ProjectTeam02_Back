@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.ai_requests)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_requests)
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { AiRequestStatus, AiRequestType, ModelTier } from '../common/enums';
 import { AiConversation } from './ai-conversations.entity';

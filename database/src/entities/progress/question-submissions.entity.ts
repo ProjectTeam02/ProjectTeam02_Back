@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.question_submissions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.question_submissions)
 import { Check, Column, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { LearningAttempt } from './learning-attempts.entity';
 import { Question } from '../content/questions.entity';

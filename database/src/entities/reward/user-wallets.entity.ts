@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.user_wallets)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_wallets)
 import { Check, Column, Entity, JoinColumn, OneToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../account/users.entity';
 

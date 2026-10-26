@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.question_choices)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.question_choices)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Question } from './questions.entity';
 

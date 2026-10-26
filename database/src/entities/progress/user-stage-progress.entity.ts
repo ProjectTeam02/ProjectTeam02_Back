@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.user_stage_progress)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_stage_progress)
 import { Check, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { ProgressStatus } from '../common/enums';
 import { LearningAttempt } from './learning-attempts.entity';

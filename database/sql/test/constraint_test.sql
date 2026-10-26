@@ -1,5 +1,6 @@
--- v3 최종(rev.5) 제약 검증 (app_user 계정으로 실행)
+-- 제약 검증 rev.6 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
 \set ON_ERROR_STOP 1
+\set QUIET 1
 \pset format unaligned
 \pset tuples_only on
 SET client_min_messages = warning;
@@ -129,6 +130,12 @@ SELECT pg_temp.expect_ok (36, '회원 탈퇴: 상태·시각 기록 + 이메일�
 SELECT pg_temp.expect_ok (37, '탈퇴한 이메일로 재가입 허용', $q$INSERT INTO users (email, nickname) VALUES ('pia@example.com','pia2')$q$);
 INSERT INTO result SELECT 38, '조회 인덱스 3개 존재 (questions.concept_id, question_submissions.question_id, review_items(user_id,is_bookmarked))', count(*) = 3, count(*)::text || '개'
   FROM pg_indexes WHERE schemaname = 'app' AND (indexdef LIKE '%ON app.questions USING btree (concept_id)%' OR indexdef LIKE '%ON app.question_submissions USING btree (question_id)%' OR indexdef LIKE '%ON app.review_items USING btree (user_id, is_bookmarked)%');
+
+-- 45~48 AI 답변 근거 (rev.6: AI 내부 API 계약 반영)
+SELECT pg_temp.expect_ok (45, '근거 저장: documentVersion 문자열 ''2026''', $q$INSERT INTO ai_message_sources (message_id, document_id, document_version, chunk_id, title_snapshot, rank, relevance_score) SELECT message_id, 'bok2026-0154', '2026', 'bok2026-0154:0', '기준금리', 1, 0.9123 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$);
+SELECT pg_temp.expect_ok (46, '근거 저장: documentVersion 없음(null) 허용', $q$INSERT INTO ai_message_sources (message_id, document_id, chunk_id, rank) SELECT message_id, 'bok2026-0155', 'bok2026-0155:0', 2 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$);
+SELECT pg_temp.expect_err(47, 'chunkId 없는 근거 거부', $q$INSERT INTO ai_message_sources (message_id, document_id, rank) SELECT message_id, 'bok2026-0156', 3 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$, '23502');
+SELECT pg_temp.expect_err(48, '같은 답변에 같은 근거(문서·청크) 중복 거부', $q$INSERT INTO ai_message_sources (message_id, document_id, chunk_id, rank) SELECT message_id, 'bok2026-0154', 'bok2026-0154:0', 4 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$, '23505');
 
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');
