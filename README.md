@@ -15,6 +15,17 @@ npm run dev                 # database 패키지 빌드 후 서버 실행
 
 기본 상태 확인 주소: `GET /health`
 
+## 업데이트
+
+```bash
+git pull                       #코드 최신으로 업데이트
+npm install                    #바뀐 의존성 설치
+docker compose down -v         #예전 로컬 db 제거
+docker compose up -d db	       #새 로컬 db 띄우고, 스키마-계정 자동 생성
+npm run db:migrate             #테이블 생성
+```
+
+
 ## DB
 
 - 사용법·명령어: [`database/README.md`](database/README.md)
