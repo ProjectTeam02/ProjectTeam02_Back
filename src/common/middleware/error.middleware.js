@@ -1,6 +1,6 @@
 module.exports = function errorMiddleware(err, _req, res, _next) {
-  const databaseFailure = err?.name?.startsWith('PrismaClient')
-    || ['P1000', 'P1001', 'P1002', 'P1008'].includes(err?.code);
+  const databaseFailure = err?.name === 'QueryFailedError'
+    || ['ECONNREFUSED', '57P01', '28P01', '08006'].includes(err?.code);
   const statusCode = databaseFailure ? 503 : (err.statusCode || 500);
   if (statusCode === 500) console.error({ name: err.name, code: err.code });
   res.status(statusCode).json({

@@ -1,11 +1,18 @@
-const prisma = require('../../../config/prisma');
+const { UserSession } = require('@leren/database');
+const { IsNull, MoreThan } = require('typeorm');
 
-function repository(db = prisma) {
+function repository(dataSource) {
+  const repoFor = (manager = dataSource.manager) => manager.getRepository(UserSession);
   return {
-    create: (data) => db.authSession.create({ data }),
-    findActive: (id) => db.authSession.findFirst({ where: { id, revokedAt: null } }),
-    revoke: (id) => db.authSession.update({ where: { id }, data: { revokedAt: new Date() } }),
-    revokeAll: (userId) => db.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    create: (data, manager) => {
+      const repo = repoFor(manager);
+      return repo.save(repo.create(data));
+    },
+    findActive: (id, userId, manager) => repoFor(manager).findOne({
+      where: { sessionId: id, ...(userId ? { userId } : {}), revokedAt: IsNull(), expiresAt: MoreThan(new Date()) },
+    }),
+    revoke: (id, reason = 'LOGOUT', manager) => repoFor(manager).update({ sessionId: id }, { revokedAt: new Date(), revokeReason: reason }),
+    revokeAll: (userId, manager) => repoFor(manager).update({ userId, revokedAt: IsNull() }, { revokedAt: new Date(), revokeReason: 'LOGOUT' }),
   };
 }
 

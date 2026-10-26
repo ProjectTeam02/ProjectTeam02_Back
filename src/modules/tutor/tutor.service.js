@@ -1,83 +1,81 @@
 const crypto = require('node:crypto');
-const prismaDefault = require('../../config/prisma');
+const { AiConversation, AiMessage, AiMessageSource, AiRequest } = require('@leren/database');
+const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
 const FastApiClient = require('../../clients/fastapi.client');
 const quotaService = require('./quota.service');
 
-function service(db = prismaDefault, aiClient = new FastApiClient()) {
-  const quota = quotaService(db);
-  async function ownedConversation(userId, id) {
-    const conversation = await db.aiConversation.findFirst({ where: { id, userId } });
+function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()) {
+  const quota = quotaService(dataSource);
+  const repoFor = (entity, manager = dataSource.manager) => manager.getRepository(entity);
+
+  async function ownedConversation(userId, conversationId, manager = dataSource.manager) {
+    const conversation = await repoFor(AiConversation, manager).findOneBy({ conversationId, userId });
     if (!conversation) throw AppError.notFound('대화방을 찾을 수 없습니다.');
     return conversation;
   }
+
+  async function withSources(messages, manager) {
+    if (!messages.length) return messages;
+    const sources = await repoFor(AiMessageSource, manager).findBy({ messageId: require('typeorm').In(messages.map((item) => item.messageId)) });
+    const byMessage = new Map();
+    for (const source of sources) byMessage.set(source.messageId, [...(byMessage.get(source.messageId) || []), source]);
+    return messages.map((message) => ({ ...message, sources: byMessage.get(message.messageId) || [] }));
+  }
+
   return {
     async createConversation(userId, input) {
-      return db.aiConversation.create({ data: { userId, ...input } });
+      const repo = repoFor(AiConversation);
+      const conversation = repo.create({ userId, entryPoint: input.entryPoint || null, contextTopicId: input.contextTopicId || null, contextStageId: input.contextStageId || null, contextConceptId: input.contextConceptId || null });
+      return repo.save(conversation);
     },
     async listConversations(userId, { skip, take }) {
-      const [items, total] = await Promise.all([
-        db.aiConversation.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' }, skip, take }),
-        db.aiConversation.count({ where: { userId } }),
-      ]);
+      const repo = repoFor(AiConversation);
+      const [items, total] = await repo.findAndCount({ where: { userId }, order: { updatedAt: 'DESC' }, skip, take });
       return { items, total };
     },
     async messages(userId, conversationId, { skip, take }) {
       await ownedConversation(userId, conversationId);
-      const [items, total] = await Promise.all([
-        db.aiMessage.findMany({ where: { conversationId }, orderBy: { sequenceNo: 'asc' }, skip, take, include: { sources: true } }),
-        db.aiMessage.count({ where: { conversationId } }),
-      ]);
-      return { items, total };
+      const repo = repoFor(AiMessage);
+      const [items, total] = await repo.findAndCount({ where: { conversationId }, order: { sequenceNo: 'ASC' }, skip, take });
+      return { items: await withSources(items, dataSource.manager), total };
     },
     async sendMessage(userId, input, idempotencyKey) {
       const conversation = await ownedConversation(userId, input.conversationId);
       const clientMessageId = input.clientMessageId || idempotencyKey || null;
+      const messageRepo = repoFor(AiMessage);
       if (clientMessageId) {
-        const previous = await db.aiMessage.findFirst({ where: { conversationId: conversation.id, clientMessageId }, include: { sources: true } });
+        const previous = await messageRepo.findOneBy({ conversationId: conversation.conversationId, clientMessageId });
         if (previous) {
-          if (previous.content !== input.question) {
-            throw AppError.conflict('Idempotency-Key가 다른 질문에 이미 사용되었습니다.');
-          }
-          if (previous.role === 'ASSISTANT') return { userMessage: null, assistantMessage: previous, usage: null, duplicate: true };
-          const assistant = await db.aiMessage.findFirst({ where: { conversationId: conversation.id, sequenceNo: previous.sequenceNo + 1 }, include: { sources: true } });
-          if (assistant) return { userMessage: previous, assistantMessage: assistant, usage: null, duplicate: true };
+          if (previous.content !== input.question) throw AppError.conflict('Idempotency-Key가 다른 질문에 이미 사용되었습니다.');
+          const assistant = await messageRepo.findOneBy({ conversationId: conversation.conversationId, sequenceNo: previous.sequenceNo + 1, role: 'ASSISTANT' });
+          if (assistant) return { userMessage: previous, assistantMessage: (await withSources([assistant], dataSource.manager))[0], usage: null, duplicate: true };
           throw AppError.conflict('동일한 요청이 이미 처리 중입니다.');
         }
       }
+
       const requestId = crypto.randomUUID();
-      const quotaResult = await quota.reserve(userId, {
-        requestId,
-        userId,
-        conversationId: conversation.id,
-        requestType: 'TUTOR',
-        status: 'RESERVED',
-        modelTier: input.modelTier,
-      });
-      const messages = await db.aiMessage.findMany({ where: { conversationId: conversation.id }, orderBy: { sequenceNo: 'asc' }, take: 50 });
-      const sequenceNo = messages.length ? messages[messages.length - 1].sequenceNo + 1 : 1;
-      const history = messages.map((item) => ({ sequenceNo: item.sequenceNo, role: item.role, content: item.content }));
-      const aiRequest = {
-        requestId, conversationId: conversation.id, userId, question: input.question,
-        modelTier: input.modelTier, history, summary: conversation.summary,
-        summaryUntilSeq: conversation.summaryUntilSeq, context: input.context,
-        knowledgeScope: input.knowledgeScope,
-      };
-      let userMessage = null;
+      const quotaResult = await quota.reserve(userId, { requestId, userId, conversationId: conversation.conversationId, requestType: 'TUTOR', status: 'RESERVED', modelTier: input.modelTier, idempotencyKey: clientMessageId });
+      const historyRows = await messageRepo.find({ where: { conversationId: conversation.conversationId }, order: { sequenceNo: 'ASC' }, take: 50 });
+      const sequenceNo = historyRows.length ? historyRows[historyRows.length - 1].sequenceNo + 1 : 1;
+      const aiRequest = { requestId, conversationId: conversation.conversationId, userId, question: input.question, modelTier: input.modelTier, history: historyRows.map((item) => ({ sequenceNo: item.sequenceNo, role: item.role, content: item.content })), summary: conversation.summary, summaryUntilSeq: conversation.summaryUntilSeq, context: input.context, knowledgeScope: input.knowledgeScope };
+      let userMessage;
       try {
-        userMessage = await db.aiMessage.create({ data: { conversationId: conversation.id, sequenceNo, role: 'USER', content: input.question, clientMessageId, requestId, status: 'PROCESSING' } });
+        userMessage = await messageRepo.save(messageRepo.create({ conversationId: conversation.conversationId, sequenceNo, role: 'USER', content: input.question, clientMessageId, requestId, status: 'PENDING', contextStageId: input.context?.stageId || null, contextConceptId: input.context?.conceptId || null }));
         const answer = await aiClient.answer(aiRequest);
-        const assistantMessage = await db.aiMessage.create({
-          data: { conversationId: conversation.id, sequenceNo: sequenceNo + 1, role: 'ASSISTANT', content: answer.answer, rewrittenQuery: answer.rewrittenQuery, groundingStatus: answer.groundingStatus, requestId, status: 'COMPLETED', sources: { create: (answer.sources || []).map((source) => ({ documentId: source.documentId, documentVersion: source.documentVersion, chunkId: source.chunkId, titleSnapshot: source.titleSnapshot, conceptCode: source.conceptCode, rank: source.rank, relevanceScore: source.relevanceScore })) } },
-          include: { sources: true },
-        });
-        await db.aiMessage.update({ where: { id: userMessage.id }, data: { status: 'COMPLETED' } });
-        await db.aiRequest.update({ where: { requestId }, data: { status: 'COMPLETED', modelId: answer.usage?.modelId, embeddingModelId: answer.usage?.embeddingModelId, inputTokens: answer.usage?.inputTokens, outputTokens: answer.usage?.outputTokens, latencyMs: answer.usage?.latencyMs, cacheHit: answer.usage?.cacheHit, retrievalStrategy: answer.usage?.retrievalStrategy, estimatedCost: answer.usage?.estimatedCost, currency: answer.usage?.currency } });
-        await db.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } });
-        return { userMessage, assistantMessage, usage: answer.usage, quota: quotaResult };
+        const assistantRepo = repoFor(AiMessage);
+        const assistantMessage = await assistantRepo.save(assistantRepo.create({ conversationId: conversation.conversationId, parentMessageId: userMessage.messageId, sequenceNo: sequenceNo + 1, role: 'ASSISTANT', content: answer.answer, rewrittenQuery: answer.rewrittenQuery || null, historyFromSeq: answer.historyFromSeq || null, groundingStatus: answer.groundingStatus || null, requestId, status: 'COMPLETED', completedAt: new Date() }));
+        const sourceRepo = repoFor(AiMessageSource);
+        for (const [index, source] of (answer.sources || []).entries()) {
+          await sourceRepo.save(sourceRepo.create({ messageId: assistantMessage.messageId, documentId: source.documentId, documentVersion: source.documentVersion || null, chunkId: source.chunkId, titleSnapshot: source.titleSnapshot || null, conceptCode: source.conceptCode || null, rank: source.rank || index + 1, relevanceScore: source.relevanceScore == null ? null : String(source.relevanceScore) }));
+        }
+        userMessage.status = 'COMPLETED'; userMessage.completedAt = new Date(); await messageRepo.save(userMessage);
+        await repoFor(AiRequest).update({ requestId }, { status: 'SUCCEEDED', modelId: answer.usage?.modelId || null, embeddingModelId: answer.usage?.embeddingModelId || null, inputTokens: answer.usage?.inputTokens ?? null, outputTokens: answer.usage?.outputTokens ?? null, latencyMs: answer.usage?.latencyMs ?? null, cacheHit: answer.usage?.cacheHit ?? null, retrievalStrategy: answer.usage?.retrievalStrategy || null, estimatedCost: answer.usage?.estimatedCost == null ? null : String(answer.usage.estimatedCost), currency: answer.usage?.currency || null, completedAt: new Date() });
+        await repoFor(AiConversation).update({ conversationId: conversation.conversationId }, { updatedAt: new Date() });
+        return { userMessage, assistantMessage: { ...assistantMessage, sources: answer.sources || [] }, usage: answer.usage, quota: quotaResult };
       } catch (error) {
-        if (userMessage) await db.aiMessage.update({ where: { id: userMessage.id }, data: { status: 'FAILED' } }).catch(() => {});
-        await db.aiRequest.update({ where: { requestId }, data: { status: 'FAILED', errorCode: error.code || 'AI_UNAVAILABLE' } }).catch(() => {});
+        if (userMessage) await messageRepo.update({ messageId: userMessage.messageId }, { status: 'FAILED', errorCode: error.code || 'AI_UNAVAILABLE' }).catch(() => {});
+        await repoFor(AiRequest).update({ requestId }, { status: 'FAILED', errorCode: error.code || 'AI_UNAVAILABLE' }).catch(() => {});
         throw error;
       }
     },
@@ -85,4 +83,4 @@ function service(db = prismaDefault, aiClient = new FastApiClient()) {
   };
 }
 
-module.exports = service;
+module.exports = tutorService;

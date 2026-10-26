@@ -1,23 +1,32 @@
 services:
   api:
-    build: ..
+    build: .
     ports:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      DB_HOST: db
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16   # PostgreSQL 16 + pgvector
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: leren
+      TZ: UTC
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./database/sql/init:/docker-entrypoint-initdb.d   # 최초 1회: app·ai 스키마, 계정(migrator, app_user, ai_user), pgvector 생성
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d leren"]
+      interval: 5s
+      retries: 10
 
 volumes:
   postgres_data:

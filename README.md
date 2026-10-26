@@ -1,47 +1,41 @@
 # Leren BackEnd
 
 Leren 서비스의 Node.js/Express 백엔드입니다.
+DB는 PostgreSQL 16 + TypeORM이며, 엔티티·마이그레이션은 `database/` 패키지(`@leren/database`)에 있습니다.
 
 ## 실행
 
 ```bash
 npm install
-# 프로젝트 루트에 .env를 직접 만들고 실제 값은 로컬에서만 입력합니다.
-touch .env
-npm run dev
-```
-
-필수 환경변수 예시:
-
-```dotenv
-PORT=3000
-DATABASE_URL=postgresql://<user>:<password>@localhost:5432/leren
-JWT_ACCESS_SECRET=<long-random-secret>
-JWT_REFRESH_SECRET=<long-random-secret>
-FASTAPI_BASE_URL=http://127.0.0.1:8001
-FASTAPI_INTERNAL_TOKEN=<service-token>
-FASTAPI_TIMEOUT_MS=5000
-AI_DAILY_LIMIT=20
-```
-
-Prisma 스키마를 적용할 때는 운영 DB에 맞는 migration을 검토한 뒤 실행합니다.
-
-```bash
-npx prisma generate
-npx prisma migrate dev --name phase1-usecase
+cp .env.example .env
+docker compose up -d db     # 로컬 PostgreSQL (최초 1회 app 스키마·계정 생성)
+npm run db:migrate          # 테이블 생성
+npm run dev                 # database 패키지 빌드 후 서버 실행
 ```
 
 기본 상태 확인 주소: `GET /health`
 
-Swagger UI: `http://localhost:3000/api-docs`
+## 업데이트
 
-OpenAPI JSON: `http://localhost:3000/api-docs.json`
+```bash
+git pull                       #코드 최신으로 업데이트
+npm install                    #바뀐 의존성 설치
+docker compose down -v         #예전 로컬 db 제거
+docker compose up -d db	       #새 로컬 db 띄우고, 스키마-계정 자동 생성
+npm run db:migrate             #테이블 생성
+```
 
-`/api/v1/health/ready`는 PostgreSQL과 FastAPI를 실제로 ping하며 둘 중 하나라도
-연결되지 않으면 `503`과 `DEGRADED`를 반환합니다. `/api/v1/health/dependencies`는
-동일한 의존성 상태를 JSON으로 반환합니다.
 
-AI Tutor 요청은 Node.js가 `conversationId`, JWT 인증, History, 사용량 예약 및
-DB 저장을 담당하고, FastAPI의 `POST /internal/v1/tutor/answer`로 RAG 추론을
-위임합니다. FastAPI 실패·타임아웃은 외부 API에서 `503`과 `튜터가 바쁩니다.`로
-변환됩니다.
+## DB
+
+- 사용법·명령어: [`database/README.md`](database/README.md)
+- 엔티티 목록: [`database/docs/ENTITIES.md`](database/docs/ENTITIES.md)
+- 담당·변경 절차: [`docs/database-ownership.md`](docs/database-ownership.md)
+
+## API
+
+- Swagger UI: `http://localhost:3000/api-docs`
+- OpenAPI JSON: `http://localhost:3000/api-docs.json`
+- AI Tutor 요청은 Node.js가 인증·대화 저장·사용량을 담당하고 FastAPI의
+  `POST /internal/v1/tutor/answer`로 추론을 위임합니다.
+- `npm test`는 database workspace를 먼저 빌드한 뒤 API 단위 테스트를 실행합니다.

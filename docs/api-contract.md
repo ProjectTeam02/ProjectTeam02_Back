@@ -63,4 +63,4 @@ FastAPI 응답의 `answer`, `rewrittenQuery`, `groundingStatus`, `historyFromSeq
 
 ## 현재 검증 범위
 
-`npm test`는 외부 DB와 FastAPI 없이 실행되는 계약·검증 테스트다. 실제 Prisma migration 적용, PostgreSQL 연결, FastAPI 모델 호출은 각 서비스를 실행한 통합 환경에서 별도로 검증해야 한다.
+`npm test`는 외부 DB와 FastAPI 없이 실행되는 계약·검증 테스트다. TypeORM migration 적용, PostgreSQL 연결, FastAPI 모델 호출은 각 서비스를 실행한 통합 환경에서 별도로 검증해야 한다.

@@ -13,7 +13,11 @@
 백엔드 `.env`는 로컬에서만 만들고 Git에 커밋하지 않는다.
 
 ```dotenv
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/leren
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_NAME=leren
+DB_USER=app_user
+DB_PASSWORD=<local-password>
 FASTAPI_BASE_URL=http://127.0.0.1:8000
 FASTAPI_INTERNAL_TOKEN=<AI .env의 INTERNAL_API_TOKEN과 동일한 값>
 JWT_ACCESS_SECRET=<로컬 랜덤 값>
@@ -50,7 +54,7 @@ FastAPI 호출 계약은 `src/clients/fastapi.client.js`와 `docs/api-contract.m
 
 ## 퀴즈 제출
 
-`POST /api/v1/quizzes/{id}/submit`에서 `id`는 quiz UUID다. 재시도 가능한 제출에는 동일한 `Idempotency-Key`를 사용한다. 같은 키를 다른 답안에 사용하면 409를 반환한다.
+`POST /api/v1/quizzes/{id}/submit`에서 `id`는 TypeORM `questions.question_id`(API quizId)다. ERD의 `learning_attempts`와 연결하기 위해 `attemptId`가 필요하다. 재시도 가능한 제출에는 동일한 `Idempotency-Key`를 사용한다. 같은 키를 다른 답안에 사용하면 409를 반환한다.
 
 현재 보상 지급은 EXP/Gold ledger의 최종 ERD 합의 전까지 연결하지 않는다.
 
@@ -67,9 +71,9 @@ FastAPI 호출 계약은 `src/clients/fastapi.client.js`와 `docs/api-contract.m
 ## 실행 순서
 
 ```bash
-# PostgreSQL에서 leren DB와 pgvector 준비
+# PostgreSQL에서 leren DB와 app 스키마 준비
 npm install
-npx prisma generate
+npm run db:migrate
 npm run dev
 
 # AI 저장소

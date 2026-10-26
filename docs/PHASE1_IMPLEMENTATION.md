@@ -19,8 +19,8 @@ JWT Secret과 FastAPI 내부 토큰은 저장소에 포함하지 않는 로컬 `
 
 ## 저장 책임
 
-Node.js/Prisma가 사용자, 세션, AI conversation/message/request/source, quiz와
-attempt를 저장한다. FastAPI는 RAG 검색·생성·citation·usage를 반환하며 Node.js가
+Node.js/TypeORM(`@leren/database`)가 사용자, 세션, AI conversation/message/request/source,
+문제와 attempt를 저장한다. FastAPI는 RAG 검색·생성·citation·usage를 반환하며 Node.js가
 결과를 저장한다. FastAPI 내부 테이블을 Node.js에서 생성하지 않는다.
 
 ## 미검증 또는 후속 협의

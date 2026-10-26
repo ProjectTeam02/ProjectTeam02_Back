@@ -1,9 +1,9 @@
 const express = require('express');
 const auth = require('../../common/middleware/auth.middleware');
 const validate = require('../../common/middleware/validate.middleware');
-const prisma = require('../../config/prisma');
+const { AppDataSource } = require('../../config/database');
 const schema = require('./quiz.schema');
-const service = require('./quiz.service')(prisma);
+const service = require('./quiz.service')(AppDataSource);
 const controller = require('./quiz.controller')(service);
 
 const router = express.Router();

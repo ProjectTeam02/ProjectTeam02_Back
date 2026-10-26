@@ -9,14 +9,22 @@
 ```bash
 npm test
 find src test -name '*.js' -print0 | xargs -0 -n1 node --check
-npx prisma validate
+npm ci
+npm run db:build
+DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=leren_backend_pr10_test DB_USER=app_user DB_PASSWORD=app_local DB_MIGRATION_USER=migrator DB_MIGRATION_PASSWORD=migrator_local npm run db:migrate
+DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=leren_backend_pr10_test DB_USER=app_user DB_PASSWORD=app_local DB_MIGRATION_USER=migrator DB_MIGRATION_PASSWORD=migrator_local npm run db:check
+DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=leren_backend_pr10_test DB_USER=app_user DB_PASSWORD=app_local DB_MIGRATION_USER=migrator DB_MIGRATION_PASSWORD=migrator_local npm run db:test
 ```
 
 결과:
 
 - Node test: 13 passed, 0 failed
 - JavaScript 문법 검사: 통과
-- Prisma schema validate: 통과
+- TypeORM database workspace build: 통과
+- `npm ci`: 통과
+- TypeORM migration (`leren_backend_pr10_test`): 2개 적용 통과
+- TypeORM migration check: 변경 없음
+- database smoke: 19/19 PASS
 - `git diff --check`: 통과
 
 자동 테스트에는 다음이 포함된다.
@@ -32,7 +40,7 @@ npx prisma validate
 
 실행 환경:
 
-- Backend: `127.0.0.1:3000`
+- Backend: `127.0.0.1:3010` (격리 smoke 실행)
 - FastAPI: `127.0.0.1:8000`
 - PostgreSQL: `127.0.0.1:5432/leren`
 
@@ -61,6 +69,8 @@ npx prisma validate
 - 승인 문제 없음: `/quizzes/generate` 404
 - 잘못된 quiz ID 제출: 422
 - 잘못된 Tutor 입력: 422
+
+격리 smoke용 PostgreSQL은 `leren_backend_pr10_test`로 생성했으며, 기존 `leren` 데이터베이스는 수정하지 않았다.
 
 테스트용 사용자는 확인 후 삭제했다.
 

@@ -36,11 +36,11 @@ function verify(token, secret) {
 }
 
 function issueAccessToken(user, sessionId) {
-  return sign({ sub: user.id, email: user.email, sid: sessionId, type: 'access' }, env.jwtAccessSecret, env.accessTokenTtlSeconds);
+  return sign({ sub: user.id || user.userId, email: user.email, sid: sessionId, type: 'access' }, env.jwtAccessSecret, env.accessTokenTtlSeconds);
 }
 
 function issueRefreshToken(user, sessionId) {
-  return sign({ sub: user.id, sid: sessionId, type: 'refresh' }, env.jwtRefreshSecret, env.refreshTokenTtlSeconds);
+  return sign({ sub: user.id || user.userId, sid: sessionId, type: 'refresh' }, env.jwtRefreshSecret, env.refreshTokenTtlSeconds);
 }
 
 function verifyAccessToken(token) {

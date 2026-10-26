@@ -1,5 +1,5 @@
 const express = require('express');
-const prisma = require('../config/prisma');
+const { AppDataSource } = require('../config/database');
 const FastApiClient = require('../clients/fastapi.client');
 const asyncHandler = require('../common/utils/asyncHandler');
 
@@ -8,7 +8,7 @@ const fastapi = new FastApiClient();
 
 async function databaseStatus() {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await AppDataSource.query('SELECT 1');
     return 'CONNECTED';
   } catch (_error) {
     return 'DISCONNECTED';

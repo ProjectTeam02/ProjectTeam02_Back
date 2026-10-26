@@ -3,25 +3,28 @@
   "version": "1.0.0",
   "private": true,
   "main": "src/server.js",
+  "workspaces": [
+    "database"
+  ],
   "scripts": {
+    "predev": "npm run db:build",
     "dev": "node --watch src/server.js",
+    "prestart": "npm run db:build",
     "start": "node src/server.js",
+    "pretest": "npm run db:build",
     "test": "node --test",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "node prisma/seed.js"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
+    "db:build": "npm run build -w @leren/database",
+    "db:migrate": "npm run migration:run -w @leren/database",
+    "db:migrate:show": "npm run migration:show -w @leren/database",
+    "db:check": "npm run migration:check -w @leren/database",
+    "db:seed": "npm run seed -w @leren/database",
+    "db:test": "npm run test:db -w @leren/database"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0",
+    "@leren/database": "0.4.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1"
-  },
-  "devDependencies": {
-    "prisma": "^6.0.0"
   }
 }
