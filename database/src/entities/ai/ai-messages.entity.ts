@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.ai_messages)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_messages)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { GroundingStatus, MessageInputType, MessageRole, MessageStatus } from '../common/enums';
 import { AiConversation } from './ai-conversations.entity';

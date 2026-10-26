@@ -1,6 +1,6 @@
 # 엔티티 목록 (v3 rev.5)
 
-`src/entities` 아래 40개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd_v3.dbml`(rev.5)과 같은 DB를 만듭니다.
+`src/entities` 아래 40개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml`(rev.6)과 같은 DB를 만듭니다.
 
 - 클래스·파일 이름: 테이블 이름의 단수형 PascalCase / kebab-case (`user_costumes` → `UserCostume`, `user-costumes.entity.ts`)
 - 속성 이름: 컬럼 이름의 camelCase = API 필드 이름 (`item_id` → `itemId`, `submission_id` → `submissionId`)

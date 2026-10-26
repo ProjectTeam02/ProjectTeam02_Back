@@ -1,5 +1,5 @@
 # PR·push마다 임시 PostgreSQL 16에서 database/ 패키지를 자동 검증
-# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 19개 → SQL 제약 테스트 43개
+# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 19개 → SQL 제약 테스트 47개 → ai 스키마(pgvector) 8개
 name: db-check
 on:
   pull_request:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16   # PostgreSQL 16 + pgvector (RDS와 같은 메이저 버전)
         env:
           POSTGRES_USER: leren_admin
           POSTGRES_PASSWORD: admin_ci
@@ -35,8 +35,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: 1. 스키마·계정 생성
-        run: PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+      - name: 1. 스키마·계정 생성 (app + ai)
+        run: |
+          PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+          PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -v ON_ERROR_STOP=1 -f database/sql/init/02_ai_schema.sql
       - name: 2. 컴파일 (strict)
         run: npm run db:build
       - name: 3. 마이그레이션 실행 (migrator)
@@ -45,12 +47,17 @@ jobs:
         run: npm run db:check
       - name: 5. 엔티티 연동 테스트 19개 (app_user)
         run: npm run db:test
-      - name: 6. SQL 제약 테스트 43개 (빈 DB에 마이그레이션 후 app_user로 실행)
+      - name: 6. SQL 제약 테스트 47개 (빈 DB에 마이그레이션 후 app_user로 실행)
         run: |
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -c "CREATE DATABASE leren_sql"
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+          PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/02_ai_schema.sql
           DB_NAME=leren_sql npm run db:migrate
-          PGPASSWORD=app_local psql -h localhost -U app_user -d leren_sql -f database/sql/test/v3_constraint_test.sql | tee sql-test.log
-          grep -q "TOTAL 43/43" sql-test.log
-      - name: 7. 서버가 database 패키지를 불러오는지 확인
+          PGPASSWORD=app_local psql -h localhost -U app_user -d leren_sql -f database/sql/test/constraint_test.sql | tee sql-test.log
+          grep -q "TOTAL 47/47" sql-test.log
+      - name: 7. ai 스키마 검증 8개 (pgvector·권한 분리, ai_user로 실행)
+        run: |
+          PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_schema_test.sql | tee ai-test.log
+          grep -q "TOTAL 8/8" ai-test.log
+      - name: 8. 서버가 database 패키지를 불러오는지 확인
         run: node -e "const db=require('@leren/database'); if(db.entities.length!==40) throw new Error('entities '+db.entities.length); console.log('entities', db.entities.length)"

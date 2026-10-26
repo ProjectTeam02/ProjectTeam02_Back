@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.level_thresholds)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.level_thresholds)
 import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { LevelScope } from '../common/enums';
 

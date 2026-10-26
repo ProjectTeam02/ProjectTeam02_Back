@@ -1,4 +1,4 @@
-// 자동 생성: app 스키마 엔티티 40개 (leren_erd_v3.dbml rev.5)
+// 자동 생성: app 스키마 엔티티 40개 (leren_erd.dbml rev.5)
 import { User } from './account/users.entity';
 import { Terms } from './account/terms.entity';
 import { UserTermsAgreement } from './account/user-terms-agreements.entity';

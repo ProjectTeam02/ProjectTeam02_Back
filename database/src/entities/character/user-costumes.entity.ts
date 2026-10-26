@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.user_costumes)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_costumes)
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
 import { CostumeAcquireType } from '../common/enums';
 import { CoinLedger } from '../reward/coin-ledger.entity';

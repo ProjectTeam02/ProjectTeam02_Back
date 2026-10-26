@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.questions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.questions)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Difficulty, GeneratedBy, QuestionStatus, QuestionType } from '../common/enums';
 import { AiRequest } from '../ai/ai-requests.entity';

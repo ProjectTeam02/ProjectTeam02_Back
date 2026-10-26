@@ -1,7 +1,7 @@
 # @leren/database
 
 Leren app 스키마의 **TypeORM 엔티티 · 마이그레이션 · 검증 스크립트** 패키지입니다 (npm workspace).
-설계 원본은 `docs/leren_erd.dbml` ( rev.5, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩)는 AI 서버(FastAPI)가 관리하므로 포함하지 않습니다.
+설계 원본은 `docs/leren_erd.dbml` (rev.6, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)는 AI 서버(FastAPI)가 `ai_user` 계정으로 관리하고, 이 패키지는 스키마·계정만 만들어 둡니다(`sql/init/02_ai_schema.sql`).
 
 ## 구성
 
@@ -15,8 +15,10 @@ database/
   src/scripts/seed-minimal.ts   # 검증용 최소 시드
   src/scripts/smoke.ts          # 엔티티 연동 테스트 19항목
   sql/init/01_app_schema.sql    # app 스키마 + 계정(migrator, app_user) 생성. 관리자 계정으로 최초 1회
-  sql/test/v3_constraint_test.sql  # SQL 제약 테스트 43개 (빈 DB, app_user)
-  docs/leren_erd_v3.dbml     # 설계 원본 (dbdiagram.io에 붙여 넣으면 ERD)
+  sql/init/02_ai_schema.sql     # pgvector 확장 + ai 스키마 + 계정(ai_user). 01 다음에 최초 1회
+  sql/test/constraint_test.sql  # SQL 제약 테스트 47개 (빈 DB, app_user)
+  sql/test/ai_schema_test.sql   # ai 스키마 검증 8개 (pgvector·권한 분리, ai_user)
+  docs/leren_erd.dbml        # 설계 원본 (dbdiagram.io에 붙여 넣으면 ERD)
   docs/ENTITIES.md           # 테이블 ↔ 엔티티 ↔ 관계 대응표
   docs/VERIFICATION.md       # 검증 결과
 ```
@@ -71,10 +73,13 @@ npm run db:test                      # 결과: 19/19 PASS
 |---|---|---|
 | `migrator` | 마이그레이션 실행 | app 스키마 소유자 (테이블 생성·변경) |
 | `app_user` | Node.js 서버 실행 | app 스키마 테이블 읽기·쓰기만 (삭제·변경 불가) |
+| `ai_user` | AI 서버(FastAPI) 실행 | ai 스키마 소유자 (RAG 문서·청크·벡터 테이블). app 스키마 접근 불가 |
+
+AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai`. 백엔드는 AI 응답의 `documentId`·`chunkId`를 `ai_message_sources`에 FK 없이 기록합니다.
 
 ## 구조를 바꿀 때
 
-1. 엔티티 수정 (+ `docs/leren_erd_v3.dbml` 같은 내용으로 수정)
+1. 엔티티 수정 (+ `docs/leren_erd.dbml` 같은 내용으로 수정)
 2. 현재 마이그레이션까지 적용된 로컬 DB에서 `migration:generate`
 3. 생성된 파일 검토
    - 이름 변경이 "삭제 후 추가"로 나오면 `RENAME`으로 고치기 (데이터 보존)
@@ -87,10 +92,17 @@ npm run db:test                      # 결과: 19/19 PASS
 ## AWS RDS에 적용할 때
 
 1. RDS PostgreSQL 16 생성 (Private, Public access OFF, SG-DB는 SG-EC2만 허용)
-2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` 실행 (비밀번호는 실제 값으로 변경)
+2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` → `02_ai_schema.sql` 순서로 실행 (비밀번호는 실제 값으로 변경, pgvector는 RDS PostgreSQL 16 기본 지원)
 3. 환경변수는 Parameter Store에서 주입, `DB_SSL=true`와 RDS CA 인증서 지정
 4. `npm run db:migrate` → `npm run db:migrate:show` → `npm run db:check`
 5. `db:test`는 실제 데이터가 있는 DB에서 실행하지 않습니다 (테스트 데이터가 남음)
+
+## 변경 이력
+
+| rev | 마이그레이션 | 내용 |
+|---|---|---|
+| rev.5 | `Init` | 최초 스키마 (테이블 40개) |
+| rev.6 | `AiMessageSourcesContract` | AI 내부 API 계약 반영: `ai_message_sources.document_version` 문자열·null 허용, `chunk_id` 필수, (message_id, document_id, chunk_id) 유니크. ai 스키마·`ai_user` 분리 |
 
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
 
@@ -103,4 +115,5 @@ npm run db:test                      # 결과: 19/19 PASS
 - `concept_code`, `question_code`, `document_id`, `chunk_id`, `coin_ledger.ref_id`는 FK 없는 논리 참조 → 저장 시 존재 여부 검증
 - AI 일일 한도는 서버 설정값 + 오늘 `usageDate`의 TUTOR 요청 수 (`usageDate`는 넣지 않음)
 - 회원 탈퇴: `accountStatus = WITHDRAWN`과 `withdrawnAt`을 함께 기록, 개인정보 비우기, 학습·보상 기록 유지
+- AI 근거 저장: 내부 API 응답 `sources[]`를 그대로 저장 (`documentVersion`은 null 가능). 내부 API 요청 DTO는 질문·메시지 4,000자, history 50개, summary 12,000자 이하
 - API 응답에는 엔티티 대신 DTO 사용 (`passwordHash`, 제출 전 `isCorrect` 노출 금지)

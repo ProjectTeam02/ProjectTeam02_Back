@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.users)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.users)
 import { Check, Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { AccountStatus, LoginMethod, UserPlan, UserRole } from '../common/enums';
 

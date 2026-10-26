@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.exp_ledger)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.exp_ledger)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { ExpSourceType } from '../common/enums';
 import { LearningAttempt } from '../progress/learning-attempts.entity';

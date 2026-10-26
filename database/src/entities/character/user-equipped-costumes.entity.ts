@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.user_equipped_costumes)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_equipped_costumes)
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { CostumeCategory } from '../common/enums';
 import { Costume } from './costumes.entity';

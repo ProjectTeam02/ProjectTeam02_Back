@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.review_missions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.review_missions)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { ReviewMissionStatus } from '../common/enums';
 import { User } from '../account/users.entity';

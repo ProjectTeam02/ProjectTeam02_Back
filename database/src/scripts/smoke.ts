@@ -1,6 +1,6 @@
 // 엔티티 연동 검증 (v3 rev.5): app_user 권한으로 엔티티를 통해 실제 저장·조회·트랜잭션·제약을 확인한다.
 // 실행: npm run test:db  (사전: migration:run, 시드는 이 스크립트가 자동 실행)
-// SQL 제약 테스트 43개는 db/test/v3_constraint_test.sql (빈 DB에서 psql로 실행)
+// SQL 제약 테스트 47개는 database/sql/test/constraint_test.sql (빈 DB에서 psql로 실행)
 import { randomUUID } from 'crypto';
 import { EntityManager, QueryFailedError } from 'typeorm';
 import { AppDataSource } from '../data-source';

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd_v3.dbml (rev.5) 기준 (app.user_terms_agreements)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_terms_agreements)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Terms } from './terms.entity';
 import { User } from './users.entity';
