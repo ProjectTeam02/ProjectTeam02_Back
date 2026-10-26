@@ -7,4 +7,183 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Add application models here.
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum QuizStatus {
+  APPROVED
+  GENERATED
+  DISABLED
+}
+
+model User {
+  id                  String                @id @default(uuid())
+  email               String                @unique
+  passwordHash        String?
+  nickname            String
+  status              UserStatus            @default(ACTIVE)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  growth              UserGrowth?
+  sessions            AuthSession[]
+  conversations       AiConversation[]
+  requests            AiRequest[]
+  attempts            QuizAttempt[]
+  notificationSetting NotificationSetting?
+}
+
+model UserGrowth {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level          Int      @default(1)
+  totalExp       Int      @default(0)
+  economyLevel   Int      @default(1)
+  economyExp     Int      @default(0)
+  plan           String   @default("FREE")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String    @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  @@index([userId, revokedAt])
+}
+
+model AiConversation {
+  id              String       @id @default(uuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entryPoint      String?
+  contextTopicId  String?
+  contextStageId  String?
+  contextConceptId String?
+  summary         String?
+  summaryUntilSeq Int?
+  status          String       @default("ACTIVE")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  messages        AiMessage[]
+  requests        AiRequest[]
+  @@index([userId, updatedAt])
+}
+
+model AiMessage {
+  id              String             @id @default(uuid())
+  conversationId  String
+  conversation    AiConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  parentMessageId String?
+  sequenceNo      Int
+  role            String
+  content         String
+  clientMessageId String?
+  rewrittenQuery  String?
+  groundingStatus String?
+  status          String             @default("COMPLETED")
+  requestId       String?
+  createdAt       DateTime           @default(now())
+  sources         AiMessageSource[]
+  @@index([conversationId, sequenceNo])
+  @@unique([conversationId, clientMessageId])
+}
+
+model AiMessageSource {
+  id              String     @id @default(uuid())
+  messageId       String
+  message         AiMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  documentId      String
+  documentVersion String?
+  chunkId         String?
+  titleSnapshot   String?
+  conceptCode     String?
+  rank            Int
+  relevanceScore  Float?
+  createdAt       DateTime   @default(now())
+  @@index([messageId])
+}
+
+model AiRequest {
+  requestId          String          @id
+  userId             String
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId     String?
+  conversation       AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  requestType        String
+  status             String
+  modelTier          String?
+  modelId            String?
+  embeddingModelId   String?
+  inputTokens        Int?
+  outputTokens       Int?
+  latencyMs          Int?
+  cacheHit           Boolean?
+  retrievalStrategy  String?
+  estimatedCost      Float?
+  currency           String?
+  errorCode          String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  @@index([userId, createdAt])
+}
+
+model Quiz {
+  id          String       @id @default(uuid())
+  title       String
+  explanation String
+  difficulty  String       @default("NORMAL")
+  status      QuizStatus   @default(APPROVED)
+  conceptId   String?
+  createdAt   DateTime     @default(now())
+  choices     QuizChoice[]
+  attempts    QuizAttempt[]
+}
+
+model QuizChoice {
+  id          String           @id @default(uuid())
+  quizId      String
+  quiz        Quiz             @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  label       String
+  content     String
+  isCorrect   Boolean          @default(false)
+  submissions QuizSubmission[]
+  @@index([quizId])
+}
+
+model QuizAttempt {
+  id          String           @id @default(uuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizId      String
+  quiz        Quiz             @relation(fields: [quizId], references: [id])
+  status      String           @default("STARTED")
+  score       Int?
+  submittedAt DateTime?
+  idempotencyKey String?
+  createdAt   DateTime         @default(now())
+  submissions QuizSubmission[]
+  @@index([userId, createdAt])
+  @@unique([userId, quizId, idempotencyKey])
+}
+
+model QuizSubmission {
+  id         String      @id @default(uuid())
+  attemptId  String
+  attempt    QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  choiceId   String
+  choice     QuizChoice  @relation(fields: [choiceId], references: [id])
+  isCorrect  Boolean
+  createdAt  DateTime    @default(now())
+  @@unique([attemptId])
+}
+
+model NotificationSetting {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  learningOn   Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+}
