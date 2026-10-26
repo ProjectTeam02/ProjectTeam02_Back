@@ -1,14 +1,14 @@
 # @leren/database
 
 Leren app 스키마의 **TypeORM 엔티티 · 마이그레이션 · 검증 스크립트** 패키지입니다 (npm workspace).
-설계 원본은 `docs/leren_erd_v3.dbml` (v3 rev.5, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩)는 AI 서버(FastAPI)가 관리하므로 포함하지 않습니다.
+설계 원본은 `docs/leren_erd.dbml` ( rev.5, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩)는 AI 서버(FastAPI)가 관리하므로 포함하지 않습니다.
 
 ## 구성
 
 ```
 database/
   src/entities/              # 엔티티 40개 (영역별 폴더 7개) + common/enums.ts
-  src/migrations/            # 마이그레이션 (v3 Init부터 순서대로 쌓임)
+  src/migrations/            # 마이그레이션 (Init부터 순서대로 쌓임)
   src/index.ts               # 패키지 진입점: AppDataSource, 엔티티, Enum
   src/data-source.ts         # 서버 실행용 (app_user)
   src/migration-data-source.ts  # 마이그레이션 전용 (migrator, TypeORM CLI용)
