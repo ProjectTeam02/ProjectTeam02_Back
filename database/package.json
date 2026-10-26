@@ -2,7 +2,7 @@
   "name": "@leren/database",
   "version": "0.4.0",
   "private": true,
-  "description": "Leren app 스키마 v3(rev.5) TypeORM 엔티티·마이그레이션·검증 스크립트",
+  "description": "Leren app 스키마 (rev.5) TypeORM 엔티티·마이그레이션·검증 스크립트",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
