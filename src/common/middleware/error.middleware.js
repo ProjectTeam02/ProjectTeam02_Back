@@ -1,7 +1,12 @@
 module.exports = function errorMiddleware(err, _req, res, _next) {
-  const statusCode = err.statusCode || 500;
+  const databaseFailure = err?.name === 'QueryFailedError'
+    || ['ECONNREFUSED', '57P01', '28P01', '08006'].includes(err?.code);
+  const statusCode = databaseFailure ? 503 : (err.statusCode || 500);
+  if (statusCode === 500) console.error({ name: err.name, code: err.code });
   res.status(statusCode).json({
     success: false,
-    message: err.message || 'Internal server error',
+    message: databaseFailure ? '데이터베이스를 사용할 수 없습니다.' : (err.message || 'Internal server error'),
+    code: databaseFailure ? 'SERVICE_UNAVAILABLE' : (err.code || 'INTERNAL_ERROR'),
+    ...(!databaseFailure && err.details ? { details: err.details } : {}),
   });
 };
