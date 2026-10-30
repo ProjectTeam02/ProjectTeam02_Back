@@ -1,3 +1,8 @@
+/**
+ * 사용자 인증 미들웨어
+ * 백엔드 작업: JWT와 활성 세션을 검증
+ * 주의: 기존 인증 정책과 오류 코드를 유지한다.
+ */
 const AppError = require('../errors/AppError');
 const { verifyAccessToken } = require('../utils/token.util');
 const { AppDataSource } = require('../../config/database');

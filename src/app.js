@@ -1,3 +1,8 @@
+/**
+ * Express 애플리케이션 설정
+ * 백엔드 작업: 공통 미들웨어·라우터·Swagger 연결을 관리
+ * 주의: 비즈니스 로직은 기능별 Service에서 처리한다.
+ */
 const express = require('express');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');

@@ -1,3 +1,8 @@
+/**
+ * 요청값 검증 미들웨어
+ * 백엔드 작업: 기능별 Schema를 실행하고 정규화된 입력을 전달
+ * 주의: 검증 실패는 공통 AppError로 전달한다.
+ */
 const AppError = require('../errors/AppError');
 
 module.exports = function validateMiddleware(schema) {

@@ -1,3 +1,8 @@
+/**
+ * FastAPI AI 서버 통신
+ * 백엔드 작업: AI 서버 요청·응답과 Timeout 정책을 관리
+ * 주의: URL·인증 토큰은 환경변수로만 관리한다.
+ */
 const AppError = require('../common/errors/AppError');
 const env = require('../config/env');
 

@@ -1,3 +1,8 @@
+/**
+ * 퀴즈 비즈니스 로직
+ * 백엔드 작업: 유스케이스 흐름과 기존 정책을 유지
+ * 주의: DB는 Repository, 외부 통신은 Client를 사용한다.
+ */
 const { Question, QuestionChoice, LearningAttempt, QuestionSubmission } = require('@leren/database');
 const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');

@@ -1,3 +1,8 @@
+/**
+ * AI Tutor 비즈니스 로직
+ * 백엔드 작업: 유스케이스 흐름과 기존 정책을 유지
+ * 주의: DB는 Repository, 외부 통신은 Client를 사용한다.
+ */
 const { AiRequest } = require('@leren/database');
 const { Not, MoreThanOrEqual } = require('typeorm');
 const env = require('../../config/env');

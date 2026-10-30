@@ -1,3 +1,8 @@
+/**
+ * Kakao OAuth 통신
+ * 백엔드 작업: 카카오 프로필 요청과 응답 변환을 관리
+ * 주의: OAuth 토큰과 민감정보를 로그에 남기지 않는다.
+ */
 const AppError = require('../common/errors/AppError');
 
 class KakaoClient {

@@ -1,3 +1,8 @@
+/**
+ * Swagger API 문서 설정
+ * 백엔드 작업: 실제 API 경로·Schema·인증 정보를 관리
+ * 주의: 문서와 실제 라우터의 Method를 일치시킨다.
+ */
 const errorResponse = {
   description: '오류 응답',
   content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },

@@ -1,2 +1,7 @@
-// TODO: implement readingProgress.repository for the learning module.
+/**
+ * 학습 PostgreSQL 접근 계층 파일
+ * 백엔드 작업: 조회·저장 로직과 쿼리를 관리
+ * 주의: 기존 DB 스키마와 환경변수 유지
+ * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
+ */
 module.exports = {};
