@@ -1,5 +1,8 @@
-// DB 연결: database/ 패키지(@leren/database)의 TypeORM DataSource를 사용 (app_user 계정)
-// 엔티티·Enum도 같은 패키지에서 가져온다: const { User, AccountStatus } = require('@leren/database');
+/**
+ * PostgreSQL 연결 설정
+ * 백엔드 작업: TypeORM DataSource 연결과 오류 처리 관리
+ * 주의: 환경변수 사용, DB 스키마와 마이그레이션 임의 변경 금지
+ */
 const { AppDataSource } = require('@leren/database');
 
 async function connectDatabase() {

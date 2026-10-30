@@ -1,2 +1,7 @@
-// TODO: implement tutor.schema for the tutor module.
+/**
+ * AI Tutor 요청값 검증 스키마 파일
+ * 백엔드 작업: 입력 데이터의 유효성 규칙을 관리
+ * 주의: 기존 API 필드명과 오류 형식 유지
+ * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
+ */
 module.exports = {};
