@@ -11,6 +11,7 @@
     "dev": "node --watch src/server.js",
     "prestart": "npm run db:build",
     "start": "node src/server.js",
+    "pretest": "npm run db:build",
     "test": "node --test",
     "db:build": "npm run build -w @leren/database",
     "db:migrate": "npm run migration:run -w @leren/database",
@@ -23,7 +24,7 @@
     "@leren/database": "0.4.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "swagger-jsdoc": "^6.2.8",
+    "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1"
   }
 }

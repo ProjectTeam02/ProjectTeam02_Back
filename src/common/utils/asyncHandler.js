@@ -4,6 +4,5 @@
  * 주의: 비동기 라우터에서 next 누락을 방지
  */
 module.exports = function asyncHandler(handler) {
-  return (req, res, next) =>
-    Promise.resolve(handler(req, res, next)).catch(next);
+  return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 };

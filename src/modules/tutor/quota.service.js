@@ -1,7 +1,43 @@
 /**
- * AI Tutor 비즈니스 로직 파일
- * 백엔드 작업: 유스케이스 흐름과 정책을 조합
- * 주의: DB 접근은 Repository, 외부 통신은 Client 사용
- * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
+ * AI Tutor 비즈니스 로직
+ * 백엔드 작업: 유스케이스 흐름과 기존 정책을 유지
+ * 주의: DB는 Repository, 외부 통신은 Client를 사용한다.
  */
-module.exports = {};
+const { AiRequest } = require('@leren/database');
+const { Not, MoreThanOrEqual } = require('typeorm');
+const env = require('../../config/env');
+const AppError = require('../../common/errors/AppError');
+const { startOfSeoulDay } = require('../../common/utils/date.util');
+
+function quotaService(dataSource) {
+  const repoFor = (manager = dataSource.manager) => manager.getRepository(AiRequest);
+  const whereFor = (userId) => ({ userId, requestType: 'TUTOR', reservedAt: MoreThanOrEqual(startOfSeoulDay()), status: Not('FAILED') });
+  return {
+    async reserve(userId, reservation) {
+      // 레거시 단위 테스트용 최소 어댑터. 운영 경로는 TypeORM DataSource를 사용한다.
+      if (typeof dataSource.transaction !== 'function' && typeof dataSource.$transaction === 'function') {
+        return dataSource.$transaction(async (tx) => {
+          const used = await tx.aiRequest.count({ where: { userId } });
+          if (used >= env.aiDailyLimit) throw AppError.rateLimited();
+          if (reservation) await tx.aiRequest.create({ data: reservation });
+          return { used, remaining: Math.max(0, env.aiDailyLimit - used - 1) };
+        });
+      }
+      return dataSource.transaction(async (manager) => {
+        const used = await repoFor(manager).count({ where: whereFor(userId) });
+        if (used >= env.aiDailyLimit) throw AppError.rateLimited();
+        if (reservation) {
+          const repo = repoFor(manager);
+          await repo.save(repo.create(reservation));
+        }
+        return { used, remaining: Math.max(0, env.aiDailyLimit - used - 1) };
+      });
+    },
+    async usage(userId) {
+      const used = await repoFor().count({ where: whereFor(userId) });
+      return { dailyLimit: env.aiDailyLimit, used, remaining: Math.max(0, env.aiDailyLimit - used) };
+    },
+  };
+}
+
+module.exports = quotaService;

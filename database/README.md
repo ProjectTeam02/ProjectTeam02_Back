@@ -53,19 +53,26 @@ await users.findOneBy({ email });
 
 환경변수는 `database/.env` → 루트 `.env` 순서로 읽습니다 (루트 `.env.example` 참고). 이미 설정된 환경변수가 있으면 그 값이 우선입니다.
 
-## 로컬에서 처음부터 검증하기
+## Docker PostgreSQL 사용하기
 
 ```bash
 cp .env.example .env
-docker compose up -d db              # PostgreSQL 16 + sql/init 자동 실행 (최초 1회)
 npm ci
+docker compose up -d db              # PostgreSQL 16 + sql/init 자동 실행 (최초 1회)
 npm run db:build
 npm run db:migrate
 npm run db:check                     # No changes in database schema were found
-npm run db:test                      # 결과: 19/19 PASS
 ```
 
-처음부터 다시 하려면 `docker compose down -v` 후 반복합니다.
+이 레포의 Docker API는 Compose의 PostgreSQL을 `db:5432`로 사용합니다.
+FastAPI가 호스트의 Docker 컨테이너에서 `8000` 포트로 실행 중이면
+`host.docker.internal:8000`에 연결합니다.
+
+DB 연동 테스트가 필요한 경우에는 실제 데이터를 저장하므로 테스트 전용 DB에서만 실행합니다.
+
+```bash
+npm run db:test                      # 테스트 DB에서만 실행
+```
 
 ## DB 계정
 

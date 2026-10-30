@@ -1,31 +1,21 @@
 /**
  * API 통합 라우터
- * 백엔드 작업: 기능별 라우터 등록 및 연결
- * 주의: 중복 등록과 기존 API 경로 변경을 방지
+ * 백엔드 작업: 실제 구현된 기능별 라우터를 `/api/v1` 아래에 연결
+ * 주의: 중복 등록과 기존 API 경로 변경을 방지한다.
  */
 const express = require('express');
+const authRoutes = require('../modules/auth/auth.routes');
+const userRoutes = require('../modules/users/user.routes');
+const tutorRoutes = require('../modules/tutor/tutor.routes');
+const quizRoutes = require('../modules/quizzes/quiz.routes');
+const healthRoutes = require('../health/health.routes');
 
 const router = express.Router();
 
-// 현재 모듈은 라우터 스캐폴드만 존재하므로 실제 엔드포인트가 생길 때 등록한다.
-const moduleRoutes = [
-  ['auth', require('../modules/auth/auth.routes')],
-  ['users', require('../modules/users/user.routes')],
-  ['tutor', require('../modules/tutor/tutor.routes')],
-  ['quizzes', require('../modules/quizzes/quiz.routes')],
-  ['questions', require('../modules/questions/question.routes')],
-  ['learning', require('../modules/learning/learning.routes')],
-  ['stages', require('../modules/stages/stage.routes')],
-  ['concepts', require('../modules/concepts/concept.routes')],
-  ['reviews', require('../modules/reviews/review.routes')],
-  ['calendar', require('../modules/calendar/calendar.routes')],
-  ['characters', require('../modules/characters/character.routes')],
-  ['costumes', require('../modules/costumes/costume.routes')],
-  ['notifications', require('../modules/notifications/notification.routes')],
-  ['recommendations', require('../modules/recommendations/recommendation.routes')],
-  ['topics', require('../modules/topics/topic.routes')],
-];
-
-moduleRoutes.forEach(([path, moduleRouter]) => router.use(`/${path}`, moduleRouter));
+router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
+router.use('/tutor', tutorRoutes);
+router.use('/quizzes', quizRoutes);
+router.use('/health', healthRoutes);
 
 module.exports = router;
