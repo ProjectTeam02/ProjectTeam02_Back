@@ -58,7 +58,7 @@ await users.findOneBy({ email });
 ```bash
 cp .env.example .env
 npm ci
-docker compose up -d db              # PostgreSQL 16 + sql/init 자동 실행 (최초 1회)
+docker compose up -d db              # PostgreSQL 18 + sql/init 자동 실행 (최초 1회)
 npm run db:build
 npm run db:migrate
 npm run db:check                     # No changes in database schema were found
@@ -98,8 +98,8 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai`. 
 
 ## AWS RDS에 적용할 때
 
-1. RDS PostgreSQL 16 생성 (Private, Public access OFF, SG-DB는 SG-EC2만 허용)
-2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` → `02_ai_schema.sql` 순서로 실행 (비밀번호는 실제 값으로 변경, pgvector는 RDS PostgreSQL 16 기본 지원)
+1. RDS PostgreSQL 18 생성 (Private, Public access OFF, SG-DB는 SG-EC2만 허용)
+2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` → `02_ai_schema.sql` 순서로 실행 (비밀번호는 실제 값으로 변경, pgvector는 RDS PostgreSQL 18 기본 지원)
 3. 환경변수는 Parameter Store에서 주입, `DB_SSL=true`와 RDS CA 인증서 지정
 4. `npm run db:migrate` → `npm run db:migrate:show` → `npm run db:check`
 5. `db:test`는 실제 데이터가 있는 DB에서 실행하지 않습니다 (테스트 데이터가 남음)

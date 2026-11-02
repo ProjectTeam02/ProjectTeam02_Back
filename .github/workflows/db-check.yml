@@ -1,4 +1,4 @@
-# PR·push마다 임시 PostgreSQL 16에서 database/ 패키지를 자동 검증
+# PR·push마다 임시 PostgreSQL 18에서 database/ 패키지를 자동 검증
 # 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 19개 → SQL 제약 테스트 47개 → ai 스키마(pgvector) 8개
 name: db-check
 on:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg16   # PostgreSQL 16 + pgvector (RDS와 같은 메이저 버전)
+        image: pgvector/pgvector:pg18   # PostgreSQL 18 + pgvector (RDS와 같은 메이저 버전)
         env:
           POSTGRES_USER: leren_admin
           POSTGRES_PASSWORD: admin_ci
