@@ -5,8 +5,8 @@
 - DB 스키마(app 스키마)·ERD·마이그레이션·AWS RDS는 DB 담당이 관리합니다.
 - **기준은 `database/` 패키지의 엔티티와 마이그레이션**입니다. 설계 문서(`database/docs/leren_erd.dbml`, 테이블 정의서, ERD)는 같은 내용을 따라갑니다.
 - ORM은 TypeORM 0.3 (Prisma 사용 안 함). 서버 코드는 `require('@leren/database')`로 엔티티·Enum·DataSource를 가져옵니다.
-- ai 스키마(문서·청크·임베딩, pgvector)는 AI 서버(FastAPI)가 `ai_user` 계정으로 관리합니다 (ProjectTeam02_AI #5 합의). 스키마·계정·pgvector 생성은 `database/sql/init/02_ai_schema.sql`.
-- AI Tutor 대화 기록 4개 테이블(`ai_conversations`, `ai_messages`, `ai_message_sources`, `ai_requests`)은 백엔드(app 스키마) 소유입니다. app 스키마는 `document_id`·`chunk_id`를 FK 없이 논리 참조만 합니다.
+- ai 스키마(문서·청크·임베딩, pgvector)의 **DDL도 DB 담당이 관리**합니다 (2026-11 변경, 이전 ProjectTeam02_AI #5 합의는 "FastAPI가 직접 생성"). 스키마·계정·pgvector는 `database/sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `03_ai_tables.sql`(소유자 `ai_user`), 벡터 인덱스는 `database/sql/ai/vector_indexes.sql`. LlamaIndex 벡터 테이블(`ai.data_<컬렉션>`)만 AI 서버가 처음 적재할 때 생성합니다. AI 서버는 RDS에서 `create_tables()`·`migrations/*.sql`을 실행하지 않습니다.
+- AI Tutor 대화 기록·멀티턴 메모리 6개 테이블(`ai_conversations`, `ai_conversation_summaries`, `ai_messages`, `ai_message_sources`, `ai_requests`, `ai_user_memories`)은 백엔드(app 스키마) 소유입니다. AI 서버는 이 테이블에 직접 접근하지 않고, Node가 요청에 담아 보내고 응답을 저장합니다. app 스키마는 `document_id`·`chunk_id`를 FK 없이 논리 참조만 하고, `app_user`는 `ai.rag_documents`만 읽을 수 있습니다. 자세한 내용은 `database/docs/AI_DB.md`.
 
 ## 데이터 경계 (영역별 엔티티 폴더)
 
@@ -18,13 +18,14 @@
 | 진행도·퀴즈 | `progress/` | user_stage_progress, learning_attempts, question_submissions | learning, quizzes |
 | 보상·성장 | `reward/` | user_growth, user_wallets, exp_ledger, coin_ledger, level_thresholds | rewards |
 | 오답·복습·일정 | `review/` | review_items, review_missions, review_attempts, review_submissions, study_plans | reviews, calendar |
-| AI Tutor | `ai/` | ai_conversations, ai_messages, ai_message_sources, ai_requests | tutor |
+| AI Tutor | `ai/` | ai_conversations, ai_conversation_summaries, ai_messages, ai_message_sources, ai_requests, ai_user_memories | tutor |
+| RAG 문서 (ai 스키마) | `sql/init/03_ai_tables.sql` | ai.rag_documents, ai.rag_document_chunks, ai.rag_index_configurations (+ LlamaIndex 벡터 테이블) | AI 서버 (FastAPI) |
 
 ## 변경 절차
 
 1. DB 변경이 필요하면 DB 담당에게 요청 (이슈 또는 PR 코멘트)
 2. 엔티티 수정 + 새 마이그레이션 + 문서 갱신을 한 PR로
-3. CI `db-check`(컴파일·마이그레이션·차이 없음·연동 19개·SQL 제약 47개·ai 스키마 8개) 통과 후 병합
+3. CI `db-check`(컴파일·마이그레이션·차이 없음·연동 19개·SQL 제약 66개·ai 스키마 8개·ai 테이블 12개) 통과 후 병합
 4. 병합된 마이그레이션은 수정하지 않고, 바꿀 게 있으면 새 마이그레이션 추가
 
 자세한 사용법은 `database/README.md`, 엔티티 목록은 `database/docs/ENTITIES.md`를 봅니다.
