@@ -27,7 +27,7 @@
 
 Project leren {
   database_type: 'PostgreSQL'
-  Note: 'Leren 2.0 app 스키마 v3 (PostgreSQL 16). API 명세서 용어 기준.'
+  Note: 'Leren 2.0 app 스키마 v3 (PostgreSQL 18). API 명세서 용어 기준.'
 }
 
 // ---------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 - 검증일: 2026-10-26
 - 대상: app 스키마 TypeORM 엔티티 40개 (`database/docs/leren_erd.dbml` rev.5 기준), 백엔드 레포 `database/` 워크스페이스
-- 환경: PostgreSQL 16 (빈 DB), Node.js 20, TypeORM 0.3.20, TypeScript 5.4.5 (strict)
+- 환경: PostgreSQL 18 (빈 DB), Node.js 20, TypeORM 0.3.20, TypeScript 5.4.5 (strict)
 - 방식: 운영과 같은 권한 구조 — 스키마 변경은 `migrator`, 데이터 저장은 `app_user`
 
 ## 1. 컴파일 · 스키마 생성

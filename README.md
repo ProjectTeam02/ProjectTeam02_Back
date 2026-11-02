@@ -1,7 +1,7 @@
 # Leren Backend
 
 Leren 경제·금융 마이크로러닝 서비스의 Node.js/Express 백엔드입니다.
-PostgreSQL 16과 TypeORM을 사용하며, 엔티티·마이그레이션은 `database/` 패키지(`@leren/database`)에서 관리합니다.
+PostgreSQL 18과 TypeORM을 사용하며, 엔티티·마이그레이션은 `database/` 패키지(`@leren/database`)에서 관리합니다.
 
 ## 프로젝트 구조
 

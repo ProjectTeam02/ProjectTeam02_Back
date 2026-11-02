@@ -3,7 +3,7 @@
 -- AI 서버 설정: DATABASE_URL은 ai_user 계정, VECTOR_STORE_SCHEMA=ai
 -- 비밀번호는 실제 환경에서 반드시 변경 (RDS는 Parameter Store 값 사용)
 
--- pgvector: vector 타입은 public 스키마에 설치되고 search_path로 사용 (RDS PostgreSQL 16 지원, rds_superuser 권한 필요)
+-- pgvector: vector 타입은 public 스키마에 설치되고 search_path로 사용 (RDS PostgreSQL 18 지원, rds_superuser 권한 필요)
 CREATE EXTENSION IF NOT EXISTS vector;
 
 DO $$ BEGIN
