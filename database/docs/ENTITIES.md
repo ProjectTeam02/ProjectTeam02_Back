@@ -1,11 +1,11 @@
-# 엔티티 목록 (v3 rev.5)
+# 엔티티 목록 (v3 rev.7)
 
-`src/entities` 아래 40개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml`(rev.6)과 같은 DB를 만듭니다.
+`src/entities` 아래 42개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml`(rev.7) 1~8절(app 스키마)과 같은 DB를 만듭니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`로 만듭니다.
 
 - 클래스·파일 이름: 테이블 이름의 단수형 PascalCase / kebab-case (`user_costumes` → `UserCostume`, `user-costumes.entity.ts`)
 - 속성 이름: 컬럼 이름의 camelCase = API 필드 이름 (`item_id` → `itemId`, `submission_id` → `submissionId`)
 - FK마다 `xxxId` 컬럼 속성과 `xxx` 관계 속성을 함께 둡니다. 관계는 소유 쪽(ManyToOne·OneToOne)만 정의했습니다.
-- Enum은 `common/enums.ts` 한 파일 (48개 TS enum = DB 타입 50개, 값이 같은 2쌍은 공유)
+- Enum은 `common/enums.ts` 한 파일 (50개 TS enum = DB 타입 52개, 값이 같은 2쌍은 공유)
 
 ## 계정·인증·약관 (`account/`)
 
@@ -78,6 +78,8 @@
 | 테이블 | 엔티티 | 관계 속성 → 대상 |
 | --- | --- | --- |
 | `ai_conversations` | `AiConversation` | `user` → User<br>`contextTopic` → Topic<br>`contextStage` → Stage<br>`contextConcept` → Concept<br>`contextQuestion` → Question<br>`contextAttempt` → LearningAttempt |
-| `ai_messages` | `AiMessage` | `conversation` → AiConversation<br>`parentMessage` → AiMessage<br>`contextStage` → Stage<br>`contextConcept` → Concept<br>`request` → AiRequest |
+| `ai_conversation_summaries` | `AiConversationSummary` | `conversation` → AiConversation<br>`request` → AiRequest |
+| `ai_messages` | `AiMessage` | `conversation` → AiConversation<br>`parentMessage` → AiMessage<br>`contextStage` → Stage<br>`contextConcept` → Concept<br>`request` → AiRequest<br>`summary` → AiConversationSummary |
 | `ai_message_sources` | `AiMessageSource` | `message` → AiMessage |
 | `ai_requests` | `AiRequest` | `user` → User<br>`conversation` → AiConversation |
+| `ai_user_memories` | `AiUserMemory` | `user` → User<br>`sourceMessage` → AiMessage |
