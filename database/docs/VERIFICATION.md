@@ -77,3 +77,23 @@ rev.5 DBML로 만든 SQL(`leren_v3_schema.sql`)의 DB와 엔티티 마이그레�
 | SQL 제약 테스트 | **47/47 PASS** (추가 4개: 문자열 버전 저장, null 버전 허용, chunkId 없음 거부, 같은 근거 중복 거부) |
 | ai 스키마 검증 (`sql/test/ai_schema_test.sql`, ai_user) | **8/8 PASS** (pgvector 설치, 기본 스키마 ai, 1536차원 벡터 저장·검색, 차원 불일치 거부, app 스키마 접근 거부, public 생성 거부) |
 | 연동 테스트 | 19/19 PASS |
+<<<<<<< HEAD
+=======
+
+## 7. rev.7 변경 검증 (2026-11-02, 멀티턴 메모리 + ai 스키마 테이블)
+
+환경: 로컬 PostgreSQL 16.15 + pgvector 0.6 (CI·RDS는 18), 운영과 같은 계정 구조. 자세한 설명은 `AI_DB.md`.
+
+| 항목 | 결과 |
+|---|---|
+| 새 마이그레이션 `AiMultiturnMemory` (빈 DB, Init → rev.6 → rev.7) | 통과, `db:check` 차이 없음, 엔티티 42개 |
+| 기존 DB(rev.6 + 데이터)에 적용 | 통과. `ai_message_sources` 길이 확장은 ALTER TYPE이라 값 보존 (자동 생성본의 DROP 후 ADD를 수정) |
+| `summary`·`summary_until_seq` 중 하나만 있는 기존 행 | 안내 메시지와 함께 중단, DB 변경 없음 |
+| 되돌리기 → 다시 실행 | 통과 |
+| `03_ai_tables.sql` (관리자·ai_user로 각각 다시 실행) | 통과, 소유자 항상 ai_user. AI SQLAlchemy `create_all` 결과와 컬럼·제약·인덱스 이름 일치 |
+| SQL 제약 테스트 (app_user) | **66/66 PASS** (추가 19개: 요약 저장·중복·빈 값·짝 CHECK·답변 요약 기록, 메모리 저장·키 중복·키 없음 허용·보관 시각·신뢰도, 근거 255자, app_user의 ai.rag_documents 읽기 허용·쓰기 거부·청크 읽기 거부, 탈퇴 시 본문 비우기 절차 5개) |
+| ai RAG 테이블 테스트 (`sql/test/ai_tables_test.sql`, ai_user) | **12/12 PASS** |
+| ai 스키마 테스트 / 연동 테스트 | 8/8 / 19/19 PASS |
+| AI 레포 코드 실행 | `RAGDocumentRepository` 저장·재적재·설정 불일치 거부 통과, LlamaIndex `PGVectorStore`가 ai_user로 `ai.data_projectteam02` 생성·필터 검색 통과 |
+| `sql/ai/vector_indexes.sql` | HNSW 1개 + metadata 6개 생성, 재실행 안전, 테이블 없으면 중단 |
+>>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3

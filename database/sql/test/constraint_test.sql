@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 -- 제약 검증 rev.6 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+=======
+-- 제약 검증 rev.7 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+>>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -137,6 +141,39 @@ SELECT pg_temp.expect_ok (46, '근거 저장: documentVersion 없음(null) 허�
 SELECT pg_temp.expect_err(47, 'chunkId 없는 근거 거부', $q$INSERT INTO ai_message_sources (message_id, document_id, rank) SELECT message_id, 'bok2026-0156', 3 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$, '23502');
 SELECT pg_temp.expect_err(48, '같은 답변에 같은 근거(문서·청크) 중복 거부', $q$INSERT INTO ai_message_sources (message_id, document_id, chunk_id, rank) SELECT message_id, 'bok2026-0154', 'bok2026-0154:0', 4 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$, '23505');
 
+<<<<<<< HEAD
+=======
+-- 49~58 rev.7 멀티턴 메모리 (요약 이력, 장기 메모리)
+SELECT pg_temp.expect_ok (49, '요약 이력 저장 (1~2번 메시지 요약)', $q$INSERT INTO ai_conversation_summaries (conversation_id, summary_until_seq, content, token_count) VALUES ('00000000-0000-0000-0000-0000000000f1', 2, '학습자가 수요의 뜻을 물었고 가격과 반대로 움직인다고 설명함', 30)$q$);
+SELECT pg_temp.expect_err(50, '같은 대화·같은 summary_until_seq 요약 중복 거부', $q$INSERT INTO ai_conversation_summaries (conversation_id, summary_until_seq, content) VALUES ('00000000-0000-0000-0000-0000000000f1', 2, '다른 요약')$q$, '23505');
+SELECT pg_temp.expect_err(51, '빈 요약 거부', $q$INSERT INTO ai_conversation_summaries (conversation_id, summary_until_seq, content) VALUES ('00000000-0000-0000-0000-0000000000f1', 3, '')$q$, '23514');
+SELECT pg_temp.expect_err(52, '대화방 summary만 있고 summary_until_seq 없음 거부', $q$UPDATE ai_conversations SET summary = '요약' WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1'$q$, '23514');
+SELECT pg_temp.expect_ok (53, '현재 요약 갱신 + 답변에 사용한 요약 기록', $q$WITH s AS (SELECT summary_id, summary_until_seq, content FROM ai_conversation_summaries WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1'), c AS (UPDATE ai_conversations SET summary = s.content, summary_until_seq = s.summary_until_seq FROM s WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' RETURNING 1) UPDATE ai_messages SET summary_id = (SELECT summary_id FROM s), history_from_seq = 3 WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 3$q$);
+SELECT pg_temp.expect_ok (54, '장기 메모리 저장 (오개념, 키 있음)', $q$INSERT INTO ai_user_memories (user_id, memory_type, memory_key, content, concept_code, confidence, source_message_id) SELECT '00000000-0000-0000-0000-000000000001', 'MISCONCEPTION', 'C-DEMAND', '가격이 오르면 수요량이 늘어난다고 생각함', 'C-DEMAND', 0.8, message_id FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 1$q$);
+SELECT pg_temp.expect_err(55, '같은 사용자·종류·키 메모리 중복 거부 (upsert 대상)', $q$INSERT INTO ai_user_memories (user_id, memory_type, memory_key, content) VALUES ('00000000-0000-0000-0000-000000000001', 'MISCONCEPTION', 'C-DEMAND', '다른 내용')$q$, '23505');
+SELECT pg_temp.expect_ok (56, '키 없는 메모리는 여러 개 허용', $q$INSERT INTO ai_user_memories (user_id, memory_type, content) VALUES ('00000000-0000-0000-0000-000000000001', 'PREFERENCE', '예시를 들어 설명하면 잘 이해함'), ('00000000-0000-0000-0000-000000000001', 'PREFERENCE', '짧은 답변을 선호함')$q$);
+SELECT pg_temp.expect_err(57, 'ARCHIVED인데 archived_at 없음 거부', $q$UPDATE ai_user_memories SET status = 'ARCHIVED' WHERE memory_key = 'C-DEMAND'$q$, '23514');
+SELECT pg_temp.expect_err(58, '신뢰도 1 초과 거부', $q$INSERT INTO ai_user_memories (user_id, memory_type, content, confidence) VALUES ('00000000-0000-0000-0000-000000000001', 'GOAL', '금리 단원 끝내기', 1.5)$q$, '23514');
+
+-- 59~62 rev.7 근거 길이·ai 스키마 읽기 권한 (03_ai_tables.sql 적용 후)
+SELECT pg_temp.expect_ok (59, '근거 document_id·chunk_id 200자 허용 (255로 확장)', $q$INSERT INTO ai_message_sources (message_id, document_id, chunk_id, title_snapshot, rank) SELECT message_id, repeat('d', 200), repeat('c', 200), repeat('t', 400), 5 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$);
+SELECT pg_temp.expect_ok (60, 'app_user가 ai.rag_documents 조회 (출처 표시용)', $q$SELECT count(*) FROM ai.rag_documents$q$);
+SELECT pg_temp.expect_err(61, 'app_user가 ai.rag_documents 쓰기 거부', $q$INSERT INTO ai.rag_documents (document_id, source_id, title, source, content_hash) VALUES ('x','x','x','x', repeat('0', 64))$q$, '42501');
+SELECT pg_temp.expect_err(62, 'app_user가 청크 본문(ai.rag_document_chunks) 조회 거부', $q$SELECT count(*) FROM ai.rag_document_chunks$q$, '42501');
+
+-- 63~67 rev.7 회원 탈퇴 시 AI 대화 본문 비우기 (행은 유지, 2026-11-03 결정). 서비스 코드는 한 트랜잭션에서 이 순서로 실행
+SELECT pg_temp.expect_ok (63, '탈퇴: 메시지 본문·재작성 쿼리 비우기, 요약 연결 끊기', $q$UPDATE ai_messages SET content = '', rewritten_query = NULL, summary_id = NULL WHERE conversation_id IN (SELECT conversation_id FROM ai_conversations WHERE user_id = '00000000-0000-0000-0000-000000000001')$q$);
+SELECT pg_temp.expect_ok (64, '탈퇴: 요약 이력 삭제 (요약 본문은 빈 값 불가)', $q$DELETE FROM ai_conversation_summaries WHERE conversation_id IN (SELECT conversation_id FROM ai_conversations WHERE user_id = '00000000-0000-0000-0000-000000000001')$q$);
+SELECT pg_temp.expect_ok (65, '탈퇴: 대화방 제목·현재 요약 비우기', $q$UPDATE ai_conversations SET title = NULL, summary = NULL, summary_until_seq = NULL WHERE user_id = '00000000-0000-0000-0000-000000000001'$q$);
+SELECT pg_temp.expect_ok (66, '탈퇴: 장기 메모리 삭제', $q$DELETE FROM ai_user_memories WHERE user_id = '00000000-0000-0000-0000-000000000001'$q$);
+INSERT INTO result SELECT 67, '탈퇴 후: 본문 0건, 대화·메시지 행과 근거·사용량 기록은 유지',
+  (SELECT count(*) FROM ai_messages m JOIN ai_conversations c USING (conversation_id) WHERE c.user_id = '00000000-0000-0000-0000-000000000001' AND (m.content <> '' OR m.rewritten_query IS NOT NULL)) = 0
+  AND (SELECT count(*) FROM ai_messages m JOIN ai_conversations c USING (conversation_id) WHERE c.user_id = '00000000-0000-0000-0000-000000000001') > 0
+  AND (SELECT count(*) FROM ai_message_sources) > 0 AND (SELECT count(*) FROM ai_requests) > 0
+  AND (SELECT count(*) FROM ai_user_memories WHERE user_id = '00000000-0000-0000-0000-000000000001') = 0,
+  'messages=' || (SELECT count(*) FROM ai_messages) || ' sources=' || (SELECT count(*) FROM ai_message_sources) || ' requests=' || (SELECT count(*) FROM ai_requests);
+
+>>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');
 

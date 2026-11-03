@@ -1,8 +1,20 @@
+<<<<<<< HEAD
+=======
+/**
+ * 퀴즈 요청값 검증
+ * 백엔드 작업: API 입력 데이터의 유효성 규칙을 관리
+ * 주의: 기존 필드명과 오류 응답 형식을 유지한다.
+ */
+>>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 const AppError = require('../../common/errors/AppError');
 
 function uuid(value, name) {
   if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+<<<<<<< HEAD
     throw AppError.validation(`${name}이 (가) 올바른 UUID가 아닙니다.`);
+=======
+    throw AppError.validation(`${name}이(가) 올바른 UUID가 아닙니다.`);
+>>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   }
   return value;
 }
@@ -13,6 +25,10 @@ function submit({ body, params, headers }) {
   const choiceId = uuid(body.choiceId.trim(), 'choiceId');
   const attemptId = body.attemptId ? uuid(body.attemptId, 'attemptId') : null;
   const idempotencyKey = headers['idempotency-key'] || null;
+<<<<<<< HEAD
+=======
+  if (idempotencyKey && (typeof idempotencyKey !== 'string' || idempotencyKey.length > 200)) throw AppError.validation('Idempotency-Key가 올바르지 않습니다.');
+>>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   return { params: { id: quizId }, body: { choiceId, attemptId, idempotencyKey } };
 }
 
