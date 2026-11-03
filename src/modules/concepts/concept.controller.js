@@ -1,19 +1,3 @@
-<<<<<<< HEAD
-const asyncHandler = require('../../common/utils/asyncHandler');
-
-function controller(service) {
-  return {
-    getConceptCard: asyncHandler(async (req, res) => {
-      const { stepId } = req.params;
-      const page = parseInt(req.query.page, 10) || 1;
-      const data = await service.getCardByPage(stepId, page);
-      return res.json({ success: true, data });
-    }),
-  };
-}
-
-module.exports = controller;
-=======
 /**
  * 경제 개념 HTTP 요청·응답 처리 파일
  * 백엔드 작업: 요청값 확인 후 Service를 호출하고 응답을 반환
@@ -21,4 +5,3 @@ module.exports = controller;
  * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
  */
 module.exports = {};
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3

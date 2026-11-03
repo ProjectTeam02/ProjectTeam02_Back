@@ -4,21 +4,14 @@
  * 주의: DB는 Repository, 외부 통신은 Client를 사용한다.
  */
 const crypto = require('node:crypto');
-<<<<<<< HEAD
-const { User, UserGrowth, UserSetting } = require('@leren/database');
-=======
 const { User, UserGrowth, UserSetting, SocialAccount } = require('@leren/database');
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 const { AppDataSource } = require('../../config/database');
 const env = require('../../config/env');
 const AppError = require('../../common/errors/AppError');
 const { hashPassword, verifyPassword } = require('../../common/utils/password.util');
 const { hashToken, issueAccessToken, issueRefreshToken, verifyRefreshToken } = require('../../common/utils/token.util');
 const sessionRepository = require('./repositories/session.repository');
-<<<<<<< HEAD
-=======
 const authSchema = require('./auth.schema');
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 
 function publicUser(user, growth = null) {
   return {
@@ -89,27 +82,6 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
         const user = await manager.getRepository(User).findOneBy({ userId: payload.sub });
         if (!user || user.accountStatus !== 'ACTIVE') throw AppError.unauthorized();
         await ensureUserRows(manager, user);
-<<<<<<< HEAD
-        return { user: publicUser(user, await growthFor(user.userId, manager)), ...(await issueTokens(user, 'EMAIL', manager)) };
-      });
-    },
-    async logout(userId) { await sessions.revokeAll(userId); return { loggedOut: true }; },
-    async kakao(accessToken) {
-      if (!kakaoClient) throw AppError.unavailable('Kakao OAuth가 설정되지 않았습니다.');
-      const profile = await kakaoClient.getProfile(accessToken);
-      if (!profile?.id) throw AppError.unauthorized('Kakao 사용자 검증에 실패했습니다.');
-      const email = profile.kakao_account?.email || `kakao-${profile.id}@local.invalid`;
-      const nickname = profile.kakao_account?.profile?.nickname || `kakao-${profile.id}`;
-      return transaction(async (manager) => {
-        const userRepo = manager.getRepository(User);
-        let user = await userRepo.findOneBy({ email });
-        if (!user) user = await userRepo.save(userRepo.create({ email, nickname, lastLoginMethod: 'KAKAO' }));
-        else { user.nickname = nickname; user.lastLoginMethod = 'KAKAO'; user.lastLoginAt = new Date(); user = await userRepo.save(user); }
-        await ensureUserRows(manager, user);
-        return { user: publicUser(user, await growthFor(user.userId, manager)), ...(await issueTokens(user, 'KAKAO', manager)) };
-      });
-    },
-=======
         return { user: publicUser(user, await growthFor(user.userId, manager)), ...(await issueTokens(user, session.loginMethod || 'EMAIL', manager)) };
       });
     },
@@ -203,7 +175,6 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
         throw error;
       }
     },
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   };
 }
 

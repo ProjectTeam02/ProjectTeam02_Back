@@ -11,11 +11,6 @@ const validate = require('../../common/middleware/validate.middleware');
 const authMiddleware = require('../../common/middleware/auth.middleware');
 const { AppDataSource } = require('../../config/database');
 const KakaoClient = require('../../clients/kakao.client');
-<<<<<<< HEAD
-
-const router = express.Router();
-const controller = authController(authService(AppDataSource, new KakaoClient()));
-=======
 const mobileService = require('./kakao-mobile.service');
 const mobileController = require('./kakao-mobile.controller');
 
@@ -30,14 +25,9 @@ function privateResponse(_req, res, next) {
 router.post('/kakao/start', privateResponse, mobile.start);
 router.get('/kakao/callback', privateResponse, mobile.callback);
 router.post('/kakao/exchange', privateResponse, mobile.exchange);
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 router.post('/signup', validate(authSchema.signup), controller.signup);
 router.post('/login', validate(authSchema.login), controller.login);
 router.post('/refresh', validate(authSchema.refresh), controller.refresh);
 router.post('/logout', authMiddleware, controller.logout);
-<<<<<<< HEAD
-router.post('/kakao', validate(authSchema.kakao), controller.kakao);
-=======
 router.post('/kakao', privateResponse, validate(authSchema.kakao), controller.kakao);
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 module.exports = router;

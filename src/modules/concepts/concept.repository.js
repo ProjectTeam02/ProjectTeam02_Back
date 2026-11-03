@@ -1,17 +1,3 @@
-<<<<<<< HEAD
-const { ConceptCard } = require('@leren/database');
-
-function repository(dataSource) {
-  return {
-    async findCardByStepAndPage(stepId, page) {
-      const repo = dataSource.getRepository(ConceptCard);
-      return await repo.findOne({ where: { stepId, pageNumber: page } });
-    },
-  };
-}
-
-module.exports = repository;
-=======
 /**
  * 경제 개념 PostgreSQL 접근 계층 파일
  * 백엔드 작업: 조회·저장 로직과 쿼리를 관리
@@ -19,4 +5,3 @@ module.exports = repository;
  * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
  */
 module.exports = {};
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3

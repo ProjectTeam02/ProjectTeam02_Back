@@ -1,10 +1,3 @@
-<<<<<<< HEAD
-const { UserSetting } = require('@leren/database');
-const AppDataSource = require('../../config/database');
-const AppError = require('../../common/errors/AppError');
-const userRepository = require('./user.repository');
-const { formatUserProfile } = require('./dto/userResponse.dto');
-=======
 /**
  * 사용자 비즈니스 로직
  * 백엔드 작업: 유스케이스 흐름과 기존 정책을 유지
@@ -15,21 +8,14 @@ const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
 const { publicUser } = require('../auth/auth.service');
 const userRepository = require('./user.repository');
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 
 function service(dataSource = AppDataSource) {
   const repository = userRepository(dataSource);
   return {
     async me(userId) {
-<<<<<<< HEAD
-      const result = await repository.findwithGrowth(userId);
-      if (!result) throw AppError.notFound('사용자를 찾을 수 없습니다.');
-      return formatUserProfile(result.user, result.growth);
-=======
       const result = await repository.findWithGrowth(userId);
       if (!result) throw AppError.notFound('사용자를 찾을 수 없습니다.');
       return publicUser(result.user, result.growth);
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
     },
     async updateNotifications(userId, learningOn) {
       const repo = dataSource.getRepository(UserSetting);

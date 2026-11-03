@@ -17,8 +17,6 @@ module.exports = {
   fastapiInternalToken: process.env.FASTAPI_INTERNAL_TOKEN,
   fastapiTimeoutMs: Number(process.env.FASTAPI_TIMEOUT_MS || 5000),
   aiDailyLimit: Number(process.env.AI_DAILY_LIMIT || 20),
-<<<<<<< HEAD
-=======
   kakaoRestApiKey: process.env.KAKAO_REST_API_KEY,
   kakaoClientSecret: process.env.KAKAO_CLIENT_SECRET,
   kakaoAllowedRedirectUris: (process.env.KAKAO_ALLOWED_REDIRECT_URIS || '')
@@ -31,5 +29,4 @@ module.exports = {
   kakaoOauthStateTtlSeconds: Number(process.env.KAKAO_OAUTH_STATE_TTL_SECONDS || 300),
   kakaoOauthExchangeTtlSeconds: Number(process.env.KAKAO_OAUTH_EXCHANGE_TTL_SECONDS || 60),
   kakaoLegacyDirectLoginEnabled: process.env.KAKAO_LEGACY_DIRECT_LOGIN_ENABLED === 'true',
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 };

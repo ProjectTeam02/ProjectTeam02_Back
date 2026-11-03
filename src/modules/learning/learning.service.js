@@ -2,11 +2,6 @@
  * 학습 비즈니스 로직 파일
  * 백엔드 작업: 유스케이스 흐름과 정책을 조합
  * 주의: DB 접근은 Repository, 외부 통신은 Client 사용
-<<<<<<< HEAD
- * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
- */
-module.exports = {};
-=======
  */
 const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
@@ -42,4 +37,3 @@ module.exports = function service(dataSource = AppDataSource) {
     },
   };
 };
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3

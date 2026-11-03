@@ -1,17 +1,3 @@
-<<<<<<< HEAD
-const express = require('express');
-const auth = require('../../common/middleware/auth.middleware');
-const { AppDataSource } = require('../../config/database');
-const conceptService = require('./concept.service');
-const conceptController = require('./concept.controller');
-
-const service = conceptService(AppDataSource);
-const controller = conceptController(service);
-const router = express.Router();
-
-router.get('/:stepId', auth, controller.getConceptCard);
-
-=======
 /**
  * 경제 개념 기능별 API 라우터 파일
  * 백엔드 작업: 엔드포인트와 Controller를 연결
@@ -22,5 +8,4 @@ const express = require('express');
 
 const router = express.Router();
 
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 module.exports = router;

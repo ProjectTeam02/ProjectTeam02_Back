@@ -4,19 +4,6 @@
  * 주의: OAuth 토큰과 민감정보를 로그에 남기지 않는다.
  */
 const AppError = require('../common/errors/AppError');
-<<<<<<< HEAD
-
-class KakaoClient {
-  async getProfile(accessToken) {
-    try {
-      const response = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(5000) });
-      if (!response.ok) throw AppError.unauthorized('Kakao 토큰이 유효하지 않습니다.');
-      return response.json();
-    } catch (error) {
-      if (error.code === 'UNAUTHORIZED') throw error;
-      throw AppError.unavailable('Kakao 인증 서버에 연결할 수 없습니다.');
-    }
-=======
 const env = require('../config/env');
 
 const TOKEN_URL = 'https://kauth.kakao.com/oauth/token';
@@ -116,7 +103,6 @@ class KakaoClient {
       throw AppError.unavailable('Kakao API 응답에 사용자 ID가 없습니다.');
     }
     return data;
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   }
 }
 
