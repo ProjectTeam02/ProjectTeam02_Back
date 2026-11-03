@@ -3,3 +3,7 @@ node_modules/
 coverage/
 dist/
 .DS_Store
+
+# Local environment variants and backups; keep the blank example tracked.
+.env.*
+!.env.example
