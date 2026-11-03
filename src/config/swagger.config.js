@@ -102,3 +102,17 @@ Object.assign(module.exports.definition.paths['/api/v1/auth/kakao'].post, {
   deprecated: true,
   description: '기존 요청/응답 계약은 보존합니다. state 없는 직접 로그인은 기본 차단이며, 개발/테스트에서 KAKAO_LEGACY_DIRECT_LOGIN_ENABLED=true일 때만 사용 가능합니다. 운영은 항상 403. 모바일은 start/callback/exchange를 사용하세요.',
 });
+
+const calendar = require('./calendar.swagger');
+module.exports.definition.tags.push({ name: 'Calendar', description: '내 학습 일정 관리' });
+Object.assign(module.exports.definition.components.schemas, calendar.schemas);
+Object.assign(module.exports.definition.paths, calendar.paths);
+
+const learningHistory = require('./learning-history.swagger');
+module.exports.definition.tags.push({ name: 'Learning History', description: '본인의 실제 학습 시도·제출 이력' });
+Object.assign(module.exports.definition.components.schemas, learningHistory.schemas);
+Object.assign(module.exports.definition.paths, learningHistory.paths);
+
+const calendarRead = require('./calendar-read.swagger');
+Object.assign(module.exports.definition.components.schemas, calendarRead.schemas);
+Object.assign(module.exports.definition.paths, calendarRead.paths);
