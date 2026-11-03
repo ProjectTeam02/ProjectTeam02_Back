@@ -11,7 +11,7 @@ function controller(service) {
     login: asyncHandler(async (req, res) => res.json({ success: true, data: await service.login(req.body) })),
     refresh: asyncHandler(async (req, res) => res.json({ success: true, data: await service.refresh(req.body.refreshToken) })),
     logout: asyncHandler(async (req, res) => res.json({ success: true, data: await service.logout(req.user.sub) })),
-    kakao: asyncHandler(async (req, res) => res.json({ success: true, data: await service.kakao(req.body.accessToken) })),
+    kakao: asyncHandler(async (req, res) => res.json({ success: true, data: await service.kakao(req.body) })),
   };
 }
 
