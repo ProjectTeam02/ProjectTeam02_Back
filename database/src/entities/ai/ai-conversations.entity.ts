@@ -1,5 +1,5 @@
 // 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_conversations)
-import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { AiEntryPoint, ConversationStatus } from '../common/enums';
 import { Concept } from '../content/concepts.entity';
 import { LearningAttempt } from '../progress/learning-attempts.entity';
@@ -10,7 +10,6 @@ import { User } from '../account/users.entity';
 
 /** AI Tutor 대화방. */
 @Index('ai_conversations_user_id_updated_at_idx', ['userId', 'updatedAt'])
-@Check('chk_ai_conversations_summary', `(summary IS NULL) = (summary_until_seq IS NULL)`)
 @Entity({ name: 'ai_conversations', schema: 'app' })
 export class AiConversation {
   /** 대화 ID. API conversationId */
@@ -83,7 +82,7 @@ export class AiConversation {
   @Column({ name: 'status', type: 'enum', enum: ConversationStatus, enumName: 'conversation_status', default: ConversationStatus.Active })
   status!: ConversationStatus;
 
-  /** 현재 요약 (오래된 턴, 대화가 길어질 때만 사용). rev.7 ai_conversation_summaries 최신 행의 복사본, summary_until_seq와 함께 채움 */
+  /** 오래된 턴의 요약 (대화가 길어질 때만 사용) */
   @Column({ name: 'summary', type: 'text', nullable: true })
   summary!: string | null;
 

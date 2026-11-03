@@ -1,13 +1,13 @@
 # @leren/database
 
 Leren app 스키마의 **TypeORM 엔티티 · 마이그레이션 · 검증 스크립트** 패키지입니다 (npm workspace).
-설계 원본은 `docs/leren_erd.dbml` (rev.7, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)도 **DB 담당이 DDL을 관리**합니다: 스키마·계정은 `sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `sql/init/03_ai_tables.sql`(소유자 `ai_user`). 벡터 테이블만 LlamaIndex가 처음 적재할 때 만들고, 인덱스는 `sql/ai/vector_indexes.sql`로 추가합니다. AI 관련 DB 전체 현황은 `docs/AI_DB.md`.
+설계 원본은 `docs/leren_erd.dbml` (rev.6, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)는 AI 서버(FastAPI)가 `ai_user` 계정으로 관리하고, 이 패키지는 스키마·계정만 만들어 둡니다(`sql/init/02_ai_schema.sql`).
 
 ## 구성
 
 ```
 database/
-  src/entities/              # 엔티티 42개 (영역별 폴더 7개) + common/enums.ts
+  src/entities/              # 엔티티 40개 (영역별 폴더 7개) + common/enums.ts
   src/migrations/            # 마이그레이션 (Init부터 순서대로 쌓임)
   src/index.ts               # 패키지 진입점: AppDataSource, 엔티티, Enum
   src/data-source.ts         # 서버 실행용 (app_user)
@@ -16,14 +16,10 @@ database/
   src/scripts/smoke.ts          # 엔티티 연동 테스트 19항목
   sql/init/01_app_schema.sql    # app 스키마 + 계정(migrator, app_user) 생성. 관리자 계정으로 최초 1회
   sql/init/02_ai_schema.sql     # pgvector 확장 + ai 스키마 + 계정(ai_user). 01 다음에 최초 1회
-  sql/init/03_ai_tables.sql     # ai 스키마 RAG 메타 테이블 3개 + app_user 읽기 권한. 02 다음에 (여러 번 실행해도 안전)
-  sql/ai/vector_indexes.sql     # 벡터 테이블 HNSW·metadata 인덱스. AI가 처음 적재한 뒤 1회 (ai_user)
-  sql/test/constraint_test.sql  # SQL 제약 테스트 66개 (빈 DB, app_user)
+  sql/test/constraint_test.sql  # SQL 제약 테스트 47개 (빈 DB, app_user)
   sql/test/ai_schema_test.sql   # ai 스키마 검증 8개 (pgvector·권한 분리, ai_user)
-  sql/test/ai_tables_test.sql   # ai RAG 테이블 검증 12개 (ai_user)
   docs/leren_erd.dbml        # 설계 원본 (dbdiagram.io에 붙여 넣으면 ERD)
   docs/ENTITIES.md           # 테이블 ↔ 엔티티 ↔ 관계 대응표
-  docs/AI_DB.md              # AI 관련 DB 현황·멀티턴 메모리 사용 규칙·AI 서버 전달 사항
   docs/VERIFICATION.md       # 검증 결과
 ```
 
@@ -62,7 +58,7 @@ await users.findOneBy({ email });
 ```bash
 cp .env.example .env
 npm ci
-docker compose up -d db              # PostgreSQL 18 + sql/init 01→02→03 자동 실행 (최초 1회)
+docker compose up -d db              # PostgreSQL 18 + sql/init 자동 실행 (최초 1회)
 npm run db:build
 npm run db:migrate
 npm run db:check                     # No changes in database schema were found
@@ -84,9 +80,9 @@ npm run db:test                      # 테스트 DB에서만 실행
 |---|---|---|
 | `migrator` | 마이그레이션 실행 | app 스키마 소유자 (테이블 생성·변경) |
 | `app_user` | Node.js 서버 실행 | app 스키마 테이블 읽기·쓰기만 (삭제·변경 불가) |
-| `ai_user` | AI 서버(FastAPI) 실행 | ai 스키마 테이블 소유자 (DDL은 DB 담당이 03 파일로 관리, LlamaIndex 벡터 테이블은 AI 서버가 생성). app 스키마 접근 불가 |
+| `ai_user` | AI 서버(FastAPI) 실행 | ai 스키마 소유자 (RAG 문서·청크·벡터 테이블). app 스키마 접근 불가 |
 
-AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (빠지면 public에 만들려다 권한 오류). AI 서버는 `create_tables()`·`migrations/*.sql`을 RDS에서 실행하지 않습니다. 백엔드(`app_user`)는 `ai.rag_documents`만 읽을 수 있고, AI 응답의 `documentId`·`chunkId`를 `ai_message_sources`에 FK 없이 기록합니다.
+AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai`. 백엔드는 AI 응답의 `documentId`·`chunkId`를 `ai_message_sources`에 FK 없이 기록합니다.
 
 ## 구조를 바꿀 때
 
@@ -103,7 +99,7 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 ## AWS RDS에 적용할 때
 
 1. RDS PostgreSQL 18 생성 (Private, Public access OFF, SG-DB는 SG-EC2만 허용)
-2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` → `02_ai_schema.sql` → `03_ai_tables.sql` 순서로 실행 (비밀번호는 실제 값으로 변경, pgvector는 RDS PostgreSQL 18 기본 지원)
+2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` → `02_ai_schema.sql` 순서로 실행 (비밀번호는 실제 값으로 변경, pgvector는 RDS PostgreSQL 18 기본 지원)
 3. 환경변수는 Parameter Store에서 주입, `DB_SSL=true`와 RDS CA 인증서 지정
 4. `npm run db:migrate` → `npm run db:migrate:show` → `npm run db:check`
 5. `db:test`는 실제 데이터가 있는 DB에서 실행하지 않습니다 (테스트 데이터가 남음)
@@ -114,7 +110,6 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 |---|---|---|
 | rev.5 | `Init` | 최초 스키마 (테이블 40개) |
 | rev.6 | `AiMessageSourcesContract` | AI 내부 API 계약 반영: `ai_message_sources.document_version` 문자열·null 허용, `chunk_id` 필수, (message_id, document_id, chunk_id) 유니크. ai 스키마·`ai_user` 분리 |
-| rev.7 | `AiMultiturnMemory` + `03_ai_tables.sql` | 멀티턴 메모리: `ai_conversation_summaries`(요약 이력), `ai_messages.summary_id`, `ai_user_memories`(장기 메모리), `ai_conversations` 요약 짝 CHECK, `ai_message_sources` 길이 확장. ai 스키마 `rag_documents`·`rag_document_chunks`·`rag_index_configurations` + app_user 읽기 권한 |
 
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
 
@@ -129,6 +124,3 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 - 회원 탈퇴: `accountStatus = WITHDRAWN`과 `withdrawnAt`을 함께 기록, 개인정보 비우기, 학습·보상 기록 유지
 - AI 근거 저장: 내부 API 응답 `sources[]`를 그대로 저장 (`documentVersion`은 null 가능). 내부 API 요청 DTO는 질문·메시지 4,000자, history 50개, summary 12,000자 이하
 - API 응답에는 엔티티 대신 DTO 사용 (`passwordHash`, 제출 전 `isCorrect` 노출 금지)
-- 멀티턴 요약(rev.7): 요약을 받으면 한 트랜잭션에서 `ai_conversation_summaries` INSERT → `ai_conversations.summary`·`summary_until_seq` UPDATE (조건: 기존 `summary_until_seq`가 내가 읽은 값과 같을 때). 답변 저장 시 그때 보낸 요약의 `summary_id`를 assistant 메시지에 기록
-- 장기 메모리(rev.7): `memory_key`가 있으면 (user_id, memory_type, memory_key)로 upsert, 없애는 건 DELETE 대신 `status = ARCHIVED` + `archived_at`. 요청에는 ACTIVE만 담고 `last_used_at` 갱신
-- 회원 탈퇴 시 AI 데이터 (2026-11-03 결정: 행은 남기고 본문만 비움, 한 트랜잭션): 메시지 `content = ''`·`rewritten_query`·`summary_id` null → `ai_conversation_summaries` 삭제 → 대화방 `title`·`summary`·`summary_until_seq` null → `ai_user_memories` 삭제. 근거(`ai_message_sources`)·사용량(`ai_requests`)은 개인 내용이 없어 유지 (`sql/test/constraint_test.sql` 63~67)
