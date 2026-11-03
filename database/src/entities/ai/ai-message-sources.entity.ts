@@ -1,6 +1,5 @@
 // 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_message_sources)
 // rev.6: AI 내부 API 계약 반영 — document_version 문자열·null 허용, chunk_id 필수, 같은 근거 중복 저장 방지
-// rev.7: 길이를 ai 스키마(rag_documents·rag_document_chunks)와 맞춤 — document_id·chunk_id 255, document_version 100, title_snapshot 500
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { AiMessage } from './ai-messages.entity';
 
@@ -22,19 +21,19 @@ export class AiMessageSource {
   message?: AiMessage;
 
   /** 문서 ID (논리 참조: ai 스키마 문서) */
-  @Column({ name: 'document_id', type: 'varchar', length: 255 })
+  @Column({ name: 'document_id', type: 'varchar', length: 100 })
   documentId!: string;
 
   /** 문서 버전 (AI 응답 documentVersion, 예: '2026'. 없으면 null) */
-  @Column({ name: 'document_version', type: 'varchar', length: 100, nullable: true })
+  @Column({ name: 'document_version', type: 'varchar', length: 50, nullable: true })
   documentVersion!: string | null;
 
   /** 청크 ID (논리 참조: ai 스키마 청크, AI 응답 chunkId — 항상 있음) */
-  @Column({ name: 'chunk_id', type: 'varchar', length: 255 })
+  @Column({ name: 'chunk_id', type: 'varchar', length: 100 })
   chunkId!: string;
 
   /** 당시 문서 제목 */
-  @Column({ name: 'title_snapshot', type: 'varchar', length: 500, nullable: true })
+  @Column({ name: 'title_snapshot', type: 'varchar', length: 255, nullable: true })
   titleSnapshot!: string | null;
 
   /** 관련 개념 코드 (논리 참조) */

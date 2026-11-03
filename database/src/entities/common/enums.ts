@@ -330,17 +330,3 @@ export enum ModelTier {
   Basic = 'BASIC',
   Advanced = 'ADVANCED',
 }
-
-/** 장기 메모리 종류 (rev.7) — DB 타입: ai_memory_type */
-export enum AiMemoryType {
-  Preference = 'PREFERENCE',
-  Misconception = 'MISCONCEPTION',
-  Goal = 'GOAL',
-  Interest = 'INTEREST',
-}
-
-/** 장기 메모리 상태 (rev.7) — DB 타입: ai_memory_status */
-export enum AiMemoryStatus {
-  Active = 'ACTIVE',
-  Archived = 'ARCHIVED',
-}

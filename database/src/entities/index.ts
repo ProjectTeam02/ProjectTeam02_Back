@@ -1,4 +1,4 @@
-// 자동 생성: app 스키마 엔티티 42개 (leren_erd.dbml rev.7)
+// 자동 생성: app 스키마 엔티티 40개 (leren_erd.dbml rev.5)
 import { User } from './account/users.entity';
 import { Terms } from './account/terms.entity';
 import { UserTermsAgreement } from './account/user-terms-agreements.entity';
@@ -39,8 +39,6 @@ import { AiConversation } from './ai/ai-conversations.entity';
 import { AiMessage } from './ai/ai-messages.entity';
 import { AiMessageSource } from './ai/ai-message-sources.entity';
 import { AiRequest } from './ai/ai-requests.entity';
-import { AiConversationSummary } from './ai/ai-conversation-summaries.entity';
-import { AiUserMemory } from './ai/ai-user-memories.entity';
 
 export const entities = [
   User,
@@ -83,8 +81,6 @@ export const entities = [
   AiMessage,
   AiMessageSource,
   AiRequest,
-  AiConversationSummary,
-  AiUserMemory,
 ];
 
 export {
@@ -128,8 +124,6 @@ export {
   AiMessage,
   AiMessageSource,
   AiRequest,
-  AiConversationSummary,
-  AiUserMemory,
 };
 
 export * from './common/enums';
