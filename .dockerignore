@@ -1,0 +1,5 @@
+node_modules
+database/node_modules
+database/dist
+.env
+.git
