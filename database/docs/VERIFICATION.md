@@ -77,8 +77,6 @@ rev.5 DBML로 만든 SQL(`leren_v3_schema.sql`)의 DB와 엔티티 마이그레�
 | SQL 제약 테스트 | **47/47 PASS** (추가 4개: 문자열 버전 저장, null 버전 허용, chunkId 없음 거부, 같은 근거 중복 거부) |
 | ai 스키마 검증 (`sql/test/ai_schema_test.sql`, ai_user) | **8/8 PASS** (pgvector 설치, 기본 스키마 ai, 1536차원 벡터 저장·검색, 차원 불일치 거부, app 스키마 접근 거부, public 생성 거부) |
 | 연동 테스트 | 19/19 PASS |
-<<<<<<< HEAD
-=======
 
 ## 7. rev.7 변경 검증 (2026-11-02, 멀티턴 메모리 + ai 스키마 테이블)
 
@@ -96,4 +94,3 @@ rev.5 DBML로 만든 SQL(`leren_v3_schema.sql`)의 DB와 엔티티 마이그레�
 | ai 스키마 테스트 / 연동 테스트 | 8/8 / 19/19 PASS |
 | AI 레포 코드 실행 | `RAGDocumentRepository` 저장·재적재·설정 불일치 거부 통과, LlamaIndex `PGVectorStore`가 ai_user로 `ai.data_projectteam02` 생성·필터 검색 통과 |
 | `sql/ai/vector_indexes.sql` | HNSW 1개 + metadata 6개 생성, 재실행 안전, 테이블 없으면 중단 |
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3

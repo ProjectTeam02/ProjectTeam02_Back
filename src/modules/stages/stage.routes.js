@@ -1,18 +1,3 @@
-<<<<<<< HEAD
-const express = require('express');
-const auth = require('../../common/middleware/auth.middleware');
-const { AppDataSource } = require('../../config/database');
-const stageService = require('./stage.service');
-const stageController = require('./stage.controller');
-
-const service = stageService(AppDataSource);
-const controller = stageController(service);
-const router = express.Router();
-
-router.get('/', auth, controller.getStages);
-router.get('/:stageId/steps', auth, controller.getStageSteps);
-
-=======
 /**
  * 스테이지 기능별 API 라우터 파일
  * 백엔드 작업: 엔드포인트와 Controller를 연결
@@ -23,5 +8,4 @@ const express = require('express');
 
 const router = express.Router();
 
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 module.exports = router;

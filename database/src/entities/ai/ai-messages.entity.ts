@@ -3,20 +3,14 @@ import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, Primary
 import { GroundingStatus, MessageInputType, MessageRole, MessageStatus } from '../common/enums';
 import { AiConversation } from './ai-conversations.entity';
 import { AiRequest } from './ai-requests.entity';
-<<<<<<< HEAD
-=======
 import { AiConversationSummary } from './ai-conversation-summaries.entity';
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 import { Concept } from '../content/concepts.entity';
 import { Stage } from '../content/stages.entity';
 
 /** 질문·답변 메시지와 멀티턴 상태. */
 @Index('ai_messages_conversation_id_client_message_id_idx', ['conversationId', 'clientMessageId'], { unique: true })
 @Index('ai_messages_conversation_id_sequence_no_idx', ['conversationId', 'sequenceNo'], { unique: true })
-<<<<<<< HEAD
-=======
 @Index('ai_messages_summary_id_idx', ['summaryId'])
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 @Index('uq_ai_messages_one_pending_answer', ['conversationId'], { unique: true, where: `"role" = 'ASSISTANT' AND "status" = 'PENDING'` })
 @Entity({ name: 'ai_messages', schema: 'app' })
 export class AiMessage {
@@ -92,8 +86,6 @@ export class AiMessage {
   @Column({ name: 'token_count', type: 'integer', nullable: true })
   tokenCount!: number | null;
 
-<<<<<<< HEAD
-=======
   /** rev.7 assistant 메시지: 답변 생성 때 프롬프트에 넣은 요약 (없으면 null). history_from_seq와 함께 답변 재현용 */
   @Column({ name: 'summary_id', type: 'uuid', nullable: true })
   summaryId!: string | null;
@@ -103,7 +95,6 @@ export class AiMessage {
   @JoinColumn({ name: 'summary_id', foreignKeyConstraintName: 'ai_messages_summary_id_fkey' })
   summary?: AiConversationSummary | null;
 
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   /** 처리 상태 (PENDING / COMPLETED / FAILED) */
   @Column({ name: 'status', type: 'enum', enum: MessageStatus, enumName: 'message_status', default: MessageStatus.Pending })
   status!: MessageStatus;

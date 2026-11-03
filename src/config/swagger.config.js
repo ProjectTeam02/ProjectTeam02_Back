@@ -34,9 +34,6 @@ module.exports = {
         SignupRequest: { type: 'object', required: ['email', 'password', 'nickname'], properties: { email: { type: 'string', format: 'email', example: 'learner@example.com' }, password: { type: 'string', format: 'password', minLength: 8, example: 'password123' }, nickname: { type: 'string', example: 'leren-user' } } },
         LoginRequest: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', format: 'email' }, password: { type: 'string', format: 'password' } } },
         TokenResponse: { type: 'object', properties: { accessToken: { type: 'string' }, refreshToken: { type: 'string' }, user: { $ref: '#/components/schemas/User' } } },
-<<<<<<< HEAD
-        User: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' }, nickname: { type: 'string' }, email: { type: 'string' }, level: { type: 'integer' }, totalExp: { type: 'integer' }, economyLevel: { type: 'integer' }, economyExp: { type: 'integer' }, plan: { type: 'string', example: 'FREE' } } },
-=======
         KakaoLoginRequest: {
           type: 'object', required: ['authorizationCode', 'redirectUri'],
           properties: {
@@ -55,7 +52,6 @@ module.exports = {
           },
         },
         User: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' }, nickname: { type: 'string' }, email: { type: 'string', nullable: true }, level: { type: 'integer' }, totalExp: { type: 'integer' }, economyLevel: { type: 'integer' }, economyExp: { type: 'integer' }, plan: { type: 'string', example: 'FREE' } } },
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
         Conversation: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, entryPoint: { type: 'string', nullable: true }, status: { type: 'string' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } },
         TutorMessageRequest: { type: 'object', required: ['conversationId', 'question'], properties: { conversationId: { type: 'string', format: 'uuid' }, question: { type: 'string', minLength: 1 }, modelTier: { type: 'string', enum: ['BASIC', 'ADVANCED'] }, clientMessageId: { type: 'string' }, context: { type: 'object', nullable: true }, knowledgeScope: { type: 'object', nullable: true } } },
         Quiz: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, title: { type: 'string' }, explanation: { type: 'string' }, difficulty: { type: 'string' }, choices: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, content: { type: 'string' } } } } } },
@@ -69,9 +65,6 @@ module.exports = {
       '/api/v1/auth/login': { post: { tags: ['Auth'], summary: '로그인', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } } }, responses: { 200: { description: '로그인 성공' }, 401: errorResponse, 422: errorResponse } } },
       '/api/v1/auth/logout': { post: { tags: ['Auth'], security: auth, summary: '모든 세션 로그아웃', responses: { 200: { description: '로그아웃 성공' }, 401: errorResponse } } },
       '/api/v1/auth/refresh': { post: { tags: ['Auth'], summary: 'Access Token 재발급', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['refreshToken'], properties: { refreshToken: { type: 'string' } } } } } }, responses: { 200: { description: '재발급 성공' }, 401: errorResponse } } },
-<<<<<<< HEAD
-      '/api/v1/auth/kakao': { post: { tags: ['Auth'], summary: 'Kakao OAuth 로그인', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['accessToken'], properties: { accessToken: { type: 'string' } } } } } }, responses: { 200: { description: '로그인 성공' }, 401: errorResponse, 503: errorResponse } } },
-=======
       '/api/v1/auth/kakao': { post: {
         tags: ['Auth'], summary: '카카오 Authorization Code 로그인',
         description: '카카오 인가 코드를 교환하고 LEREN JWT와 프로필을 반환합니다. 이메일 자동 계정 연결은 수행하지 않습니다. URI와 키 설정이 필요하며 OAuth state 검증은 프론트엔드 계약 및 서버 발급 흐름 협의가 필요합니다.',
@@ -84,7 +77,6 @@ module.exports = {
           503: { ...errorResponse, description: '설정 누락, 카카오 장애/잘못된 응답/타임아웃 또는 DB 연결 실패' },
         },
       } },
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
       '/api/v1/users/me': { get: { tags: ['Users'], security: auth, summary: '마이페이지', responses: { 200: { description: '사용자 정보' }, 401: errorResponse, 404: errorResponse } } },
       '/api/v1/users/me/notifications': { patch: { tags: ['Notifications'], security: auth, summary: '학습 알림 설정', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['learningOn'], properties: { learningOn: { type: 'boolean' } } } } } }, responses: { 200: { description: '설정 저장' }, 401: errorResponse, 422: errorResponse } } },
       '/api/v1/tutor/conversations': { post: { tags: ['AI Tutor'], security: auth, summary: '대화방 생성', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { entryPoint: { type: 'string' }, contextTopicId: { type: 'string' }, contextStageId: { type: 'string' }, contextConceptId: { type: 'string' } } } } } }, responses: { 201: { description: '생성 성공' }, 401: errorResponse } }, get: { tags: ['AI Tutor'], security: auth, summary: '대화방 목록', parameters: [{ $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/pageSize' }], responses: { 200: { description: '목록 조회' }, 401: errorResponse } } },
@@ -102,8 +94,6 @@ module.exports.definition.components.parameters = {
   page: { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
   pageSize: { name: 'pageSize', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
 };
-<<<<<<< HEAD
-=======
 
 const mobileOAuth = require('./kakao-mobile.swagger');
 Object.assign(module.exports.definition.components.schemas, mobileOAuth.schemas);
@@ -126,4 +116,3 @@ Object.assign(module.exports.definition.paths, learningHistory.paths);
 const calendarRead = require('./calendar-read.swagger');
 Object.assign(module.exports.definition.components.schemas, calendarRead.schemas);
 Object.assign(module.exports.definition.paths, calendarRead.paths);
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3

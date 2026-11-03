@@ -4,10 +4,7 @@
  * 주의: 기존 필드명과 오류 응답 형식을 유지한다.
  */
 const AppError = require('../../common/errors/AppError');
-<<<<<<< HEAD
-=======
 const env = require('../../config/env');
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 
 function requiredString(value, name, max = 255) {
   if (typeof value !== 'string' || !value.trim() || value.length > max) {
@@ -36,10 +33,6 @@ function refresh({ body }) {
   return { body: { refreshToken: requiredString(body.refreshToken, 'refreshToken', 4096) } };
 }
 
-<<<<<<< HEAD
-function kakao({ body }) {
-  return { body: { accessToken: requiredString(body.accessToken, 'accessToken', 4096) } };
-=======
 function kakao({ body = {} }) {
   const authorizationCode = requiredString(body.authorizationCode, 'authorizationCode', 4096);
   const redirectUri = requiredString(body.redirectUri, 'redirectUri', 2048);
@@ -58,7 +51,6 @@ function kakao({ body = {} }) {
     throw AppError.validation('허용되지 않은 redirectUri입니다.');
   }
   return { body: { authorizationCode, redirectUri } };
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 }
 
 module.exports = { signup, login, refresh, kakao };

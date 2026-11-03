@@ -1,8 +1,4 @@
-<<<<<<< HEAD
--- 제약 검증 rev.6 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
-=======
 -- 제약 검증 rev.7 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -141,8 +137,6 @@ SELECT pg_temp.expect_ok (46, '근거 저장: documentVersion 없음(null) 허�
 SELECT pg_temp.expect_err(47, 'chunkId 없는 근거 거부', $q$INSERT INTO ai_message_sources (message_id, document_id, rank) SELECT message_id, 'bok2026-0156', 3 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$, '23502');
 SELECT pg_temp.expect_err(48, '같은 답변에 같은 근거(문서·청크) 중복 거부', $q$INSERT INTO ai_message_sources (message_id, document_id, chunk_id, rank) SELECT message_id, 'bok2026-0154', 'bok2026-0154:0', 4 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$, '23505');
 
-<<<<<<< HEAD
-=======
 -- 49~58 rev.7 멀티턴 메모리 (요약 이력, 장기 메모리)
 SELECT pg_temp.expect_ok (49, '요약 이력 저장 (1~2번 메시지 요약)', $q$INSERT INTO ai_conversation_summaries (conversation_id, summary_until_seq, content, token_count) VALUES ('00000000-0000-0000-0000-0000000000f1', 2, '학습자가 수요의 뜻을 물었고 가격과 반대로 움직인다고 설명함', 30)$q$);
 SELECT pg_temp.expect_err(50, '같은 대화·같은 summary_until_seq 요약 중복 거부', $q$INSERT INTO ai_conversation_summaries (conversation_id, summary_until_seq, content) VALUES ('00000000-0000-0000-0000-0000000000f1', 2, '다른 요약')$q$, '23505');
@@ -173,7 +167,6 @@ INSERT INTO result SELECT 67, '탈퇴 후: 본문 0건, 대화·메시지 행과
   AND (SELECT count(*) FROM ai_user_memories WHERE user_id = '00000000-0000-0000-0000-000000000001') = 0,
   'messages=' || (SELECT count(*) FROM ai_messages) || ' sources=' || (SELECT count(*) FROM ai_message_sources) || ' requests=' || (SELECT count(*) FROM ai_requests);
 
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');
 

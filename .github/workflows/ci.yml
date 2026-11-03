@@ -2,11 +2,7 @@ name: CI
 
 on:
   push:
-<<<<<<< HEAD
-    branches: [main, develop]
-=======
     branches: [main, develop, test]
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   pull_request:
 
 jobs:

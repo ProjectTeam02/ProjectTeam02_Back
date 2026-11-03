@@ -330,8 +330,6 @@ export enum ModelTier {
   Basic = 'BASIC',
   Advanced = 'ADVANCED',
 }
-<<<<<<< HEAD
-=======
 
 /** 장기 메모리 종류 (rev.7) — DB 타입: ai_memory_type */
 export enum AiMemoryType {
@@ -346,4 +344,3 @@ export enum AiMemoryStatus {
   Active = 'ACTIVE',
   Archived = 'ARCHIVED',
 }
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3

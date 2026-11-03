@@ -7,13 +7,10 @@
 // rev.5 (2026-10-25): 코스튬을 직업과 무관하게 상의(TOP)·하의(BOTTOM)로 분류, 부위별 장착 테이블(user_equipped_costumes)
 // rev.6 (2026-10-26): AI 내부 API 계약 반영 — ai_message_sources.document_version 문자열·null 허용, chunk_id 필수, (message_id, document_id, chunk_id) 유니크
 //                     ai 스키마는 FastAPI(ai_user) 소유로 분리 (database/sql/init/02_ai_schema.sql)
-<<<<<<< HEAD
-=======
 // rev.7 (2026-11-02): 멀티턴 메모리 + ai 스키마 DDL을 DB 담당이 관리
 //                     ai_conversation_summaries(요약 이력), ai_messages.summary_id, ai_user_memories(장기 메모리),
 //                     ai_conversations summary 짝 CHECK, ai_message_sources 길이 확장(255/255/100/500)
 //                     ai.rag_documents·rag_document_chunks·rag_index_configurations (database/sql/init/03_ai_tables.sql)
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 // 변경 요약
 //   1) 용어를 API 명세에 맞춤: region→topic, step→stage, job→class,
 //      concept_auto_review→review_mission, review_session→review_attempt,
@@ -23,11 +20,7 @@
 //   3) AI Tutor 멀티턴 RAG: 메시지별 문맥·재작성 쿼리·히스토리 범위,
 //      대화 요약, clientMessageId 중복 방지, 검색 범위·청크 기록
 // 규칙
-<<<<<<< HEAD
-//   - 모든 테이블은 app 스키마 (ai 스키마는 FastAPI가 별도 관리)
-=======
 //   - 1~8절은 app 스키마 (TypeORM 마이그레이션), 9절은 ai 스키마 (SQL 파일, 소유자 ai_user)
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 //   - PK는 uuid, 기본값 gen_random_uuid()
 //   - 시각은 timestamptz, 날짜 집계는 Asia/Seoul 기준
 //   - Enum 값은 대문자 SNAKE_CASE (API 명세 예시 WARRIOR/MAGE/ARCHER 기준, API와 동일 값)
@@ -295,8 +288,6 @@ Enum ai_request_status {
   FAILED
   RELEASED
 }
-<<<<<<< HEAD
-=======
 Enum ai_memory_type {
   PREFERENCE [note: '설명 방식 선호 (예: 예시를 들면 잘 이해함)']
   MISCONCEPTION [note: '오개념']
@@ -307,7 +298,6 @@ Enum ai_memory_status {
   ACTIVE
   ARCHIVED
 }
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 Enum model_tier {
   BASIC
   ADVANCED
@@ -591,11 +581,7 @@ Table stages {
 
 Table concepts {
   concept_id uuid [pk, default: `gen_random_uuid()`]
-<<<<<<< HEAD
-  concept_code varchar(30) [not null, note: '버전 무관 식별자, ai.document_concepts와 공유']
-=======
   concept_code varchar(30) [not null, note: '버전 무관 식별자. AI 문서 메타의 concept_code와 같은 값 (문서↔개념 매핑은 미정)']
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   topic_id uuid [not null, ref: > topics.topic_id, note: 'v2 region_id']
   version integer [not null, default: 1]
   supersedes_concept_id uuid [ref: > concepts.concept_id]
@@ -603,11 +589,7 @@ Table concepts {
   short_definition varchar(255)
   summary varchar(255)
   estimated_minutes smallint
-<<<<<<< HEAD
-  source_document_ids text[] [note: '논리 참조: ai.knowledge_documents.document_id']
-=======
   source_document_ids text[] [note: '논리 참조: ai.rag_documents.document_id']
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   status concept_status [not null, default: 'DRAFT']
   reviewed_by uuid [ref: > users.user_id]
   reviewed_at timestamptz
@@ -673,11 +655,7 @@ Table questions {
   difficulty difficulty
   generated_by generated_by [not null]
   generation_request_id uuid [ref: > ai_requests.request_id]
-<<<<<<< HEAD
-  source_document_ids text[] [note: '논리 참조: ai.knowledge_documents.document_id']
-=======
   source_document_ids text[] [note: '논리 참조: ai.rag_documents.document_id']
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   status question_status [not null, default: 'GENERATED']
   review_comment text
   reviewed_by uuid [ref: > users.user_id]
@@ -1005,20 +983,13 @@ Table ai_conversations {
   context_attempt_id uuid [ref: > learning_attempts.attempt_id]
   title varchar(100)
   status conversation_status [not null, default: 'ACTIVE']
-<<<<<<< HEAD
-  summary text [note: 'v3 추가. 오래된 턴의 요약 (대화가 길어질 때만 사용)']
-  summary_until_seq integer [note: 'v3 추가. summary가 반영한 마지막 sequence_no']
-=======
   summary text [note: 'v3 추가. 현재 요약 (rev.7 ai_conversation_summaries 최신 행의 복사본)']
   summary_until_seq integer [note: 'v3 추가. summary가 반영한 마지막 sequence_no. rev.7 summary와 항상 같이 채움']
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`, note: '목록 정렬 기준. 메시지 저장 시 함께 갱신']
   indexes {
     (user_id, updated_at)
   }
-<<<<<<< HEAD
-=======
   checks {
     `(summary IS NULL) = (summary_until_seq IS NULL)` [name: 'chk_ai_conversations_summary']
   }
@@ -1040,7 +1011,6 @@ Table ai_conversation_summaries {
     `char_length(content) BETWEEN 1 AND 12000` [name: 'chk_ai_summaries_content']
   }
   Note: 'rev.7 요약 이력. 요약할 때마다 1행 추가(수정 안 함), 같은 트랜잭션에서 ai_conversations.summary·summary_until_seq 갱신'
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 }
 
 Table ai_messages {
@@ -1057,10 +1027,7 @@ Table ai_messages {
   rewritten_query text [note: 'v3 추가. user 메시지: 이전 대화를 반영해 다시 쓴 검색 쿼리 (FastAPI 응답)']
   history_from_seq integer [note: 'v3 추가. assistant 메시지: 프롬프트에 원문으로 넣은 첫 sequence_no']
   token_count integer [note: 'v3 추가. 히스토리 자를 때 사용']
-<<<<<<< HEAD
-=======
   summary_id uuid [ref: > ai_conversation_summaries.summary_id, note: 'rev.7 assistant 메시지: 프롬프트에 넣은 요약 (history_from_seq와 함께 답변 재현)']
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   status message_status [not null, default: 'PENDING']
   grounding_status grounding_status [note: 'API 검색 상태']
   error_code varchar(50)
@@ -1070,10 +1037,7 @@ Table ai_messages {
   indexes {
     (conversation_id, sequence_no) [unique]
     (conversation_id, client_message_id) [unique, note: 'NULL은 중복 허용 (assistant 메시지)']
-<<<<<<< HEAD
-=======
     summary_id [note: 'rev.7 탈퇴 시 요약 삭제 때 FK 확인용']
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   }
   Note: '부분 유니크 인덱스(대화방당 pending 답변 1개)는 schema.sql 끝에 있음'
 }
@@ -1081,17 +1045,10 @@ Table ai_messages {
 Table ai_message_sources {
   message_source_id uuid [pk, default: `gen_random_uuid()`]
   message_id uuid [not null, ref: > ai_messages.message_id]
-<<<<<<< HEAD
-  document_id varchar(100) [not null, note: '논리 참조: ai 스키마 문서 ID (AI 응답 documentId, 예: bok2026-0154)']
-  document_version varchar(50) [note: 'rev.6 integer NOT NULL → 문자열·null 허용 (AI 응답 documentVersion, 예: 2026)']
-  chunk_id varchar(100) [not null, note: 'rev.6 필수. 논리 참조: ai 스키마 청크 ID (AI 응답 chunkId)']
-  title_snapshot varchar(255)
-=======
   document_id varchar(255) [not null, note: '논리 참조: ai.rag_documents.document_id (AI 응답 documentId, 예: bok800-154). rev.7 100→255']
   document_version varchar(100) [note: 'rev.6 integer NOT NULL → 문자열·null 허용 (AI 응답 documentVersion, 예: 2026). rev.7 50→100']
   chunk_id varchar(255) [not null, note: 'rev.6 필수. 논리 참조: ai.rag_document_chunks.chunk_id (AI 응답 chunkId). rev.7 100→255']
   title_snapshot varchar(500) [note: 'rev.7 255→500 (ai.rag_documents.title과 같음)']
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
   concept_code varchar(30) [note: '논리 참조: concepts.concept_code']
   rank smallint [not null]
   relevance_score numeric(5,4)
@@ -1131,8 +1088,6 @@ Table ai_requests {
   Note: '턴 1회 = tutor 요청 1건. 사용량(/tutor/usage)은 request_type = TUTOR만 집계'
 }
 
-<<<<<<< HEAD
-=======
 Table ai_user_memories {
   memory_id uuid [pk, default: `gen_random_uuid()`]
   user_id uuid [not null, ref: > users.user_id]
@@ -1213,7 +1168,6 @@ Table ai.rag_index_configurations {
   Note: '컬렉션별 임베딩 모델·차원. 다르면 적재 거부'
 }
 
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 // =====================================================================
 // 복합 FK (무결성, rev.3·rev.5)
 // =====================================================================
@@ -1278,11 +1232,6 @@ TableGroup review_plan [color: #B5475B] {
 }
 TableGroup ai_tutor [color: #4A4A4A] {
   ai_conversations
-<<<<<<< HEAD
-  ai_messages
-  ai_message_sources
-  ai_requests
-=======
   ai_conversation_summaries
   ai_messages
   ai_message_sources
@@ -1293,5 +1242,4 @@ TableGroup ai_rag [color: #2F6F73] {
   ai.rag_documents
   ai.rag_document_chunks
   ai.rag_index_configurations
->>>>>>> f41d35265091600e7b8b1205fe98dd7b019510a3
 }
