@@ -1,32 +1,70 @@
+# EC2 standalone deployment: HTTP :80 -> Express :3000
+# PostgreSQL is private to the Compose network; no public :5432 exposure.
 services:
-  api:
+  db:
+    image: pgvector/pgvector:0.8.7-pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in .env}
+      POSTGRES_DB: leren
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?DB_MIGRATION_PASSWORD is required in .env}
+      DB_AI_PASSWORD: ${DB_AI_PASSWORD:?DB_AI_PASSWORD is required in .env}
+      TZ: Asia/Seoul
+    volumes:
+      # For PostgreSQL 18, mount parent directory (PGDATA is /var/lib/postgresql/18/docker).
+      - postgres_data:/var/lib/postgresql
+      - ./database/sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d leren"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # Apply TypeORM migrations before API starts (also safe to re-run on later deploys).
+  migrate:
     build: .
-    ports:
-      - "3000:3000"
+    image: leren-backend:ec2
     env_file:
       - .env
     environment:
       DB_HOST: db
+      DB_PORT: "5432"
+      DB_SSL: "false"
+    command: ["npm", "run", "db:migrate"]
     depends_on:
       db:
         condition: service_healthy
+    restart: "no"
 
-  db:
-    image: pgvector/pgvector:pg18   # PostgreSQL 18 + pgvector
+  api:
+    build: .
+    image: leren-backend:ec2
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: leren
-      TZ: UTC
+      NODE_ENV: production
+      PORT: "3000"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_SSL: "false"
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql
-      - ./database/sql/init:/docker-entrypoint-initdb.d   # 최초 1회: app·ai 스키마, 계정(migrator, app_user, ai_user), pgvector 생성
+      - "0.0.0.0:80:3000"
+    extra_hosts:
+      # Optional: makes a FastAPI process running on the EC2 HOST reachable via host.docker.internal.
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d leren"]
-      interval: 5s
-      retries: 10
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:
