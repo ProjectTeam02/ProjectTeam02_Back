@@ -12,15 +12,9 @@ const { hashPassword, verifyPassword } = require('../../common/utils/password.ut
 const { hashToken, issueAccessToken, issueRefreshToken, verifyRefreshToken } = require('../../common/utils/token.util');
 const sessionRepository = require('./repositories/session.repository');
 const authSchema = require('./auth.schema');
+const loginResponse = require('./dto/loginResponse.dto');
 
-function publicUser(user, growth = null) {
-  return {
-    userId: user.userId || user.id, nickname: user.nickname, email: user.email,
-    level: growth?.totalLevel ?? 1, totalExp: growth?.totalExp ?? 0,
-    economyLevel: growth?.economyLevel ?? 1, economyExp: growth?.economyExp ?? 0,
-    plan: user.plan || 'FREE',
-  };
-}
+const publicUser = (user, growth = null) => loginResponse.user(user, growth);
 
 function isUniqueViolation(error) { return error?.code === '23505' || error?.driverError?.code === '23505'; }
 
@@ -55,7 +49,7 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
           if (await userRepo.findOneBy({ email })) throw AppError.conflict('이미 가입된 이메일입니다.');
           const user = await userRepo.save(userRepo.create({ email, nickname, passwordHash: hashPassword(password) }));
           await ensureUserRows(manager, user);
-          return { user: publicUser(user, await growthFor(user.userId, manager)), ...(await issueTokens(user, 'EMAIL', manager)) };
+          return loginResponse.session({ user, growth: await growthFor(user.userId, manager), issued: await issueTokens(user, 'EMAIL', manager) });
         });
       } catch (error) {
         if (error instanceof AppError) throw error;
@@ -70,7 +64,7 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
       if (user.accountStatus !== 'ACTIVE') throw AppError.forbidden('정지된 계정입니다.');
       user.failedLoginCount = 0; user.lastLoginAt = new Date(); user.lastLoginMethod = 'EMAIL';
       await userRepo.save(user); await ensureUserRows(dataSource.manager, user);
-      return { user: publicUser(user, await growthFor(user.userId)), ...(await issueTokens(user, 'EMAIL')) };
+      return loginResponse.session({ user, growth: await growthFor(user.userId), issued: await issueTokens(user, 'EMAIL') });
     },
     async refresh(refreshToken) {
       let payload;
@@ -82,7 +76,7 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
         const user = await manager.getRepository(User).findOneBy({ userId: payload.sub });
         if (!user || user.accountStatus !== 'ACTIVE') throw AppError.unauthorized();
         await ensureUserRows(manager, user);
-        return { user: publicUser(user, await growthFor(user.userId, manager)), ...(await issueTokens(user, session.loginMethod || 'EMAIL', manager)) };
+        return loginResponse.session({ user, growth: await growthFor(user.userId, manager), issued: await issueTokens(user, session.loginMethod || 'EMAIL', manager) });
       });
     },
     async logout(userId) { await sessions.revokeAll(userId); return { loggedOut: true }; },
@@ -108,8 +102,8 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
         user.lastLoginAt = new Date();
         user.lastLoginMethod = 'KAKAO';
         await userRepo.save(user);
-        return { user: publicUser(user, await growthFor(userId, manager)), isNewUser,
-          ...(await issueTokens(user, 'KAKAO', manager)) };
+        return loginResponse.session({ user, growth: await growthFor(userId, manager), isNewUser,
+          issued: await issueTokens(user, 'KAKAO', manager) });
       });
     },
     async prepareKakaoLogin(input, issueSession = false) {
@@ -161,8 +155,8 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
         await socialRepo.save(social);
         await ensureUserRows(manager, user);
         if (!issueSession) return { userId: user.userId, providerUserId, isNewUser };
-        return { user: publicUser(user, await growthFor(user.userId, manager)), isNewUser,
-          ...(await issueTokens(user, 'KAKAO', manager)) };
+        return loginResponse.session({ user, growth: await growthFor(user.userId, manager), isNewUser,
+          issued: await issueTokens(user, 'KAKAO', manager) });
       });
       try {
         return await persistLogin();
