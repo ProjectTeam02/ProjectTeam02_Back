@@ -2,7 +2,7 @@ services:
   api:
     build: .
     ports:
-      - "3000:3000"
+      - "80:3000"
     env_file:
       - .env
     environment:
@@ -12,17 +12,20 @@ services:
         condition: service_healthy
 
   db:
-    image: pgvector/pgvector:pg18   # PostgreSQL 18 + pgvector
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in .env}
       POSTGRES_DB: leren
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+      DB_MIGRATION_PASSWORD: ${DB_MIGRATION_PASSWORD:?DB_MIGRATION_PASSWORD is required in .env}
+      DB_AI_PASSWORD: ${DB_AI_PASSWORD:?DB_AI_PASSWORD is required in .env}
       TZ: UTC
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./database/sql/init:/docker-entrypoint-initdb.d   # 최초 1회: app·ai 스키마, 계정(migrator, app_user, ai_user), pgvector 생성
+      - ./database/sql/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d leren"]
       interval: 5s

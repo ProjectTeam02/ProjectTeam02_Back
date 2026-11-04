@@ -1,3 +1,5 @@
+> EC2에서 HTTP(80번 포트)로 바로 배포하려면 **[EC2_DEPLOY.md](EC2_DEPLOY.md)** 를 참고하세요. 이 배포본은 `docker compose up -d --build` 한 번으로 DB 초기화·마이그레이션·API 실행이 진행됩니다. 아래 로컬 실행 안내는 호스트에서 접근 가능한 PostgreSQL을 별도로 준비한 경우에 적용됩니다.
+
 # Leren Backend
 
 Leren 경제·금융 마이크로러닝 서비스의 Node.js/Express 백엔드입니다.
@@ -43,7 +45,7 @@ Controller는 Service를 호출하고, Service는 Repository 또는 외부 Clien
 ```bash
 npm install
 cp .env.example .env
-docker compose up -d db
+# .env에 로컬 PostgreSQL 접속 정보 설정
 npm run db:migrate
 npm run dev
 ```
@@ -53,7 +55,7 @@ npm run dev
 Docker로 API까지 실행하려면 다음 명령을 사용합니다.
 
 ```bash
-docker compose up -d --build api
+docker compose up -d --build
 ```
 
 컨테이너 환경에서 API는 PostgreSQL에 `db:5432`, 호스트의 FastAPI에는 `host.docker.internal:8000`으로 연결합니다.
