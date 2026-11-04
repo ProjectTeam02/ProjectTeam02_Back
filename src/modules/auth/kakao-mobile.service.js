@@ -3,9 +3,8 @@ const AppError = require('../../common/errors/AppError');
 const env = require('../../config/env');
 const authSchema = require('./auth.schema');
 const { MemoryOAuthStore } = require('./kakao-oauth.store');
+const kakaoRequest = require('./dto/kakaoRequest.dto');
 
-const TOKEN = /^[A-Za-z0-9_-]{43}$/;
-const VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const challengeFor = verifier => crypto.createHash('sha256').update(verifier).digest('base64url');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string'
   && Buffer.byteLength(a) === Buffer.byteLength(b) && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -49,12 +48,9 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
   return {
     start(body) {
       configuration();
-      if (!object(body) || Object.keys(body).some(k => !['codeChallenge', 'codeChallengeMethod'].includes(k))
-        || typeof body.codeChallenge !== 'string' || !TOKEN.test(body.codeChallenge) || body.codeChallengeMethod !== 'S256') {
-        throw AppError.validation('S256 codeChallenge가 필요합니다.');
-      }
+      const { codeChallenge } = kakaoRequest.parseStart(body);
       const attempt = {
-        loginAttemptId: crypto.randomUUID(), challenge: body.codeChallenge,
+        loginAttemptId: crypto.randomUUID(), challenge: codeChallenge,
         redirectUri: config.kakaoOauthCallbackUrl, deepLink: config.kakaoAppDeepLink,
       };
       const state = store.put('state', attempt, config.kakaoOauthStateTtlSeconds);
@@ -66,7 +62,7 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
 
     async callback(query) {
       configuration();
-      if (!object(query) || typeof query.state !== 'string' || !TOKEN.test(query.state)) {
+      if (!object(query) || !kakaoRequest.isOAuthState(query.state)) {
         throw AppError.validation('유효한 OAuth state가 필요합니다.');
       }
       // Consume before network I/O so concurrent/replayed callbacks never exchange the code twice.
@@ -93,14 +89,9 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
 
     async exchange(body) {
       configuration();
-      if (!object(body) || Object.keys(body).some(k => !['loginCode', 'codeVerifier', 'loginAttemptId'].includes(k))
-        || typeof body.loginCode !== 'string' || !TOKEN.test(body.loginCode)
-        || typeof body.codeVerifier !== 'string' || !VERIFIER.test(body.codeVerifier)
-        || typeof body.loginAttemptId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.loginAttemptId)) {
-        throw AppError.validation('로그인 교환 코드와 앱 검증 정보가 필요합니다.');
-      }
-      const identity = store.consume('exchange', body.loginCode, entry =>
-        equal(entry.challenge, challengeFor(body.codeVerifier)) && equal(entry.loginAttemptId, body.loginAttemptId));
+      const { loginCode, codeVerifier, loginAttemptId } = kakaoRequest.parseExchange(body);
+      const identity = store.consume('exchange', loginCode, entry =>
+        equal(entry.challenge, challengeFor(codeVerifier)) && equal(entry.loginAttemptId, loginAttemptId));
       if (!identity) throw AppError.unauthorized('로그인 교환 정보가 유효하지 않거나 만료되었습니다.');
       // A failed DB/session issuance burns the code. Restart login; never retry consumed credentials.
       return auth.completeKakaoLogin(identity);

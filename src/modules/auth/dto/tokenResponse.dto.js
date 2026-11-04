@@ -1,7 +1,17 @@
 /**
- * 인증 API 요청·응답 데이터 형식 파일
- * 백엔드 작업: 외부 데이터와 내부 모델의 변환 규칙을 관리
- * 주의: 기존 응답 필드명과 JSON 구조 유지
- * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
+ * 토큰 응답 데이터 형식 파일
+ * 백엔드 작업: 발급한 LEREN 토큰을 응답 형식으로 변환
+ * 주의: 기존 필드(accessToken, refreshToken) 유지. tokenType·expiresIn은 추가 필드
+ *
+ *   accessToken   string  Authorization: Bearer 헤더에 사용
+ *   refreshToken  string  POST /auth/refresh Body로 전달, 재발급 때마다 새 값으로 교체(회전)
+ *   tokenType     'Bearer'
+ *   expiresIn     number  accessToken 유효 시간(초), ACCESS_TOKEN_TTL_SECONDS
  */
-module.exports = {};
+const env = require('../../../config/env');
+
+function tokens({ accessToken, refreshToken }) {
+  return { accessToken, refreshToken, tokenType: 'Bearer', expiresIn: env.accessTokenTtlSeconds };
+}
+
+module.exports = { tokens };
