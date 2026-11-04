@@ -31,9 +31,9 @@ module.exports = {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
         Error: { type: 'object', properties: { success: { type: 'boolean', example: false }, message: { type: 'string' }, code: { type: 'string' } } },
-        SignupRequest: { type: 'object', required: ['email', 'password', 'nickname'], properties: { email: { type: 'string', format: 'email', example: 'learner@example.com' }, password: { type: 'string', format: 'password', minLength: 8, example: 'password123' }, nickname: { type: 'string', example: 'leren-user' } } },
-        LoginRequest: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', format: 'email' }, password: { type: 'string', format: 'password' } } },
-        TokenResponse: { type: 'object', properties: { accessToken: { type: 'string' }, refreshToken: { type: 'string' }, user: { $ref: '#/components/schemas/User' } } },
+        SignupRequest: { type: 'object', required: ['email', 'password', 'nickname'], properties: { email: { type: 'string', format: 'email', maxLength: 255, example: 'learner@example.com' }, password: { type: 'string', format: 'password', minLength: 8, maxLength: 128, example: 'password123' }, passwordConfirm: { type: 'string', format: 'password', description: '선택. 보내면 password와 같아야 함' }, nickname: { type: 'string', minLength: 1, maxLength: 30, example: 'leren-user' } } },
+        LoginRequest: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', format: 'email', maxLength: 255 }, password: { type: 'string', format: 'password', maxLength: 128 } } },
+        TokenResponse: { type: 'object', required: ['user', 'accessToken', 'refreshToken', 'tokenType', 'expiresIn'], properties: { accessToken: { type: 'string' }, refreshToken: { type: 'string', description: '재발급 때마다 새 값으로 교체(회전)' }, tokenType: { type: 'string', enum: ['Bearer'] }, expiresIn: { type: 'integer', description: 'accessToken 유효 시간(초)', example: 900 }, user: { $ref: '#/components/schemas/User' } } },
         KakaoLoginRequest: {
           type: 'object', required: ['authorizationCode', 'redirectUri'],
           properties: {
@@ -51,7 +51,8 @@ module.exports = {
             }] },
           },
         },
-        User: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' }, nickname: { type: 'string' }, email: { type: 'string', nullable: true }, level: { type: 'integer' }, totalExp: { type: 'integer' }, economyLevel: { type: 'integer' }, economyExp: { type: 'integer' }, plan: { type: 'string', example: 'FREE' } } },
+        User: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' }, nickname: { type: 'string' }, email: { type: 'string', nullable: true, description: '카카오 전용 회원은 null' }, level: { type: 'integer', description: '전체 레벨' }, totalExp: { type: 'integer' }, economyLevel: { type: 'integer' }, economyExp: { type: 'integer' }, plan: { type: 'string', enum: ['FREE', 'PREMIUM'] }, onboardingCompleted: { type: 'boolean', description: '직업 선택 완료 여부. false면 직업 선택 화면으로 이동' } } },
+        NotificationSetting: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' }, learningOn: { type: 'boolean' }, reminderEnabled: { type: 'boolean' }, reminderTime: { type: 'string', nullable: true, example: '20:00:00' }, timezone: { type: 'string', example: 'Asia/Seoul' }, dailyGoalCount: { type: 'integer', nullable: true }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } },
         Conversation: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, entryPoint: { type: 'string', nullable: true }, status: { type: 'string' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } },
         TutorMessageRequest: { type: 'object', required: ['conversationId', 'question'], properties: { conversationId: { type: 'string', format: 'uuid' }, question: { type: 'string', minLength: 1 }, modelTier: { type: 'string', enum: ['BASIC', 'ADVANCED'] }, clientMessageId: { type: 'string' }, context: { type: 'object', nullable: true }, knowledgeScope: { type: 'object', nullable: true } } },
         Quiz: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, title: { type: 'string' }, explanation: { type: 'string' }, difficulty: { type: 'string' }, choices: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, content: { type: 'string' } } } } } },
@@ -62,7 +63,7 @@ module.exports = {
       '/api/v1/health/ready': { get: { tags: ['Health'], summary: 'DB와 FastAPI 준비 상태', responses: { 200: { description: 'READY' }, 503: errorResponse } } },
       '/api/v1/health/dependencies': { get: { tags: ['Health'], summary: '의존성 연결 상태', responses: { 200: { description: '상태 조회' } } } },
       '/api/v1/auth/signup': { post: { tags: ['Auth'], summary: '일반 회원가입', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/SignupRequest' } } } }, responses: { 201: { description: '가입 및 토큰 발급', content: { 'application/json': { schema: { $ref: '#/components/schemas/TokenResponse' } } } }, 409: errorResponse, 422: errorResponse } } },
-      '/api/v1/auth/login': { post: { tags: ['Auth'], summary: '로그인', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } } }, responses: { 200: { description: '로그인 성공' }, 401: errorResponse, 422: errorResponse } } },
+      '/api/v1/auth/login': { post: { tags: ['Auth'], summary: '로그인', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } } }, responses: { 200: { description: '로그인 성공', content: { 'application/json': { schema: { $ref: '#/components/schemas/TokenResponse' } } } }, 401: errorResponse, 422: errorResponse } } },
       '/api/v1/auth/logout': { post: { tags: ['Auth'], security: auth, summary: '모든 세션 로그아웃', responses: { 200: { description: '로그아웃 성공' }, 401: errorResponse } } },
       '/api/v1/auth/refresh': { post: { tags: ['Auth'], summary: 'Access Token 재발급', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['refreshToken'], properties: { refreshToken: { type: 'string' } } } } } }, responses: { 200: { description: '재발급 성공' }, 401: errorResponse } } },
       '/api/v1/auth/kakao': { post: {
@@ -78,7 +79,7 @@ module.exports = {
         },
       } },
       '/api/v1/users/me': { get: { tags: ['Users'], security: auth, summary: '마이페이지', responses: { 200: { description: '사용자 정보' }, 401: errorResponse, 404: errorResponse } } },
-      '/api/v1/users/me/notifications': { patch: { tags: ['Notifications'], security: auth, summary: '학습 알림 설정', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['learningOn'], properties: { learningOn: { type: 'boolean' } } } } } }, responses: { 200: { description: '설정 저장' }, 401: errorResponse, 422: errorResponse } } },
+      '/api/v1/users/me/notifications': { patch: { tags: ['Notifications'], security: auth, summary: '학습 알림 설정', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['learningOn'], properties: { learningOn: { type: 'boolean' } } } } } }, responses: { 200: { description: '설정 저장', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NotificationSetting' } } } } } }, 401: errorResponse, 422: errorResponse } } },
       '/api/v1/tutor/conversations': { post: { tags: ['AI Tutor'], security: auth, summary: '대화방 생성', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { entryPoint: { type: 'string' }, contextTopicId: { type: 'string' }, contextStageId: { type: 'string' }, contextConceptId: { type: 'string' } } } } } }, responses: { 201: { description: '생성 성공' }, 401: errorResponse } }, get: { tags: ['AI Tutor'], security: auth, summary: '대화방 목록', parameters: [{ $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/pageSize' }], responses: { 200: { description: '목록 조회' }, 401: errorResponse } } },
       '/api/v1/tutor/conversations/{id}/messages': { get: { tags: ['AI Tutor'], security: auth, summary: '대화 메시지 목록', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }, { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/pageSize' }], responses: { 200: { description: '목록 조회' }, 404: errorResponse } } },
       '/api/v1/tutor/messages': { post: { tags: ['AI Tutor'], security: auth, summary: 'AI Tutor 질문', parameters: [{ name: 'Idempotency-Key', in: 'header', schema: { type: 'string', maxLength: 200 } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TutorMessageRequest' } } } }, responses: { 201: { description: '답변 저장' }, 401: errorResponse, 409: errorResponse, 429: errorResponse, 503: errorResponse } } },
@@ -116,3 +117,17 @@ Object.assign(module.exports.definition.paths, learningHistory.paths);
 const calendarRead = require('./calendar-read.swagger');
 Object.assign(module.exports.definition.components.schemas, calendarRead.schemas);
 Object.assign(module.exports.definition.paths, calendarRead.paths);
+
+// Figma 19-01 response schema. Existing endpoint/path/security remain unchanged.
+const myPage = require('./mypage.swagger');
+Object.assign(module.exports.definition.components.schemas, myPage.schemas);
+module.exports.definition.paths['/api/v1/users/me'].get.responses[200] = {
+  description: '마이페이지 기본 화면 (DB 실제 값)',
+  content: { 'application/json': { schema: {
+    type: 'object', required: ['success', 'data'],
+    properties: {
+      success: { type: 'boolean' },
+      data: { $ref: '#/components/schemas/MyPage' },
+    },
+  } } },
+};
