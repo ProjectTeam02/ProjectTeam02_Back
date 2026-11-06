@@ -8,6 +8,7 @@ const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
 const userRepository = require('./user.repository');
 const { formatMyPage } = require('./dto/userResponse.dto');
+const notificationSetting = require('../notifications/dto/notificationSetting.dto');
 
 function service(dataSource = AppDataSource) {
   const repository = userRepository(dataSource);
@@ -23,7 +24,7 @@ function service(dataSource = AppDataSource) {
       let setting = await repo.findOneBy({ userId });
       if (!setting) setting = repo.create({ userId });
       setting.reminderEnabled = learningOn;
-      return repo.save(setting);
+      return notificationSetting.response(await repo.save(setting));
     },
   };
 }
