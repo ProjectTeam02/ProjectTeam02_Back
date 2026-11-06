@@ -15,6 +15,7 @@ module.exports = {
   refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL_SECONDS || 2592000),
   fastapiBaseUrl: process.env.FASTAPI_BASE_URL || 'http://127.0.0.1:8000',
   fastapiInternalToken: process.env.FASTAPI_INTERNAL_TOKEN,
+  questionImportApiKey: process.env.QUESTION_IMPORT_API_KEY,
   fastapiTimeoutMs: Number(process.env.FASTAPI_TIMEOUT_MS || 5000),
   aiDailyLimit: Number(process.env.AI_DAILY_LIMIT || 20),
   kakaoRestApiKey: process.env.KAKAO_REST_API_KEY,
