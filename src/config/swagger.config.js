@@ -135,6 +135,12 @@ module.exports.definition.paths['/api/v1/users/me'].get.responses[200] = {
 const normalStageQuiz = require('./normal-stage-quiz.swagger');
 Object.assign(module.exports.definition.components.schemas, normalStageQuiz.schemas);
 Object.assign(module.exports.definition.paths, normalStageQuiz.paths);
+
+const economyContent = require('./economy-content.swagger');
+module.exports.definition.tags.push({ name: 'Economy Content', description: '공개 주제, Stage 및 학습 카드 조회' });
+Object.assign(module.exports.definition.components.schemas, economyContent.schemas);
+Object.assign(module.exports.definition.paths, economyContent.paths);
+
 const submit = module.exports.definition.paths['/api/v1/quizzes/{id}/submit'].post;
 module.exports.definition.components.schemas.Quiz.properties.explanation = {
   type: 'string', nullable: true, description: '레거시 승인 문제 조회에서는 제출 전 해설을 숨기기 위해 항상 null. 일반 Stage 채점 응답에서 해설 제공',
