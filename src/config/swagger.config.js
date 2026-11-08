@@ -131,3 +131,61 @@ module.exports.definition.paths['/api/v1/users/me'].get.responses[200] = {
     },
   } } },
 };
+
+const normalStageQuiz = require('./normal-stage-quiz.swagger');
+Object.assign(module.exports.definition.components.schemas, normalStageQuiz.schemas);
+Object.assign(module.exports.definition.paths, normalStageQuiz.paths);
+const submit = module.exports.definition.paths['/api/v1/quizzes/{id}/submit'].post;
+module.exports.definition.components.schemas.Quiz.properties.explanation = {
+  type: 'string', nullable: true, description: '레거시 승인 문제 조회에서는 제출 전 해설을 숨기기 위해 항상 null. 일반 Stage 채점 응답에서 해설 제공',
+};
+module.exports.definition.components.schemas.Quiz.properties.conceptId = { type: 'string', format: 'uuid' };
+const legacyGenerate = module.exports.definition.paths['/api/v1/quizzes/generate'].get;
+legacyGenerate.description = '기존 승인(APPROVED) 문제 조회 경로입니다. Stage 응시와 연결되지 않습니다. explanation 필드는 유지하지만 값은 null이며, 정답 여부도 반환하지 않습니다. 진행·채점·보상은 일반 Stage 응시 API를 사용하세요.';
+legacyGenerate.responses[200].content['application/json'] = {
+  schema: { type: 'object', required: ['success', 'data'], properties: {
+    success: { type: 'boolean' }, data: { $ref: '#/components/schemas/Quiz' },
+  } },
+  example: { success: true, data: {
+    id: '123e4567-e89b-42d3-a456-426614174001', title: '기회비용은 무엇인가요?',
+    explanation: null, difficulty: 'BEGINNER', conceptId: '123e4567-e89b-42d3-a456-426614174010',
+    choices: [
+      { id: '123e4567-e89b-42d3-a456-426614174011', label: 'A', content: '선택지 A' },
+      { id: '123e4567-e89b-42d3-a456-426614174012', label: 'B', content: '선택지 B' },
+    ],
+  } },
+};
+submit.description = '진행 중인 본인 응시의 현재 문항만 제출할 수 있습니다. 정답일 때 HP가 1 감소하며 0이면 즉시 PASSED, 3문항 후 미통과면 FAILED입니다. 종료 후 새 제출은 409입니다. Idempotency-Key를 보냈다면 같은 키·문항·선택지의 재요청은 원래 채점 결과와 duplicate=true를 반환합니다. 같은 키를 다른 답안에 재사용하면 409입니다.';
+submit.parameters[1].schema.maxLength = 200;
+submit.requestBody.content['application/json'].schema.required = ['choiceId', 'attemptId'];
+submit.responses[201] = responseForSubmission();
+submit.responses[201].content['application/json'].example = {
+  success: true, data: {
+    attemptId: '123e4567-e89b-42d3-a456-426614174020',
+    quizId: '123e4567-e89b-42d3-a456-426614174001',
+    choiceId: '123e4567-e89b-42d3-a456-426614174012',
+    isCorrect: true, score: 100, explanation: '기회비용 해설',
+    hpBefore: 1, hpAfter: 0, submittedCount: 2, correctCount: 2,
+    status: 'PASSED', endReason: 'MONSTER_DEFEATED', rewardGranted: true,
+  },
+};
+submit.responses[401] = { description: '인증 실패' };
+submit.responses[404] = { description: '본인 응시를 찾을 수 없음' };
+submit.responses[503] = { description: 'Stage 보상 또는 문항 설정 오류' };
+
+function responseForSubmission() {
+  return { description: '채점 및 상태 저장', content: { 'application/json': { schema: {
+    type: 'object', required: ['success', 'data'], properties: {
+      success: { type: 'boolean' }, data: { type: 'object', required: ['attemptId', 'quizId', 'choiceId', 'isCorrect', 'hpBefore', 'hpAfter', 'submittedCount', 'correctCount', 'status'], properties: {
+        attemptId: { type: 'string', format: 'uuid' }, quizId: { type: 'string', format: 'uuid' },
+        choiceId: { type: 'string', format: 'uuid' }, isCorrect: { type: 'boolean' },
+        score: { type: 'integer' }, explanation: { type: 'string' },
+        hpBefore: { type: 'integer' }, hpAfter: { type: 'integer' },
+        submittedCount: { type: 'integer' }, correctCount: { type: 'integer' },
+        status: { type: 'string', enum: ['IN_PROGRESS', 'PASSED', 'FAILED'] },
+        endReason: { type: 'string', nullable: true }, rewardGranted: { type: 'boolean' },
+        duplicate: { type: 'boolean', description: '같은 Idempotency-Key의 재요청이면 true' },
+      } },
+    },
+  } } } };
+}
