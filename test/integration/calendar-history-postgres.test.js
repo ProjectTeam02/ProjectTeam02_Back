@@ -190,4 +190,241 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
       await admin.query('ALTER TABLE app.learning_attempts_test_unavailable RENAME TO learning_attempts');
     }
   });
+
+  // The calendar fixture owns topicNo 1; keep the Quiz seed's documented 1/2 slots free.
+  await db.getRepository(E.Topic).update({ topicId: topic.topicId }, { topicNo: 99 });
+  await require(root + '/database/dist/scripts/seed-minimal').seedMinimal();
+  const quizStage = await db.getRepository(E.Stage).findOneByOrFail({ stageCode: '1-1' });
+  const mappings = await db.getRepository(E.StageQuestion).find({
+    where: { stageId: quizStage.stageId }, order: { questionOrder: 'ASC' },
+  });
+  const answers = await Promise.all(mappings.map(async mapping => ({
+    questionId: mapping.questionId,
+    correct: await db.getRepository(E.QuestionChoice).findOneByOrFail({ questionId: mapping.questionId, isCorrect: true }),
+    wrong: await db.getRepository(E.QuestionChoice).findOneByOrFail({ questionId: mapping.questionId, isCorrect: false }),
+  })));
+  const quizUser = await db.getRepository(E.User).save({ nickname: 'quiz owner', email: 'quiz-owner@example.test' });
+  const quizSession = await db.getRepository(E.UserSession).save({ userId: quizUser.userId,
+    refreshTokenHash: crypto.randomBytes(32).toString('hex'), loginMethod: 'EMAIL',
+    expiresAt: new Date(Date.now() + 3600000) });
+  const quizToken = require(root + '/src/common/utils/token.util').issueAccessToken(quizUser, quizSession.sessionId);
+  const quizRequest = async (method, route, body, bearer = quizToken, extraHeaders = {}) => {
+    const response = await fetch(base + `/api/v1${route}`, { method,
+      headers: { authorization: `Bearer ${bearer}`, ...(body ? { 'content-type': 'application/json' } : {}), ...extraHeaders },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  const begin = () => quizRequest('POST', `/quizzes/stages/${quizStage.stageId}/attempts`);
+  const read = id => quizRequest('GET', `/quizzes/attempts/${id}`);
+  const submit = (id, index, correct) => quizRequest('POST', `/quizzes/${answers[index].questionId}/submit`,
+    { attemptId: id, choiceId: (correct ? answers[index].correct : answers[index].wrong).choiceId });
+
+  await t.test('normal Stage starts, resumes and hides answers before submission', async () => {
+    const concurrentStarts = await Promise.all([begin(), begin()]);
+    assert.deepEqual(concurrentStarts.map(row => row.status).sort(), [200, 201]);
+    assert.equal(concurrentStarts[0].body.data.attemptId, concurrentStarts[1].body.data.attemptId);
+    const started = concurrentStarts.find(row => row.status === 201);
+    assert.equal(started.status, 201);
+    assert.equal(started.body.data.hp, 2);
+    assert.equal(started.body.data.currentQuestion.id, answers[0].questionId);
+    assert.equal('explanation' in started.body.data.currentQuestion, false);
+    assert.equal('isCorrect' in started.body.data.currentQuestion.choices[0], false);
+    const resumed = await begin();
+    assert.equal(resumed.status, 200);
+    assert.equal(resumed.body.data.attemptId, started.body.data.attemptId);
+    assert.equal((await read(started.body.data.attemptId)).body.data.currentQuestion.id, answers[0].questionId);
+    assert.equal((await quizRequest('GET', `/quizzes/attempts/${started.body.data.attemptId}/result`)).status, 409);
+    assert.equal((await quizRequest('POST', `/quizzes/stages/${quizStage.stageId}/attempts`, null, '')).status, 401);
+    assert.equal((await quizRequest('POST', '/quizzes/stages/123e4567-e89b-42d3-a456-426614174099/attempts')).status, 404);
+  });
+
+  const first = (await begin()).body.data.attemptId;
+  await t.test('two correct answers immediately pass, grant once, and appear in history/calendar', async () => {
+    const keyedAnswer = (index, key, correct = true) => quizRequest('POST', `/quizzes/${answers[index].questionId}/submit`,
+      { attemptId: first, choiceId: (correct ? answers[index].correct : answers[index].wrong).choiceId },
+      quizToken, { 'Idempotency-Key': key });
+    const concurrentAnswers = await Promise.all([
+      keyedAnswer(0, 'quiz-answer-1'), keyedAnswer(0, 'quiz-answer-1'),
+    ]);
+    assert.deepEqual(concurrentAnswers.map(row => row.status), [201, 201]);
+    assert.deepEqual(concurrentAnswers.map(row => Boolean(row.body.data.duplicate)).sort(), [false, true]);
+    assert.equal(concurrentAnswers[0].body.data.hpAfter, 1);
+    const replay = await keyedAnswer(0, 'quiz-answer-1');
+    assert.equal(replay.status, 201);
+    assert.equal(replay.body.data.duplicate, true);
+    assert.equal(replay.body.data.hpAfter, 1);
+    assert.equal((await keyedAnswer(0, 'quiz-answer-1', false)).status, 409);
+    assert.equal((await keyedAnswer(1, 'quiz-answer-1')).status, 409);
+    assert.equal((await db.getRepository(E.QuestionSubmission).countBy({ attemptId: first })), 1);
+    assert.equal((await read(first)).body.data.currentQuestion.id, answers[1].questionId);
+    const completed = await keyedAnswer(1, 'quiz-answer-2');
+    assert.equal(completed.status, 201);
+    assert.equal(completed.body.data.hpBefore, 1);
+    assert.equal(completed.body.data.hpAfter, 0);
+    assert.equal(completed.body.data.status, 'PASSED');
+    const submittedQuestion = await db.getRepository(E.Question).findOneByOrFail({ questionId: answers[1].questionId });
+    assert.equal(completed.body.data.explanation, submittedQuestion.explanation);
+    assert.equal(completed.body.data.endReason, 'MONSTER_DEFEATED');
+    assert.equal(completed.body.data.rewardGranted, true);
+    const terminalReplay = await keyedAnswer(1, 'quiz-answer-2');
+    assert.equal(terminalReplay.status, 201);
+    assert.equal(terminalReplay.body.data.duplicate, true);
+    assert.equal(terminalReplay.body.data.status, 'PASSED');
+    assert.equal((await keyedAnswer(0, 'quiz-answer-1')).body.data.status, 'IN_PROGRESS');
+    assert.equal((await read(first)).body.data.currentQuestion, null);
+    assert.equal((await quizRequest('GET', `/quizzes/attempts/${first}/result`)).body.data.status, 'PASSED');
+    assert.equal((await submit(first, 2, true)).status, 409);
+    const stored = await db.getRepository(E.LearningAttempt).findOneByOrFail({ attemptId: first });
+    assert.ok(stored.endedAt && stored.resultSavedAt);
+    assert.equal(stored.isFirstPass, true);
+    assert.equal((await db.getRepository(E.ExpLedger).countBy({ userId: quizUser.userId })), 1);
+    assert.equal((await db.getRepository(E.CoinLedger).countBy({ userId: quizUser.userId })), 1);
+    const growth = await db.getRepository(E.UserGrowth).findOneByOrFail({ userId: quizUser.userId });
+    const wallet = await db.getRepository(E.UserWallet).findOneByOrFail({ userId: quizUser.userId });
+    assert.equal(growth.totalExp, quizStage.rewardTotalExp);
+    assert.equal(growth.economyExp, quizStage.rewardEconomyExp);
+    assert.equal(wallet.coinBalance, quizStage.rewardCoin);
+    const progress = await db.getRepository(E.UserStageProgress).findOneByOrFail({ userId: quizUser.userId, stageId: quizStage.stageId });
+    assert.equal(progress.progressStatus, 'PASSED');
+    assert.equal(progress.firstPassAttemptId, first);
+    const ownHistory = await quizRequest('GET', '/learning/history');
+    assert.equal(ownHistory.body.data.items[0].recordId, first);
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(stored.endedAt);
+    const ownDay = await quizRequest('GET', `/calendar/days/${date}`);
+    assert.equal(ownDay.body.data.learningRecords[0].recordId, first);
+    const ownMonth = await quizRequest('GET', `/calendar?month=${date.slice(0, 7)}`);
+    assert.equal(ownMonth.body.data.completedDayCount, 1);
+  });
+
+  await t.test('retry wrong/correct/wrong fails without changing rewards', async () => {
+    const retry = await begin();
+    assert.equal(retry.body.data.mode, 'RETRY');
+    const id = retry.body.data.attemptId;
+    const a = await submit(id, 0, false);
+    assert.equal(a.body.data.hpBefore, 2); assert.equal(a.body.data.hpAfter, 2);
+    assert.equal((await submit(id, 1, true)).body.data.hpAfter, 1);
+    const c = await submit(id, 2, false);
+    assert.equal(c.body.data.hpAfter, 1);
+    assert.equal(c.body.data.status, 'FAILED');
+    assert.equal(c.body.data.endReason, 'QUESTIONS_EXHAUSTED');
+    assert.equal((await db.getRepository(E.ExpLedger).countBy({ userId: quizUser.userId })), 1);
+    assert.equal((await db.getRepository(E.CoinLedger).countBy({ userId: quizUser.userId })), 1);
+  });
+
+  await t.test('retry wrong/correct/correct passes without a second reward', async () => {
+    const id = (await begin()).body.data.attemptId;
+    assert.equal((await submit(id, 0, false)).body.data.hpAfter, 2);
+    assert.equal((await submit(id, 1, true)).body.data.hpAfter, 1);
+    const result = await submit(id, 2, true);
+    assert.equal(result.body.data.hpAfter, 0);
+    assert.equal(result.body.data.status, 'PASSED');
+    assert.equal(result.body.data.rewardGranted, false);
+    assert.equal((await db.getRepository(E.ExpLedger).countBy({ userId: quizUser.userId })), 1);
+  });
+
+  await t.test('wrong answers never reduce HP; owner, choice and duplicate guards hold', async () => {
+    const id = (await begin()).body.data.attemptId;
+    const wrongChoice = answers[1].wrong.choiceId;
+    assert.equal((await quizRequest('POST', `/quizzes/${answers[1].questionId}/submit`,
+      { attemptId: id, choiceId: answers[1].correct.choiceId })).status, 409);
+    assert.equal((await quizRequest('POST', `/quizzes/${answers[0].questionId}/submit`, { attemptId: id, choiceId: wrongChoice })).status, 422);
+    assert.equal((await quizRequest('GET', `/quizzes/attempts/${id}`, null, token)).status, 404);
+    assert.equal((await quizRequest('POST', `/quizzes/${answers[0].questionId}/submit`, { attemptId: id, choiceId: answers[0].correct.choiceId }, token)).status, 404);
+    assert.equal((await submit(id, 0, false)).body.data.hpAfter, 2);
+    assert.equal((await submit(id, 0, false)).status, 409);
+    const concurrent = await Promise.all([submit(id, 1, false), submit(id, 1, false)]);
+    assert.deepEqual(concurrent.map(row => row.status).sort(), [201, 409]);
+    const last = await submit(id, 2, false);
+    assert.equal(last.body.data.status, 'FAILED');
+    assert.equal(last.body.data.hpAfter, 2);
+    assert.equal((await db.getRepository(E.QuestionSubmission).countBy({ attemptId: id })), 3);
+  });
+
+  await t.test('reward configuration failure rolls back terminal answer and state', async () => {
+    const otherQuizUser = await db.getRepository(E.User).save({ nickname: 'rollback user', email: 'rollback-user@example.test' });
+    const otherSession = await db.getRepository(E.UserSession).save({ userId: otherQuizUser.userId,
+      refreshTokenHash: crypto.randomBytes(32).toString('hex'), loginMethod: 'EMAIL',
+      expiresAt: new Date(Date.now() + 3600000) });
+    const otherToken = require(root + '/src/common/utils/token.util').issueAccessToken(otherQuizUser, otherSession.sessionId);
+    const started = await quizRequest('POST', `/quizzes/stages/${quizStage.stageId}/attempts`, null, otherToken);
+    const id = started.body.data.attemptId;
+    const answer = (index, correct) => quizRequest('POST', `/quizzes/${answers[index].questionId}/submit`,
+      { attemptId: id, choiceId: (correct ? answers[index].correct : answers[index].wrong).choiceId }, otherToken);
+    assert.equal((await answer(0, true)).status, 201);
+    await db.getRepository(E.Stage).update({ stageId: quizStage.stageId }, { rewardCoin: null });
+    try {
+      assert.equal((await answer(1, true)).status, 503);
+      const attempt = await db.getRepository(E.LearningAttempt).findOneByOrFail({ attemptId: id });
+      assert.equal(attempt.status, 'IN_PROGRESS');
+      assert.equal(attempt.submittedCount, 1);
+      assert.equal((await db.getRepository(E.QuestionSubmission).countBy({ attemptId: id })), 1);
+      assert.equal((await db.getRepository(E.ExpLedger).countBy({ userId: otherQuizUser.userId })), 0);
+    } finally {
+      await db.getRepository(E.Stage).update({ stageId: quizStage.stageId }, { rewardCoin: quizStage.rewardCoin });
+    }
+  });
+
+  await t.test('a prior PASSED attempt without progress cannot earn first-clear rewards again', async () => {
+    const pastUser = await db.getRepository(E.User).save({ nickname: 'past passer', email: 'past-passer@example.test' });
+    const pastSession = await db.getRepository(E.UserSession).save({ userId: pastUser.userId,
+      refreshTokenHash: crypto.randomBytes(32).toString('hex'), loginMethod: 'EMAIL',
+      expiresAt: new Date(Date.now() + 3600000) });
+    const pastToken = require(root + '/src/common/utils/token.util').issueAccessToken(pastUser, pastSession.sessionId);
+    const old = await db.getRepository(E.LearningAttempt).save({
+      userId: pastUser.userId, stageId: quizStage.stageId, attemptNo: 1,
+      attemptType: 'PLAY', mode: 'START', status: 'PASSED', endReason: 'MONSTER_DEFEATED',
+      maxQuestionCount: 3, requiredCorrectCount: 2, initialHp: 2, finalHp: 0,
+      submittedCount: 2, correctCount: 2, endedAt: new Date(),
+    });
+    const retry = await quizRequest('POST', `/quizzes/stages/${quizStage.stageId}/attempts`, null, pastToken);
+    assert.equal(retry.status, 201);
+    assert.equal(retry.body.data.mode, 'RETRY');
+    const id = retry.body.data.attemptId;
+    for (const index of [0, 1]) {
+      const response = await quizRequest('POST', `/quizzes/${answers[index].questionId}/submit`,
+        { attemptId: id, choiceId: answers[index].correct.choiceId }, pastToken);
+      assert.equal(response.status, 201);
+      if (index === 1) assert.equal(response.body.data.rewardGranted, false);
+    }
+    assert.equal((await db.getRepository(E.ExpLedger).countBy({ userId: pastUser.userId })), 0);
+    assert.equal((await db.getRepository(E.CoinLedger).countBy({ userId: pastUser.userId })), 0);
+    const progress = await db.getRepository(E.UserStageProgress).findOneByOrFail({ userId: pastUser.userId, stageId: quizStage.stageId });
+    assert.equal(progress.firstPassAttemptId, old.attemptId);
+  });
+
+  await t.test('Stage entry rejects locked, unprepared and Boss stages', async () => {
+    const next = await db.getRepository(E.Stage).save({
+      topicId: quizStage.topicId, stageCode: 'IT-LOCKED', stageNo: 2,
+      stageType: 'NORMAL', title: '다음 일반 Stage', status: 'PUBLISHED',
+      maxQuestionCount: 3, requiredCorrectCount: 2, initialMonsterHp: 2,
+      rewardTotalExp: 10, rewardEconomyExp: 10, rewardCoin: 10,
+    });
+    assert.equal((await quizRequest('POST', `/quizzes/stages/${next.stageId}/attempts`, null, token)).status, 403);
+    assert.equal((await quizRequest('POST', `/quizzes/stages/${next.stageId}/attempts`)).status, 503);
+    const boss = await db.getRepository(E.Stage).save({
+      topicId: quizStage.topicId, stageCode: 'IT-BOSS', stageNo: 3,
+      stageType: 'BOSS', title: '보스 Stage', status: 'PUBLISHED',
+      maxQuestionCount: 5, requiredCorrectCount: 4, initialMonsterHp: 4,
+    });
+    assert.equal((await quizRequest('POST', `/quizzes/stages/${boss.stageId}/attempts`)).status, 422);
+  });
+
+  await t.test('legacy approved-question GET keeps the frontend fields and hides the pre-answer explanation', async () => {
+    const questionRepo = db.getRepository(E.Question);
+    const questionId = answers[0].questionId;
+    const question = await questionRepo.findOneByOrFail({ questionId });
+    await questionRepo.update({ questionId }, { status: 'APPROVED' });
+    try {
+      const generated = await quizRequest('GET', `/quizzes/generate?conceptId=${question.conceptId}`);
+      assert.equal(generated.status, 200);
+      assert.equal(generated.body.data.id, questionId);
+      assert.equal(generated.body.data.title, question.questionText);
+      assert.equal(generated.body.data.explanation, null);
+      assert.equal(generated.body.data.choices.length, 4);
+      assert.equal('isCorrect' in generated.body.data.choices[0], false);
+    } finally {
+      await questionRepo.update({ questionId }, { status: question.status });
+    }
+  });
 });
