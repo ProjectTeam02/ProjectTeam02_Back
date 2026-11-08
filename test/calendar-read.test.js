@@ -138,27 +138,51 @@ test('daily returns multiple completed records, planned schedules and existing h
   assert.equal(record.completedAt, a.endedAt.toISOString());
   assert.equal(record.elapsedSeconds, (a.endedAt - a.startedAt) / 1000);
   assert.equal(result.body.data.schedules[0].goal, '목표');
+  assert.equal('emptyMessage' in result.body.data, false);
 });
 test('empty day and empty month return arrays and zero counters without generating records', async () => {
   const result = await get('/days/2026-11-02');
-  assert.deepEqual(result.body.data, { date: '2026-11-02', timeZone: 'Asia/Seoul', learningRecords: [], schedules: [] });
-  const month = await monthly('2026-11');
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.data, { date: '2026-11-02', timeZone: 'Asia/Seoul', learningRecords: [], schedules: [],
+    emptyMessage: '해당 날짜에 등록된 학습 일정이나 완료한 학습이 없습니다.' });
+  const monthlyResponse = await get('?month=2026-11');
+  assert.equal(monthlyResponse.status, 200);
+  const month = monthlyResponse.body.data;
   assert.equal(month.days.length, 30); assert.equal(month.completedDayCount, 0); assert.equal(month.streakDays, 0);
   assert.ok(month.days.every(row => row.completedCount === 0 && row.scheduledCount === 0));
+  assert.equal(month.emptyMessage, '아직 등록된 학습 일정이나 완료한 학습이 없습니다.');
 });
 test('deleted and DONE plans are excluded while learning completion remains independent', async () => {
   addAttempt('2026-11-02T00:00:00Z');
   addPlan({ deletedAt: new Date() }); addPlan({ status: 'DONE', completedAt: new Date() }); addPlan();
   const day = (await get('/days/2026-11-02')).body.data;
   assert.equal(day.learningRecords.length, 1); assert.equal(day.schedules.length, 1);
+  assert.equal('emptyMessage' in day, false);
   const month = await monthly('2026-11');
   assert.equal(month.days[1].completedCount, 1); assert.equal(month.days[1].scheduledCount, 1);
+  assert.equal('emptyMessage' in month, false);
 });
 test('PASSED without endedAt, failed and in-progress attempts do not count as completion', async () => {
   addAttempt(null); addAttempt('2026-11-02T00:00:00Z', { status: 'FAILED' });
   addAttempt('2026-11-02T00:00:00Z', { status: 'IN_PROGRESS' }); addPlan({ status: 'DONE' });
   assert.equal((await get('/days/2026-11-02')).body.data.learningRecords.length, 0);
-  assert.equal((await monthly('2026-11')).completedDayCount, 0);
+  assert.equal((await get('/days/2026-11-02')).body.data.emptyMessage, '해당 날짜에 등록된 학습 일정이나 완료한 학습이 없습니다.');
+  const month = await monthly('2026-11');
+  assert.equal(month.completedDayCount, 0);
+  assert.equal(month.emptyMessage, '아직 등록된 학습 일정이나 완료한 학습이 없습니다.');
+});
+test('either planned schedules or completed learning suppresses empty messages', async () => {
+  addPlan();
+  let day = (await get('/days/2026-11-02')).body.data;
+  let month = (await get('?month=2026-11')).body.data;
+  assert.equal('emptyMessage' in day, false);
+  assert.equal('emptyMessage' in month, false);
+  db.plans.length = 0;
+  addAttempt('2026-11-02T00:00:00Z');
+  day = (await get('/days/2026-11-02')).body.data;
+  month = (await get('?month=2026-11')).body.data;
+  assert.equal('emptyMessage' in day, false);
+  assert.equal('emptyMessage' in month, false);
 });
 test('month counts unique days and keeps schedule and completion indicators separate', async () => {
   addAttempt('2026-11-02T00:00:00Z'); addAttempt('2026-11-02T01:00:00Z'); addAttempt('2026-11-03T00:00:00Z');
@@ -174,6 +198,7 @@ test('streak accepts today or yesterday, deduplicates and crosses month boundary
   let data = await monthly('2025-01');
   assert.equal(data.streakDays, 2); assert.equal(data.streakAsOfDate, '2026-11-02');
   assert.equal(data.streakPolicy, 'TODAY_OR_YESTERDAY');
+  assert.equal(data.emptyMessage, '아직 등록된 학습 일정이나 완료한 학습이 없습니다.');
   addAttempt('2026-11-01T15:00:00Z'); addAttempt('2026-11-01T16:00:00Z');
   data = await monthly('2026-11'); assert.equal(data.streakDays, 3);
 });
@@ -207,10 +232,23 @@ test('invalid dates/months and owner override queries are rejected', async () =>
 });
 test('owner filtering and JWT authentication protect both endpoints', async () => {
   addAttempt('2026-11-02T00:00:00Z', { userId: other }); addPlan({ userId: other });
-  assert.equal((await get('/days/2026-11-02')).body.data.learningRecords.length, 0);
-  assert.equal((await get('?month=2026-11')).body.data.completedDayCount, 0);
+  assert.equal((await get('/days/2026-11-02')).body.data.emptyMessage, '해당 날짜에 등록된 학습 일정이나 완료한 학습이 없습니다.');
+  assert.equal((await get('?month=2026-11')).body.data.emptyMessage, '아직 등록된 학습 일정이나 완료한 학습이 없습니다.');
   for (const path of ['/days/2026-11-02', '?month=2026-11']) {
     assert.equal((await get(path, '')).status, 401); assert.equal((await get(path, 'invalid')).status, 401);
+  }
+});
+test('database failures remain 503 errors instead of empty results', async () => {
+  AppDataSource.transaction.mock.mockImplementation(async () => {
+    const error = new Error('query failed');
+    error.name = 'QueryFailedError';
+    throw error;
+  });
+  for (const path of ['/days/2026-11-02', '?month=2026-11']) {
+    const result = await get(path);
+    assert.equal(result.status, 503);
+    assert.equal(result.body.success, false);
+    assert.equal('emptyMessage' in result.body, false);
   }
 });
 test('month uses aggregate queries without joins or loading full history; GET does not change data', async () => {
@@ -233,4 +271,10 @@ test('Swagger exposes both authenticated GETs without changing existing mutation
   assert.ok(spec.paths['/api/v1/learning/history'].get);
   const month = (await get('?month=2026-11')).body.data;
   for (const key of spec.components.schemas.CalendarMonthResponse.properties.data.required) assert.ok(key in month);
+  for (const path of ['/api/v1/calendar', '/api/v1/calendar/days/{date}']) {
+    const examples = spec.paths[path].get.responses[200].content['application/json'].examples;
+    assert.ok(examples.populated.value.data);
+    assert.ok(examples.empty.value.data.emptyMessage);
+    assert.equal('emptyMessage' in examples.populated.value.data, false);
+  }
 });
