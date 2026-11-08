@@ -22,4 +22,14 @@ function submit({ body, params, headers }) {
   return { params: { id: quizId }, body: { choiceId, attemptId, idempotencyKey } };
 }
 
-module.exports = { submit };
+function start({ params, body = {} }) {
+  if (body && Object.keys(body).length) throw AppError.validation('응시 시작 본문은 비어 있어야 합니다.');
+  return { params: { stageId: uuid(params.stageId, 'stageId') } };
+}
+
+function attempt({ params, query = {} }) {
+  if (Object.keys(query).length) throw AppError.validation('지원하지 않는 조회 조건입니다.');
+  return { params: { attemptId: uuid(params.attemptId, 'attemptId') } };
+}
+
+module.exports = { submit, start, attempt };
