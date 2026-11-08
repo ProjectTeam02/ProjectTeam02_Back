@@ -22,6 +22,7 @@ module.exports = function service(dataSource = AppDataSource, { now = () => new 
             stage: plan.stage ? { stageId: plan.stage.stageId, stageCode: plan.stage.stageCode, title: plan.stage.title, stageType: plan.stage.stageType } : null,
             concept: plan.concept ? { conceptId: plan.concept.conceptId, title: plan.concept.title, version: plan.concept.version } : null,
           })),
+          ...(!attempts.length && !plans.length ? { emptyMessage: '해당 날짜에 등록된 학습 일정이나 완료한 학습이 없습니다.' } : {}),
         };
       });
     },
@@ -38,6 +39,7 @@ module.exports = function service(dataSource = AppDataSource, { now = () => new 
           streakDays, streakAsOfDate: today, streakPolicy: 'TODAY_OR_YESTERDAY',
           days: range.dates.map(date => ({ date, completedCount: complete.get(date) || 0, scheduledCount: planned.get(date) || 0,
             hasCompletedLearning: complete.has(date), hasScheduledLearning: planned.has(date) })),
+          ...(!complete.size && !planned.size ? { emptyMessage: '아직 등록된 학습 일정이나 완료한 학습이 없습니다.' } : {}),
         };
       });
     },
