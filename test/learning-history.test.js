@@ -142,6 +142,7 @@ test('history lists only owner LearningAttempts, without ReviewAttempt or progre
   assert.equal(result.body.data.items[0].topic.title, '경제 기초');
   assert.equal(result.body.data.items[0].stage.stageCode, '1-1');
   assert.equal(result.body.data.items[0].learningDate, '2026-11-02');
+  assert.equal('emptyMessage' in result.body.data, false);
   assert.ok(db.queries.every(query => ![ReviewAttempt, UserStageProgress].includes(query.entity)));
   const countQuery = db.queries.find(query => query.entity === QuestionSubmission);
   assert.deepEqual(countQuery.options.where.attemptId.value, [own.attemptId]);
@@ -151,7 +152,8 @@ test('no records returns a normal empty page and does not query unrelated submis
   attempt({ userId: ids.other });
   const result = await get();
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.data, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 });
+  assert.deepEqual(result.body.data, { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0,
+    emptyMessage: '아직 학습 기록이 없습니다.' });
   assert.equal(db.queries.filter(query => query.entity === QuestionSubmission).length, 0);
 });
 
@@ -168,6 +170,7 @@ test('history is sorted by start time then ID descending with stable pagination'
   const beyond = await get('?page=3&pageSize=2');
   assert.deepEqual(beyond.body.data.items, []);
   assert.equal(beyond.body.data.total, 3);
+  assert.equal('emptyMessage' in beyond.body.data, false);
 });
 
 test('stored statuses distinguish ongoing, passed, failed and abandoned attempts', async () => {
@@ -178,6 +181,7 @@ test('stored statuses distinguish ongoing, passed, failed and abandoned attempts
   assert.equal((await get()).body.data.total, 4);
   const filtered = await get('?status=IN_PROGRESS');
   assert.equal(filtered.body.data.total, 1);
+  assert.equal('emptyMessage' in filtered.body.data, false);
   const data = filtered.body.data.items[0];
   assert.equal(data.recordId, ongoing.attemptId);
   assert.equal(data.isFinished, false);
@@ -186,6 +190,29 @@ test('stored statuses distinguish ongoing, passed, failed and abandoned attempts
   const failed = (await get('?status=FAILED')).body.data.items[0];
   assert.equal(failed.isFinished, true);
   assert.equal(failed.completedAt, null);
+});
+test('filtered empty history has a message while an out-of-range page does not', async () => {
+  attempt({ status: 'PASSED' });
+  const filtered = await get('?status=FAILED&page=2&pageSize=1');
+  assert.equal(filtered.status, 200);
+  assert.deepEqual(filtered.body.data, { items: [], page: 2, pageSize: 1, total: 0, totalPages: 0,
+    emptyMessage: '아직 학습 기록이 없습니다.' });
+  const beyond = await get('?page=2&pageSize=1');
+  assert.equal(beyond.status, 200);
+  assert.equal(beyond.body.data.total, 1);
+  assert.deepEqual(beyond.body.data.items, []);
+  assert.equal('emptyMessage' in beyond.body.data, false);
+});
+test('history database failure remains a 503 error', async () => {
+  AppDataSource.transaction.mock.mockImplementation(async () => {
+    const error = new Error('query failed');
+    error.name = 'QueryFailedError';
+    throw error;
+  });
+  const result = await get();
+  assert.equal(result.status, 503);
+  assert.equal(result.body.success, false);
+  assert.equal('emptyMessage' in result.body, false);
 });
 
 test('detail uses stored submissions and exact historical question/choice/concept IDs', async () => {
@@ -315,4 +342,8 @@ test('Swagger and actual response fields agree and existing calendar mutations r
   const data = (await detail(row)).body.data;
   for (const key of spec.components.schemas.LearningHistorySummary.required) assert.ok(key in data, key);
   for (const key of spec.components.schemas.LearningHistorySubmission.required) assert.ok(key in data.submissions[0], key);
+  const examples = list.responses[200].content['application/json'].examples;
+  assert.ok(examples.populated.value.data.items.length);
+  assert.equal('emptyMessage' in examples.populated.value.data, false);
+  assert.equal(examples.empty.value.data.emptyMessage, '아직 학습 기록이 없습니다.');
 });
