@@ -1,7 +1,6 @@
 const crypto = require('node:crypto');
 const AppError = require('../../common/errors/AppError');
 const env = require('../../config/env');
-const authSchema = require('./auth.schema');
 const { MemoryOAuthStore } = require('./kakao-oauth.store');
 const kakaoRequest = require('./dto/kakaoRequest.dto');
 
@@ -10,10 +9,14 @@ const equal = (a, b) => typeof a === 'string' && typeof b === 'string'
   && Buffer.byteLength(a) === Buffer.byteLength(b) && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 
-function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
-  function configuration() {
-    // A shared persistent adapter has not been approved/provisioned. Production fails closed.
-    if (!['development', 'test'].includes(config.nodeEnv) || config.kakaoOauthStoreMode !== 'memory') {
+function service(auth, { config = env, store: memoryStore = new MemoryOAuthStore(), postgresStore } = {}) {
+  function configuredStore() {
+    const local = ['development', 'test'].includes(config.nodeEnv);
+    const mode = config.kakaoOauthStoreMode;
+    let store;
+    if (mode === 'memory' && local) store = memoryStore;
+    if (mode === 'postgres' && (local || config.nodeEnv === 'production')) store = postgresStore;
+    if (!store) {
       throw AppError.unavailable('OAuth 상태 저장소가 준비되지 않았습니다.');
     }
     if (![config.kakaoRestApiKey, config.kakaoClientSecret].every(v => typeof v === 'string' && v.trim())) {
@@ -21,7 +24,7 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
     }
     const callback = config.kakaoOauthCallbackUrl;
     // Reuse exact-match HTTP(S) allow-list policy. No client-supplied redirect target.
-    authSchema.kakao({ body: { authorizationCode: 'configuration-check', redirectUri: callback } });
+    kakaoRequest.parseLegacyLogin({ authorizationCode: 'configuration-check', redirectUri: callback }, config.kakaoAllowedRedirectUris);
     let url;
     let deepLink;
     try { url = new URL(callback); deepLink = new URL(config.kakaoAppDeepLink); } catch (_error) {
@@ -36,6 +39,7 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
     for (const [ttl, max] of [[config.kakaoOauthStateTtlSeconds, 600], [config.kakaoOauthExchangeTtlSeconds, 120]]) {
       if (!Number.isInteger(ttl) || ttl < 1 || ttl > max) throw AppError.unavailable('OAuth 유효기간 설정이 올바르지 않습니다.');
     }
+    return store;
   }
 
   function appUrl(attempt, params) {
@@ -46,14 +50,14 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
   }
 
   return {
-    start(body) {
-      configuration();
+    async start(body) {
+      const store = configuredStore();
       const { codeChallenge } = kakaoRequest.parseStart(body);
       const attempt = {
         loginAttemptId: crypto.randomUUID(), challenge: codeChallenge,
         redirectUri: config.kakaoOauthCallbackUrl, deepLink: config.kakaoAppDeepLink,
       };
-      const state = store.put('state', attempt, config.kakaoOauthStateTtlSeconds);
+      const state = await store.put('state', attempt, config.kakaoOauthStateTtlSeconds);
       const url = new URL('https://kauth.kakao.com/oauth/authorize');
       url.search = new URLSearchParams({ response_type: 'code', client_id: config.kakaoRestApiKey,
         redirect_uri: attempt.redirectUri, state }).toString();
@@ -61,12 +65,12 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
     },
 
     async callback(query) {
-      configuration();
+      const store = configuredStore();
       if (!object(query) || !kakaoRequest.isOAuthState(query.state)) {
         throw AppError.validation('유효한 OAuth state가 필요합니다.');
       }
       // Consume before network I/O so concurrent/replayed callbacks never exchange the code twice.
-      const attempt = store.consume('state', query.state);
+      const attempt = await store.consume('state', query.state);
       if (!attempt) throw AppError.validation('OAuth state가 유효하지 않거나 만료되었습니다.');
       if (attempt.deepLink !== config.kakaoAppDeepLink || attempt.redirectUri !== config.kakaoOauthCallbackUrl) {
         throw AppError.validation('OAuth 설정이 변경되었습니다. 로그인을 다시 시작하세요.');
@@ -77,20 +81,21 @@ function service(auth, { config = env, store = new MemoryOAuthStore() } = {}) {
       if (typeof query.code !== 'string' || !query.code.trim() || query.code.length > 4096) {
         throw AppError.validation('카카오 인가 코드가 필요합니다.');
       }
+      let identity;
       try {
-        const identity = await auth.prepareKakaoLogin({ authorizationCode: query.code, redirectUri: attempt.redirectUri });
-        const loginCode = store.put('exchange', { ...attempt, ...identity }, config.kakaoOauthExchangeTtlSeconds);
-        return appUrl(attempt, { loginCode });
+        identity = await auth.prepareKakaoLogin({ authorizationCode: query.code, redirectUri: attempt.redirectUri });
       } catch (_error) {
         // Never reflect provider/DB messages, credentials, codes or personal data into URLs.
         return appUrl(attempt, { error: 'login_failed' });
       }
+      const loginCode = await store.put('exchange', { ...attempt, ...identity }, config.kakaoOauthExchangeTtlSeconds);
+      return appUrl(attempt, { loginCode });
     },
 
     async exchange(body) {
-      configuration();
+      const store = configuredStore();
       const { loginCode, codeVerifier, loginAttemptId } = kakaoRequest.parseExchange(body);
-      const identity = store.consume('exchange', loginCode, entry =>
+      const identity = await store.consume('exchange', loginCode, entry =>
         equal(entry.challenge, challengeFor(codeVerifier)) && equal(entry.loginAttemptId, loginAttemptId));
       if (!identity) throw AppError.unauthorized('로그인 교환 정보가 유효하지 않거나 만료되었습니다.');
       // A failed DB/session issuance burns the code. Restart login; never retry consumed credentials.

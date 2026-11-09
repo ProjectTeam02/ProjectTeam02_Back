@@ -1,10 +1,10 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const app = require('../src/app');
+const listenTestServer = require('./helpers/listen-test-server');
 
 async function withServer(fn) {
-  const server = app.listen(0);
-  await new Promise((resolve) => server.once('listening', resolve));
+  const server = await listenTestServer(app);
   const { port } = server.address();
   try {
     return await fn(`http://127.0.0.1:${port}`);
