@@ -10,7 +10,7 @@
  *   reminderEnabled boolean   기존 필드
  *   reminderTime    string | null  'HH:MM:SS' (설정 API 추가 전까지 null)
  *   timezone        string    기본 'Asia/Seoul'
- *   dailyGoalCount  number | null  하루 목표(피그마 20번), 기본값 협의 전까지 null
+ *   dailyGoalCount  number | null  주간 목표 횟수 (DB rev.8: user_settings.goal_count, goal_period = WEEKLY). 미설정이면 null
  *   createdAt, updatedAt   ISO 시각 문자열
  */
 const AppError = require('../../../common/errors/AppError');
@@ -28,7 +28,7 @@ function response(setting) {
     reminderEnabled: Boolean(setting.reminderEnabled),
     reminderTime: setting.reminderTime ?? null,
     timezone: setting.timezone ?? 'Asia/Seoul',
-    dailyGoalCount: setting.dailyGoalCount ?? null,
+    dailyGoalCount: setting.goalCount ?? null,
     createdAt: setting.createdAt ?? null,
     updatedAt: setting.updatedAt ?? null,
   };

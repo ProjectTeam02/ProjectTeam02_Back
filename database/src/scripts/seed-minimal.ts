@@ -1,11 +1,11 @@
-// 검증용 최소 시드 (v3 rev.5)
-// 주제 2개(선수관계 1→2), Stage 1-1, 개념 1개, 문항 3개(4지선다), 직업 3개,
-// 기본 코스튬 2개(상의·하의) + 판매 코스튬 1개(상의), 레벨 기준표, 현재 약관 4종
+// 검증용 최소 시드 (v3 rev.8)
+// 주제 2개(선수관계 1→2), Stage 1-1, 개념 1개(학습 카드 3장, 용어 2개), 문항 3개(4지선다), 직업 3개,
+// 기본 코스튬 2개(상의·하의) + 판매 코스튬 1개(상의), 레벨 기준표, 현재 약관 4종, 배지 1개
 // 여러 번 실행해도 같은 결과가 되도록 topic_code 기준으로 이미 있으면 건너뜀
 import { AppDataSource } from '../data-source';
 import {
   Topic, TopicPrerequisite, Stage, Concept, ConceptSection, StageConcept, Question, QuestionChoice, StageQuestion,
-  CharacterClass, Costume, LevelThreshold, Terms,
+  CharacterClass, Costume, LevelThreshold, Terms, GlossaryTerm, ConceptTerm, Badge, CardTone,
   PublishStatus, StageType, ConceptStatus, SectionType, GeneratedBy, QuestionStatus, ClassCode, CostumeCategory,
   LevelScope, TermsType,
 } from '../entities';
@@ -33,6 +33,21 @@ export async function seedMinimal() {
       conceptId: concept.conceptId, pageNo: 1, sortOrder: 1, sectionType: SectionType.Definition,
       title: '선택에는 기회비용이 있어요', body: '어떤 선택 때문에 포기한 대안 중 가장 큰 가치를 기회비용이라고 해요.',
     });
+    await tx.save(ConceptSection, {
+      conceptId: concept.conceptId, pageNo: 1, sortOrder: 2, sectionType: SectionType.Example,
+      title: '생활 속 예시', body: '만 원으로 영화를 보면, 같은 돈으로 먹을 수 있었던 치킨이 기회비용이에요.', cardTone: CardTone.Example,
+    });
+    await tx.save(ConceptSection, {
+      conceptId: concept.conceptId, pageNo: 1, sortOrder: 3, sectionType: SectionType.Remember,
+      title: '기억해요', body: '선택 → 포기한 것 중 가장 큰 가치 = 기회비용', cardTone: CardTone.Info,
+    });
+    for (const [i, [termCode, term, definition]] of ([
+      ['TERM_OPPORTUNITY_COST', '기회비용', '선택 때문에 포기한 대안 중 가장 큰 가치'],
+      ['TERM_TRADE_OFF', '트레이드오프', '하나를 얻으려면 다른 하나를 포기해야 하는 관계'],
+    ] as const).entries()) {
+      const g = await tx.save(GlossaryTerm, { termCode, term, definition });
+      await tx.save(ConceptTerm, { conceptCode: concept.conceptCode, termId: g.termId, displayOrder: i + 1 });
+    }
     await tx.save(StageConcept, { stageId: stage.stageId, conceptId: concept.conceptId });
 
     for (let i = 1; i <= 3; i++) {
@@ -67,6 +82,8 @@ export async function seedMinimal() {
     ] as const) {
       await tx.save(Terms, { termsType, version: 1, title, content: `${title} 본문 (검증용)`, isRequired, effectiveAt: now });
     }
+    // 배지 조건은 미정 → 이름만 있는 예시 1개
+    await tx.save(Badge, { badgeCode: 'FIRST_CLEAR', name: '첫 클리어', description: '처음으로 던전을 클리어했어요', sortOrder: 1 });
     return { created: true };
   });
 }

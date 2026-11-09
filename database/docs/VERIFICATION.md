@@ -94,3 +94,20 @@ rev.5 DBML로 만든 SQL(`leren_v3_schema.sql`)의 DB와 엔티티 마이그레�
 | ai 스키마 테스트 / 연동 테스트 | 8/8 / 19/19 PASS |
 | AI 레포 코드 실행 | `RAGDocumentRepository` 저장·재적재·설정 불일치 거부 통과, LlamaIndex `PGVectorStore`가 ai_user로 `ai.data_projectteam02` 생성·필터 검색 통과 |
 | `sql/ai/vector_indexes.sql` | HNSW 1개 + metadata 6개 생성, 재실행 안전, 테이블 없으면 중단 |
+
+## 8. rev.8 변경 검증 (2026-11-08, 피그마 화면 검토 반영)
+
+환경: 로컬 PostgreSQL 16 + pgvector, 운영과 같은 계정 구조.
+
+| 항목 | 결과 |
+|---|---|
+| 새 마이그레이션 `GlossaryBadgeGoal` (빈 DB, Init → rev.6 → rev.7 → rev.8) | 통과, `db:check` 차이 없음, 엔티티 46개 (app 테이블 46 + migrations), Enum 타입 53개 |
+| 기존 DB(rev.7 + `daily_goal_count` = 5인 행)에 적용 | 통과. `goal_count` = 5, `goal_period` = WEEKLY로 값 보존 (자동 생성본의 DROP 후 ADD를 RENAME으로 수정) |
+| `page_no`·`sort_order` < 1인 기존 행 | 안내 메시지와 함께 중단 |
+| 되돌리기 → 다시 실행 | 통과 (되돌리면 `daily_goal_count` 값 복원) |
+| DBML 파싱 (`@dbml/core` 11, dbmlv2) | 통과, 테이블 49개 (app 46 + ai 3) |
+| SQL 제약 테스트 (app_user) | **86/86 PASS** (추가 20개: 용어 저장·코드 중복·빈 용어, 개념–용어 연결·중복·없는 용어, 학습 키워드 수 집계, 배지 저장·코드 중복·조건 값 0, 배지 획득·재지급 거부·개수 집계, 목표 설정·WEEKLY 기본값·0 거부·DAILY 거부, 카드 저장·페이지 0·순서 0 거부) |
+| ai 스키마 테스트 / ai RAG 테이블 테스트 | 8/8 / 12/12 PASS |
+| 연동 테스트 (`npm run db:test`) | **21/21 PASS** (추가 2개: 던전 학습 화면 조회 = 개념 → 카드 → 용어 수, 배지 1회 지급 + 주 단위 목표) |
+
+백엔드 레포 영향: `user_settings.daily_goal_count` 이름 변경으로 `dailyGoalCount`를 쓰는 3곳 수정 필요 — `src/modules/notifications/dto/notificationSetting.dto.js`, `src/config/swagger.config.js`, `test/auth-dto.test.js`.
