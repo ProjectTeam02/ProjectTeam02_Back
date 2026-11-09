@@ -77,8 +77,8 @@ test('notification DTO validates learningOn and returns fixed fields only', () =
   assert.deepEqual(notificationSetting.parse({ learningOn: false }), { learningOn: false });
   assert.throws(() => notificationSetting.parse({ learningOn: 'true' }), isValidation);
   assert.throws(() => notificationSetting.parse(undefined), isValidation);
-  const data = notificationSetting.response({ userId: 'u1', reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', dailyGoalCount: null, createdAt: 'c', updatedAt: 'u', futureColumn: 'x' });
-  assert.deepEqual(data, { userId: 'u1', learningOn: true, reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', dailyGoalCount: null, createdAt: 'c', updatedAt: 'u' });
+  const data = notificationSetting.response({ userId: 'u1', reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', goalCount: 3, createdAt: 'c', updatedAt: 'u', futureColumn: 'x' });
+  assert.deepEqual(data, { userId: 'u1', learningOn: true, reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', dailyGoalCount: 3, createdAt: 'c', updatedAt: 'u' });
 });
 
 test.describe('auth HTTP responses use the DTO shape', () => {
