@@ -1,11 +1,11 @@
-# 엔티티 목록 (v3 rev.7)
+# 엔티티 목록 (v3 rev.8)
 
-`src/entities` 아래 42개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml`(rev.7) 1~8절(app 스키마)과 같은 DB를 만듭니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`로 만듭니다.
+`src/entities` 아래 46개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml`(rev.8) 1~8절(app 스키마)과 같은 DB를 만듭니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`로 만듭니다.
 
 - 클래스·파일 이름: 테이블 이름의 단수형 PascalCase / kebab-case (`user_costumes` → `UserCostume`, `user-costumes.entity.ts`)
 - 속성 이름: 컬럼 이름의 camelCase = API 필드 이름 (`item_id` → `itemId`, `submission_id` → `submissionId`)
 - FK마다 `xxxId` 컬럼 속성과 `xxx` 관계 속성을 함께 둡니다. 관계는 소유 쪽(ManyToOne·OneToOne)만 정의했습니다.
-- Enum은 `common/enums.ts` 한 파일 (50개 TS enum = DB 타입 52개, 값이 같은 2쌍은 공유)
+- Enum은 `common/enums.ts` 한 파일 (51개 TS enum = DB 타입 53개, 값이 같은 2쌍은 공유)
 
 ## 계정·인증·약관 (`account/`)
 
@@ -44,6 +44,8 @@
 | `questions` | `Question` | `supersedesQuestion` → Question<br>`concept` → Concept<br>`generationRequest` → AiRequest<br>`reviewer` → User |
 | `question_choices` | `QuestionChoice` | `question` → Question |
 | `stage_questions` | `StageQuestion` | `stage` → Stage<br>`question` → Question |
+| `glossary_terms` (rev.8) | `GlossaryTerm` | — |
+| `concept_terms` (rev.8) | `ConceptTerm` | `glossaryTerm` → GlossaryTerm (`concept_code`는 논리 참조) |
 
 ## 진행도·퀴즈 (`progress/`)
 
@@ -62,6 +64,8 @@
 | `exp_ledger` | `ExpLedger` | `user` → User<br>`sourceStage` → Stage<br>`attempt` → LearningAttempt |
 | `coin_ledger` | `CoinLedger` | `user` → User<br>`attempt` → LearningAttempt |
 | `level_thresholds` | `LevelThreshold` | — |
+| `badges` (rev.8) | `Badge` | — |
+| `user_badges` (rev.8) | `UserBadge` | `user` → User<br>`badge` → Badge |
 
 ## 오답·복습·일정 (`review/`)
 
