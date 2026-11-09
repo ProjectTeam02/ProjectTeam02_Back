@@ -344,3 +344,8 @@ export enum AiMemoryStatus {
   Active = 'ACTIVE',
   Archived = 'ARCHIVED',
 }
+
+/** 목표 기간 (rev.8, 현재 주 단위만) — DB 타입: goal_period */
+export enum GoalPeriod {
+  Weekly = 'WEEKLY',
+}
