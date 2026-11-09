@@ -11,6 +11,9 @@
 //                     ai_conversation_summaries(요약 이력), ai_messages.summary_id, ai_user_memories(장기 메모리),
 //                     ai_conversations summary 짝 CHECK, ai_message_sources 길이 확장(255/255/100/500)
 //                     ai.rag_documents·rag_document_chunks·rag_index_configurations (database/sql/init/03_ai_tables.sql)
+// rev.8 (2026-11-08): 피그마 화면 검토 반영
+//                     glossary_terms·concept_terms(개념별 용어, 클리어 화면 "학습 키워드"), badges·user_badges(배지),
+//                     user_settings.daily_goal_count → goal_count + goal_period(WEEKLY), concept_sections page_no·sort_order >= 1
 // 변경 요약
 //   1) 용어를 API 명세에 맞춤: region→topic, step→stage, job→class,
 //      concept_auto_review→review_mission, review_session→review_attempt,
@@ -127,6 +130,9 @@ Enum concept_status {
 Enum stage_type {
   NORMAL
   BOSS
+}
+Enum goal_period {
+  WEEKLY [note: 'rev.8 주 단위 (월요일 00:00 시작, user_settings.timezone 기준). 필요하면 DAILY 등 추가']
 }
 Enum section_type {
   INTRO
@@ -429,14 +435,15 @@ Table user_sessions {
 
 Table user_settings {
   user_id uuid [pk, ref: - users.user_id]
-  daily_goal_count smallint [note: '기본값 협의 전, null 허용']
+  goal_count smallint [note: 'rev.8 daily_goal_count → goal_count. 사용자가 정한 목표 횟수, null = 미설정 (목표 달성률 표시 안 함)']
+  goal_period goal_period [not null, default: 'WEEKLY', note: 'rev.8 목표 기간 (현재 WEEKLY만)']
   reminder_enabled boolean [not null, default: false, note: 'v2 study_reminder_enabled → API reminderEnabled']
   reminder_time time [note: 'v2 study_reminder_time → API reminderTime']
   timezone varchar(50) [not null, default: 'Asia/Seoul', note: 'v3 추가. IANA 이름 → API timezone']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   checks {
-    `daily_goal_count IS NULL OR daily_goal_count > 0` [name: 'chk_settings_daily_goal']
+    `goal_count IS NULL OR goal_count > 0` [name: 'chk_settings_goal_count']
   }
 }
 
@@ -629,6 +636,37 @@ Table concept_sections {
   indexes {
     (concept_id, page_no, sort_order) [unique]
   }
+  checks {
+    `page_no >= 1` [name: 'chk_concept_sections_page_no']
+    `sort_order >= 1` [name: 'chk_concept_sections_sort_order']
+  }
+  Note: '던전 입장 시 개념 학습 카드. 헤드라인은 concepts.short_definition, 생활 속 예시는 EXAMPLE 카드 본문(텍스트). BOSS Stage는 학습 카드 없음'
+}
+
+Table glossary_terms {
+  term_id uuid [pk, default: `gen_random_uuid()`, note: 'API termId']
+  term_code varchar(30) [not null, unique, note: '콘텐츠 관리용 고정 식별자']
+  term varchar(50) [not null, note: '용어 (예: 구매력)']
+  definition varchar(255) [not null, note: '뜻 (한 줄 설명)']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  checks {
+    `char_length(term) >= 1` [name: 'chk_glossary_terms_term']
+    `char_length(definition) >= 1` [name: 'chk_glossary_terms_definition']
+  }
+  Note: 'rev.8 추가. 경제 용어 마스터. 약관 테이블 terms와 구분하려고 glossary_terms'
+}
+
+Table concept_terms {
+  concept_code varchar(30) [not null, note: '논리 참조: concepts.concept_code']
+  term_id uuid [not null, ref: > glossary_terms.term_id]
+  display_order smallint [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (concept_code, term_id) [pk]
+    term_id [note: '용어 → 개념 역조회']
+  }
+  Note: 'rev.8 추가. 개념별 용어. 개념이 새 버전이 되어도 유지되도록 concept_code 기준. 클리어 화면 "학습 키워드 N개" = 던전 개념에 연결된 용어 수'
 }
 
 Table stage_concepts {
@@ -853,6 +891,35 @@ Table level_thresholds {
   indexes {
     (scope, level) [pk]
   }
+}
+
+Table badges {
+  badge_id uuid [pk, default: `gen_random_uuid()`, note: 'API badgeId']
+  badge_code varchar(50) [not null, unique, note: '고정 식별자 (예: FIRST_CLEAR)']
+  name varchar(50) [not null]
+  description varchar(255) [note: '획득 방법 안내']
+  icon_key varchar(255)
+  condition_type varchar(50) [note: '획득 조건 종류. 조건 미정이라 문자열, 확정되면 Enum으로 변경']
+  condition_value integer [note: '조건 값 (예: 10 = 10회)']
+  sort_order integer [not null, default: 0]
+  is_active boolean [not null, default: true, note: 'false면 새로 지급하지 않음 (이미 받은 배지는 유지)']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  checks {
+    `condition_value IS NULL OR condition_value > 0` [name: 'chk_badges_condition_value']
+  }
+  Note: 'rev.8 추가. 배지 마스터'
+}
+
+Table user_badges {
+  user_id uuid [not null, ref: > users.user_id]
+  badge_id uuid [not null, ref: > badges.badge_id]
+  earned_at timestamptz [not null, default: `now()`]
+  indexes {
+    (user_id, badge_id) [pk, note: '같은 배지는 한 번만 지급']
+    (user_id, earned_at) [note: '최근 획득 순 목록']
+  }
+  Note: 'rev.8 추가. 획득 기록. 마이페이지 "획득 배지 N개" = 행 수. 탈퇴 후에도 보상 기록처럼 유지'
 }
 
 // =====================================================================
@@ -1210,6 +1277,8 @@ TableGroup content [color: #2E8B57] {
   questions
   question_choices
   stage_questions
+  glossary_terms
+  concept_terms
 }
 TableGroup progress_quiz [color: #C0702A] {
   user_stage_progress
@@ -1222,6 +1291,8 @@ TableGroup reward [color: #B8932B] {
   exp_ledger
   coin_ledger
   level_thresholds
+  badges
+  user_badges
 }
 TableGroup review_plan [color: #B5475B] {
   review_items

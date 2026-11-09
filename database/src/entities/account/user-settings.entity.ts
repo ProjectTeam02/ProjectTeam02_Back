@@ -1,9 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_settings)
+// 자동 생성: leren_erd.dbml (rev.8) 기준 (app.user_settings)
 import { Check, Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { GoalPeriod } from '../common/enums';
 import { User } from './users.entity';
 
 /** 사용자 설정 (users와 1:1). */
-@Check('chk_settings_daily_goal', `(daily_goal_count IS NULL) OR (daily_goal_count > 0)`)
+@Check('chk_settings_goal_count', `(goal_count IS NULL) OR (goal_count > 0)`)
 @Entity({ name: 'user_settings', schema: 'app' })
 export class UserSetting {
   /** 사용자 (1:1) */
@@ -15,9 +16,13 @@ export class UserSetting {
   @JoinColumn({ name: 'user_id', foreignKeyConstraintName: 'user_settings_user_id_fkey' })
   user?: User;
 
-  /** 하루 목표 학습 수 (기본값 미정, null 허용) */
-  @Column({ name: 'daily_goal_count', type: 'smallint', nullable: true })
-  dailyGoalCount!: number | null;
+  /** 목표 학습 수 (rev.8 daily_goal_count → goal_count). 사용자가 직접 설정, null = 미설정 → 목표 달성률 표시 안 함 */
+  @Column({ name: 'goal_count', type: 'smallint', nullable: true })
+  goalCount!: number | null;
+
+  /** 목표 기간 (rev.8, 현재 WEEKLY만). 주 시작은 월요일 00:00 (timezone 기준) */
+  @Column({ name: 'goal_period', type: 'enum', enum: GoalPeriod, enumName: 'goal_period', default: GoalPeriod.Weekly })
+  goalPeriod!: GoalPeriod;
 
   /** 학습 알림 사용 여부. API reminderEnabled */
   @Column({ name: 'reminder_enabled', type: 'boolean', default: false })

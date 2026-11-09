@@ -1,6 +1,6 @@
-// 엔티티 연동 검증 (v3 rev.5): app_user 권한으로 엔티티를 통해 실제 저장·조회·트랜잭션·제약을 확인한다.
+// 엔티티 연동 검증 (v3 rev.8): app_user 권한으로 엔티티를 통해 실제 저장·조회·트랜잭션·제약을 확인한다.
 // 실행: npm run test:db  (사전: migration:run, 시드는 이 스크립트가 자동 실행)
-// SQL 제약 테스트 66개는 database/sql/test/constraint_test.sql (빈 DB에서 psql로 실행)
+// SQL 제약 테스트 86개는 database/sql/test/constraint_test.sql (빈 DB에서 psql로 실행)
 import { randomUUID } from 'crypto';
 import { EntityManager, QueryFailedError } from 'typeorm';
 import { AppDataSource } from '../data-source';
@@ -8,10 +8,10 @@ import { seedMinimal } from './seed-minimal';
 import {
   User, UserGrowth, UserWallet, UserSetting, Terms, UserTermsAgreement, UserCharacter, CharacterClass, Costume, UserCostume,
   UserEquippedCostume, Topic, TopicPrerequisite, Stage, StageQuestion, QuestionChoice, LearningAttempt, QuestionSubmission,
-  UserStageProgress, ExpLedger, CoinLedger, ReviewItem, ReviewAttempt, ReviewSubmission, StudyPlan, AiConversation, AiMessage, AiRequest,
+  UserStageProgress, StageConcept, ConceptSection, ConceptTerm, GlossaryTerm, Badge, UserBadge, ExpLedger, CoinLedger, ReviewItem, ReviewAttempt, ReviewSubmission, StudyPlan, AiConversation, AiMessage, AiRequest,
   AccountStatus, AttemptStatus, AttemptEndReason, AttemptMode, ProgressStatus, ExpSourceType, CoinTransactionType, CoinReason, CoinRefType,
   CostumeAcquireType, CostumeCategory, ClassCode, ReviewFirstReason, AnswerResult, ReviewAttemptType, ReviewEntryPoint, ReviewAttemptStatus,
-  PlanType, AiRequestType, ModelTier, MessageRole, MessageStatus, MessageInputType,
+  PlanType, GoalPeriod, AiRequestType, ModelTier, MessageRole, MessageStatus, MessageInputType,
 } from '../entities';
 
 type Row = { no: number; name: string; expect: string; ok: boolean; detail: string };
@@ -277,7 +277,29 @@ async function main() {
     return `usage_date ${req.usageDate} / 두 번째 대기 답변 ${r1} / 같은 clientMessageId ${r2}`;
   });
 
-  await check(18, '회원 탈퇴', '시각 없이 상태만 바꾸면 거부, 탈퇴 처리 후 같은 이메일 재가입 가능', async () => {
+  await check(18, '던전 학습 화면 조회 (rev.8)', '개념 → 카드(페이지·순서) → 용어 수', async () => {
+    const sc = await ds.getRepository(StageConcept).find({ where: { stageId: stage.stageId }, relations: { concept: true }, order: { displayOrder: 'ASC' } });
+    assert(sc.length === 1 && sc[0].concept, `개념 ${sc.length}개`);
+    const concept = sc[0].concept!;
+    const cards = await ds.getRepository(ConceptSection).find({ where: { conceptId: concept.conceptId }, order: { pageNo: 'ASC', sortOrder: 'ASC' } });
+    const terms = await ds.getRepository(ConceptTerm).find({ where: { conceptCode: concept.conceptCode }, relations: { glossaryTerm: true }, order: { displayOrder: 'ASC' } });
+    assert(cards.length === 3 && terms.length === 2, `카드 ${cards.length}, 용어 ${terms.length}`);
+    const r = await expectReject(() => ds.getRepository(ConceptSection).insert({ conceptId: concept.conceptId, pageNo: 0, sortOrder: 1, sectionType: cards[0].sectionType, body: 'x' }), ['23514']);
+    return `카드 ${cards.map((c) => c.sectionType).join('·')} / 학습 키워드 ${terms.length}개 (${terms.map((t) => t.glossaryTerm!.term).join(', ')}) / 페이지 0 ${r}`;
+  });
+
+  await check(19, '배지 지급·목표 설정 (rev.8)', '배지 1회만 지급, 목표 기간 WEEKLY', async () => {
+    const badge = await ds.getRepository(Badge).findOneByOrFail({ badgeCode: 'FIRST_CLEAR' });
+    await ds.getRepository(UserBadge).insert({ userId, badgeId: badge.badgeId });
+    const r = await expectReject(() => ds.getRepository(UserBadge).insert({ userId, badgeId: badge.badgeId }), ['23505']);
+    const n = await ds.getRepository(UserBadge).countBy({ userId });
+    await ds.getRepository(UserSetting).update({ userId }, { goalCount: 5 });
+    const s = await ds.getRepository(UserSetting).findOneByOrFail({ userId });
+    assert(n === 1 && s.goalCount === 5 && s.goalPeriod === GoalPeriod.Weekly, `배지 ${n}, 목표 ${s.goalCount}/${s.goalPeriod}`);
+    return `획득 배지 ${n}개, 재지급 ${r} / 목표 ${s.goalCount}회 (${s.goalPeriod})`;
+  });
+
+  await check(20, '회원 탈퇴', '시각 없이 상태만 바꾸면 거부, 탈퇴 처리 후 같은 이메일 재가입 가능', async () => {
     const u = await ds.getRepository(User).findOneByOrFail({ userId });
     const r = await expectReject(() => ds.getRepository(User).update({ userId }, { accountStatus: AccountStatus.Withdrawn }), ['23514']);
     await ds.getRepository(User).update({ userId }, {
@@ -288,7 +310,7 @@ async function main() {
     return `${r} / 탈퇴 후 재가입 user_id=${again.userId.slice(0, 8)}…`;
   });
 
-  await check(19, 'app_user로 테이블 삭제 시도', '권한 오류', async () =>
+  await check(21, 'app_user로 테이블 삭제 시도', '권한 오류', async () =>
     expectReject(() => ds.query('DROP TABLE app.users'), ['42501']));
 
   await ds.destroy();
