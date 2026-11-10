@@ -115,6 +115,9 @@ Object.assign(module.exports.definition.paths, calendarRead.paths);
 // Figma 19-01 response schema. Existing endpoint/path/security remain unchanged.
 const myPage = require('./mypage.swagger');
 Object.assign(module.exports.definition.components.schemas, myPage.schemas);
+const characterOnboarding = require('./character-onboarding.swagger');
+Object.assign(module.exports.definition.components.schemas, characterOnboarding.schemas);
+Object.assign(module.exports.definition.paths, characterOnboarding.paths);
 module.exports.definition.paths['/api/v1/users/me'].get.responses[200] = {
   description: '마이페이지 기본 화면 (DB 실제 값)',
   content: { 'application/json': { schema: {
