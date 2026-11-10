@@ -13,15 +13,16 @@ function integer(value, fallback, name, maximum) {
 
 function list({ query = {} }) {
   if (!query || typeof query !== 'object' || Array.isArray(query)
-    || Object.keys(query).some(key => !['page', 'pageSize', 'status'].includes(key))) {
+    || Object.keys(query).some(key => !['page', 'pageSize', 'size', 'status', 'type', 'dateFrom', 'dateTo'].includes(key))) {
     throw AppError.validation('허용되지 않은 학습 이력 조회 조건입니다.');
   }
   const page = integer(query.page, 1, 'page', 2147483647);
-  const pageSize = integer(query.pageSize, 20, 'pageSize', 100);
+  const pageSizeValue = query.pageSize !== undefined ? query.pageSize : query.size;
+  const pageSize = integer(pageSizeValue, 20, 'size', 100);
   if (query.status !== undefined && !statuses.includes(query.status)) {
     throw AppError.validation('status가 올바르지 않습니다.');
   }
-  return { query: { page: String(page), pageSize: String(pageSize), ...(query.status ? { status: query.status } : {}) } };
+  return { query: { page: String(page), pageSize: String(pageSize), ...(query.status ? { status: query.status } : {}), ...(query.type ? { type: query.type } : {}), ...(query.dateFrom ? { dateFrom: query.dateFrom } : {}), ...(query.dateTo ? { dateTo: query.dateTo } : {}) } };
 }
 
 function detail({ params = {} }) {

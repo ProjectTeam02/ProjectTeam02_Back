@@ -17,6 +17,7 @@ const topicRoutes = require('../modules/topics/topic.routes');
 const stageRoutes = require('../modules/stages/stage.routes');
 const conceptRoutes = require('../modules/concepts/concept.routes');
 const characterRoutes = require('../modules/characters/character.routes');
+const extendedApiRoutes = require('../modules/extended-api/extended-api.routes');
 
 const router = express.Router();
 
@@ -33,5 +34,7 @@ router.use('/topics', topicRoutes);
 router.use('/stages', stageRoutes);
 router.use('/concepts', conceptRoutes);
 router.use('/character-classes', characterRoutes);
+// 확장 API 경로와 기존 경로의 호환 alias
+router.use(extendedApiRoutes);
 
 module.exports = router;
