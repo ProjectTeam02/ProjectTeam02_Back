@@ -19,10 +19,11 @@
     "db:check": "npm run migration:check -w @leren/database",
     "db:seed": "npm run seed -w @leren/database",
     "db:test": "npm run test:db -w @leren/database",
+    "test:stage-quiz:contract": "node --test test/integration/extended-api-postgres.test.js",
     "test:question-generation:pg": "npm run db:build && node scripts/test-question-generation-postgres.js"
   },
   "dependencies": {
-    "@leren/database": "0.4.0",
+    "@leren/database": "0.5.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "swagger-jsdoc": "^6.3.0",

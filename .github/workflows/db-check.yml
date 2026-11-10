@@ -1,5 +1,5 @@
 # PR·push마다 임시 PostgreSQL 18에서 database/ 패키지를 자동 검증
-# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 → SQL 제약 테스트 86개 → ai 스키마(pgvector) 8개 → ai RAG 테이블 12개
+# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 + Stage Quiz HTTP → SQL 제약 테스트 86개 → ai 스키마(pgvector) 8개 → ai RAG 테이블 12개
 name: db-check
 on:
   pull_request:
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: 1. 스키마·계정 생성 (app + ai + ai RAG 테이블)
@@ -48,6 +48,10 @@ jobs:
         run: npm run db:check
       - name: 5. 엔티티 연동 테스트 21개 (app_user)
         run: npm run db:test
+      - name: 5-1. 일반 Stage Quiz HTTP 계약 (실제 Express·PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: npm run test:stage-quiz:contract
       - name: 6. SQL 제약 테스트 86개 (빈 DB에 마이그레이션 후 app_user로 실행)
         run: |
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -c "CREATE DATABASE leren_sql"

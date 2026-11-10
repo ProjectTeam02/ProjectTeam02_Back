@@ -113,19 +113,76 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   ok(await request('/api/v1/mypage/summary'));
   ok(await request('/api/v1/learning/progress/active'));
   ok(await request(`/api/v1/learning/progress/${normal.stageId}`, { method: 'PUT', body: { contentPosition: 1 } }));
-  const normalAttempt = ok(await request(`/api/v1/stages/${normal.stageId}/relearn`, { method: 'POST' }), 201);
+  const normalAttempt = ok(await request(`/api/v1/stages/${normal.stageId}/attempts`, {
+    method: 'POST', body: { mode: 'RETRY' },
+  }), 201);
+  assert.match(normalAttempt.attemptId, /^[0-9a-f-]{36}$/i);
+  assert.equal(normalAttempt.stageId, normal.stageId);
+  assert.equal(normalAttempt.status, 'IN_PROGRESS');
+  assert.equal(normalAttempt.mode, 'RETRY');
+  assert.equal(normalAttempt.attemptNo, 2);
+  assert.equal(normalAttempt.maxQuestionCount, 3);
+  assert.equal(normalAttempt.submittedCount, 0);
+  assert.equal(normalAttempt.correctCount, 0);
+  assert.equal(normalAttempt.hp, 2);
+  assert.equal(normalAttempt.resumed, false);
+  assert.equal(normalAttempt.currentQuestion.choices.length, 4);
+  assert.equal(typeof normalAttempt.currentQuestion.id, 'string');
+  assert.equal(typeof normalAttempt.currentQuestion.title, 'string');
+  assert.equal('explanation' in normalAttempt.currentQuestion, false);
+  assert.equal(normalAttempt.currentQuestion.choices.some(choice => 'isCorrect' in choice), false);
+  const resumedRelearn = ok(await request(`/api/v1/stages/${normal.stageId}/relearn`, { method: 'POST' }), 200);
+  assert.equal(resumedRelearn.attemptId, normalAttempt.attemptId);
+  assert.equal(resumedRelearn.resumed, true);
   const currentQuestion = ok(await request(`/api/v1/attempts/${normalAttempt.attemptId}/current-question`));
+  assert.equal(currentQuestion.attemptId, normalAttempt.attemptId);
+  assert.equal(currentQuestion.status, 'IN_PROGRESS');
+  assert.equal(currentQuestion.hp, 2);
+  assert.equal(currentQuestion.submittedCount, 0);
+  assert.equal(currentQuestion.correctCount, 0);
+  assert.equal(currentQuestion.currentQuestion.id, normalAttempt.currentQuestion.id);
   assert.equal(currentQuestion.currentQuestion.explanation, undefined);
+  assert.equal(currentQuestion.currentQuestion.choices.every(choice => typeof choice.id === 'string'
+    && typeof choice.label === 'string' && typeof choice.content === 'string'), true);
   const firstAnswer = ok(await request(`/api/v1/attempts/${normalAttempt.attemptId}/answers`, { method: 'POST', body: {
     questionId: currentQuestion.currentQuestion.id, choiceId: questions[0].choices[0].choiceId, submissionId: randomUUID(),
   } }), 201);
+  assert.equal(firstAnswer.attemptId, normalAttempt.attemptId);
+  assert.equal(firstAnswer.quizId, currentQuestion.currentQuestion.id);
+  assert.equal(typeof firstAnswer.choiceId, 'string');
+  assert.equal(typeof firstAnswer.isCorrect, 'boolean');
+  assert.equal(typeof firstAnswer.score, 'number');
+  assert.equal(firstAnswer.hpBefore, 2);
+  assert.equal(firstAnswer.hpAfter, 1);
+  assert.equal(firstAnswer.submittedCount, 1);
+  assert.equal(firstAnswer.correctCount, 1);
+  assert.equal(firstAnswer.status, 'IN_PROGRESS');
+  assert.equal(firstAnswer.explanation, '테스트 해설');
   const secondQuestion = firstAnswer.nextQuestion;
+  assert.equal(secondQuestion.id, questions[1].question.questionId);
+  assert.equal('explanation' in secondQuestion, false);
   const secondAnswer = ok(await request(`/api/v1/attempts/${normalAttempt.attemptId}/answers`, { method: 'POST', body: {
     questionId: secondQuestion.id, choiceId: questions[1].choices[0].choiceId, submissionId: randomUUID(),
   } }), 201);
+  assert.equal(secondAnswer.attemptId, normalAttempt.attemptId);
+  assert.equal(secondAnswer.quizId, secondQuestion.id);
+  assert.equal(typeof secondAnswer.isCorrect, 'boolean');
+  assert.equal(secondAnswer.score, 100);
+  assert.equal(secondAnswer.hpBefore, 1);
+  assert.equal(secondAnswer.hpAfter, 0);
+  assert.equal(secondAnswer.submittedCount, 2);
+  assert.equal(secondAnswer.correctCount, 2);
   assert.equal(secondAnswer.status, 'PASSED');
   const normalDetails = ok(await request(`/api/v1/attempts/${normalAttempt.attemptId}`));
+  assert.equal(normalDetails.attemptId, normalAttempt.attemptId);
+  assert.equal(normalDetails.stageId, normal.stageId);
+  assert.equal(normalDetails.status, 'PASSED');
   assert.equal(normalDetails.passed, true);
+  assert.equal(Array.isArray(normalDetails.answers), true);
+  assert.equal(normalDetails.answers.length, 2);
+  assert.equal(Array.isArray(normalDetails.wrongQuestionIds), true);
+  assert.equal(typeof normalDetails.passHistory, 'object');
+  assert.equal(typeof normalDetails.reward.granted, 'boolean');
   const otherUserAttempt = await request(`/api/v1/attempts/${normalAttempt.attemptId}`, { requestToken: otherToken });
   assert.equal(otherUserAttempt.status, 404);
   ok(await request('/api/v1/growth/me'));
