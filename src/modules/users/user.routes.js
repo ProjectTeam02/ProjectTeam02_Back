@@ -10,8 +10,10 @@ const { AppDataSource } = require('../../config/database');
 const schema = require('./user.schema');
 const service = require('./user.service')(AppDataSource);
 const controller = require('./user.controller')(service);
+const characters = require('../characters/character.controller')(require('../characters/character.service')());
 
 const router = express.Router();
 router.get('/me', auth, controller.me);
 router.patch('/me/notifications', auth, validate(schema.notification), controller.notifications);
+router.patch('/me/character-class', auth, validate(schema.characterClass), characters.select);
 module.exports = router;
