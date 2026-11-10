@@ -40,7 +40,7 @@ export class Topic {
   iconKey!: string | null;
 
   /** 공개 상태 (DRAFT / PUBLISHED / ARCHIVED) */
-  @Column({ name: 'status', type: 'enum', enum: PublishStatus, enumName: 'topics_status', default: PublishStatus.Draft })
+  @Column({ name: 'status', type: 'enum', enum: PublishStatus, enumName: 'topics_status', default: PublishStatus.Published })
   status!: PublishStatus;
 
   /** 공개 시각 */
