@@ -37,4 +37,4 @@ class MemoryOAuthStore {
   }
 }
 
-module.exports = { MemoryOAuthStore };
+module.exports = { MemoryOAuthStore, digest };

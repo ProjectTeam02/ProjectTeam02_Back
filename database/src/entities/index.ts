@@ -1,8 +1,9 @@
-// 자동 생성: app 스키마 엔티티 46개 (leren_erd.dbml rev.8)
+// app 스키마 엔티티: leren_erd.dbml rev.8 및 카카오 OAuth 임시 저장소
 import { User } from './account/users.entity';
 import { Terms } from './account/terms.entity';
 import { UserTermsAgreement } from './account/user-terms-agreements.entity';
 import { SocialAccount } from './account/social-accounts.entity';
+import { KakaoOAuthEntry } from './account/kakao-oauth-entries.entity';
 import { AccountToken } from './account/account-tokens.entity';
 import { UserDevice } from './account/user-devices.entity';
 import { UserSession } from './account/user-sessions.entity';
@@ -51,6 +52,7 @@ export const entities = [
   Terms,
   UserTermsAgreement,
   SocialAccount,
+  KakaoOAuthEntry,
   AccountToken,
   UserDevice,
   UserSession,
@@ -100,6 +102,7 @@ export {
   Terms,
   UserTermsAgreement,
   SocialAccount,
+  KakaoOAuthEntry,
   AccountToken,
   UserDevice,
   UserSession,

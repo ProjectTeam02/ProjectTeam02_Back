@@ -24,7 +24,7 @@ module.exports = {
   paths: {
     '/api/v1/auth/kakao/start': { post: {
       tags: ['Auth'], security: [], summary: '모바일 카카오 로그인 시작 (제안 계약)',
-      description: 'Bearer 인증 불필요. 서버 설정의 콜백/앱 복귀 주소만 사용합니다. state와 앱 challenge를 결합하며 카카오에는 challenge를 전달하지 않습니다. 개발/테스트에서 명시적 memory 저장소 설정 필요. 운영은 공유 저장소 구현 전 차단됩니다.',
+      description: 'Bearer 인증 불필요. 서버 설정의 콜백/앱 복귀 주소만 사용합니다. state와 앱 challenge를 결합하며 카카오에는 challenge를 전달하지 않습니다. 개발/테스트에서는 memory 또는 postgres, 운영에서는 마이그레이션이 적용된 postgres를 설정해야 합니다.',
       requestBody: request('KakaoStartRequest'), responses: {
         200: { description: '앱이 열 카카오 인증 URL과 로그인 시도 ID', content: { 'application/json': { schema: { $ref: '#/components/schemas/KakaoStartResponse' } } } },
         422: error('입력 또는 허용 목록 검증 실패'), 503: error('OAuth 설정/안전한 저장소 미준비 또는 요청 수용 한도 초과'),

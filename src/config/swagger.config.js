@@ -18,7 +18,7 @@ module.exports = {
       version: '1.0.0',
       description: 'Leren 1차 USECASE REST API. 실제 DB·FastAPI 상태는 health API로 확인합니다.',
     },
-    servers: [{ url: 'http://localhost:3000' }],
+    servers: [{ url: '/' }],
     tags: [
       { name: 'Auth', description: '회원가입 및 토큰' },
       { name: 'Users', description: '마이페이지 및 알림' },
