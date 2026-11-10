@@ -3,6 +3,8 @@
  * it writes question records. Without QUESTION_IMPORT_API_KEY it is disabled.
  */
 const express = require('express');
+const asyncHandler = require('../../common/utils/asyncHandler');
+const generation = require('./question-generation.service')();
 const { createHash, timingSafeEqual } = require('node:crypto');
 const AppError = require('../../common/errors/AppError');
 const { AppDataSource } = require('../../config/database');
@@ -26,4 +28,8 @@ function internalQuestionAuth(req, _res, next) {
 
 const router = express.Router();
 router.post('/drafts', internalQuestionAuth, controller.createGeneratedDraft);
+router.post('/generate', internalQuestionAuth, asyncHandler(async (req, res) => {
+  const response = await generation.generate(req.body, req.get('Idempotency-Key'));
+  res.status(response.httpStatus).json(response.body);
+}));
 module.exports = router;
