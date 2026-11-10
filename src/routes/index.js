@@ -14,6 +14,7 @@ const learningRoutes = require('../modules/learning/learning.routes');
 const topicRoutes = require('../modules/topics/topic.routes');
 const stageRoutes = require('../modules/stages/stage.routes');
 const conceptRoutes = require('../modules/concepts/concept.routes');
+const characterRoutes = require('../modules/characters/character.routes');
 
 const router = express.Router();
 
@@ -27,5 +28,6 @@ router.use('/learning', learningRoutes);
 router.use('/topics', topicRoutes);
 router.use('/stages', stageRoutes);
 router.use('/concepts', conceptRoutes);
+router.use('/character-classes', characterRoutes);
 
 module.exports = router;
