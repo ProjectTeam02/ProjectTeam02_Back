@@ -213,19 +213,20 @@ test('state and login codes expire; hash-only bounded store prunes expired recor
   const mobile = createMobileService(auth, { store });
   const v = verifier();
   const begin = () => mobile.start({ codeChallenge: challenge(v), codeChallengeMethod: 'S256' });
-  const attempt = begin();
+  const attempt = await begin();
   const state = new URL(attempt.authorizationUrl).searchParams.get('state');
   assert.equal(JSON.stringify([...store.entries]).includes(state), false);
   now = 300000;
   await assert.rejects(mobile.callback({ state, code: 'code' }), e => e.statusCode === 422);
-  const second = begin();
+  const second = await begin();
   const location = new URL(await mobile.callback({ state: new URL(second.authorizationUrl).searchParams.get('state'), code: 'code' }));
   now += 60000;
   await assert.rejects(mobile.exchange({ loginCode: location.searchParams.get('loginCode'), codeVerifier: v, loginAttemptId: second.loginAttemptId }), e => e.statusCode === 401);
-  begin(); begin();
-  assert.throws(begin, e => e.statusCode === 503);
+  await begin();
+  await begin();
+  await assert.rejects(begin, e => e.statusCode === 503);
   now += 300000;
-  assert.doesNotThrow(begin);
+  await assert.doesNotReject(begin);
 });
 
 test('redirect/deep-link settings and injected redirect requests fail closed', async () => {
@@ -264,7 +265,7 @@ test('invalid proofs are rejected and a failed session issuance still consumes t
     completeKakaoLogin: async () => { issued++; throw AppError.unavailable('DB failure'); },
   });
   const v = verifier();
-  const attempt = mobile.start({ codeChallenge: challenge(v), codeChallengeMethod: 'S256' });
+  const attempt = await mobile.start({ codeChallenge: challenge(v), codeChallengeMethod: 'S256' });
   const location = new URL(await mobile.callback({ state: new URL(attempt.authorizationUrl).searchParams.get('state'), code: 'code' }));
   const body = { loginCode: location.searchParams.get('loginCode'), codeVerifier: v, loginAttemptId: attempt.loginAttemptId };
   await assert.rejects(mobile.exchange(body), e => e.statusCode === 503);
