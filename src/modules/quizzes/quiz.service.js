@@ -7,11 +7,7 @@ const { Question, QuestionChoice } = require('@leren/database');
 const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
 const normalStageService = require('./normal-stage.service');
-
-function publicQuiz(question, choices) {
-  return { id: question.questionId, title: question.questionText, explanation: null, difficulty: question.difficulty, conceptId: question.conceptId,
-    choices: choices.map((choice) => ({ id: choice.choiceId, label: String.fromCharCode(64 + choice.baseOrder), content: choice.choiceText })) };
-}
+const attemptDto = require('./dto/attemptResponse.dto');
 
 function service(dataSource = AppDataSource) {
   const repo = (entity, manager = dataSource.manager) => manager.getRepository(entity);
@@ -25,7 +21,7 @@ function service(dataSource = AppDataSource) {
       const question = await questionRepo.findOne({ where: { status: 'APPROVED', ...(query.conceptId ? { conceptId: query.conceptId } : {}) }, order: { createdAt: 'ASC' } });
       if (!question) throw AppError.notFound('승인된 문제가 없습니다.');
       const choices = await repo(QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
-      return publicQuiz(question, choices);
+      return attemptDto.legacyQuestion(question, choices);
     },
     async submit(userId, quizId, { choiceId, attemptId, idempotencyKey }) {
       // 레거시 서비스 단위 테스트용 어댑터. 실제 요청은 아래 TypeORM 경로를 사용한다.
