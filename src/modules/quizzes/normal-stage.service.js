@@ -9,6 +9,7 @@ const AppError = require('../../common/errors/AppError');
 const attemptDto = require('./dto/attemptResponse.dto');
 const resultDto = require('./dto/quizResultResponse.dto');
 const submitDto = require('./dto/submitAnswerResponse.dto');
+const historyDto = require('../learning/dto/historyResponse.dto');
 
 const normalRules = { questions: 3, correct: 2, hp: 2 };
 const repository = (manager, entity) => manager.getRepository(entity);
@@ -166,7 +167,7 @@ async function grantFirstPass(manager, userId, stage, attempt) {
 
 module.exports = function normalStageService(dataSource = AppDataSource) {
   return {
-    async start(userId, stageId) {
+    async start(userId, stageId, requestedMode = null) {
       return dataSource.transaction(async manager => {
         const user = await repository(manager, User).findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
         if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
@@ -177,9 +178,15 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         const progress = await requireUnlocked(manager, userId, stage);
         await requireQuestionPool(manager, stageId);
         const previous = await attemptRepo.findOne({ where: { userId, stageId }, order: { attemptNo: 'DESC' } });
+        if (requestedMode === 'START' && previous) {
+          throw AppError.conflict('이미 시작한 Stage는 RETRY 모드로 다시 응시해야 합니다.');
+        }
+        if (requestedMode === 'RETRY' && !previous) {
+          throw AppError.validation('처음 응시하는 Stage는 START 모드로 시작해야 합니다.');
+        }
         const attempt = await attemptRepo.save(attemptRepo.create({
           userId, stageId, attemptNo: (previous?.attemptNo || 0) + 1,
-          attemptType: 'PLAY', mode: previous ? 'RETRY' : 'START', status: 'IN_PROGRESS',
+          attemptType: 'PLAY', mode: requestedMode || (previous ? 'RETRY' : 'START'), status: 'IN_PROGRESS',
           maxQuestionCount: stage.maxQuestionCount,
           requiredCorrectCount: stage.requiredCorrectCount,
           initialHp: stage.initialMonsterHp,
@@ -208,7 +215,33 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         return resultDto.result(attempt);
       });
     },
-    async submit(userId, questionId, { choiceId, attemptId, idempotencyKey }) {
+    async getAttemptDetails(userId, attemptId) {
+      return dataSource.transaction('REPEATABLE READ', async manager => {
+        const attempt = await repository(manager, LearningAttempt).findOneBy({ attemptId, userId });
+        if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
+        await requireNormalAttempt(manager, attempt);
+        const submissions = await repository(manager, QuestionSubmission).find({
+          where: { attemptId },
+          relations: { question: { concept: true }, choice: true },
+          order: { sequenceNo: 'ASC', submissionId: 'ASC' },
+        });
+        const progress = await repository(manager, UserStageProgress).findOneBy({ userId, stageId: attempt.stageId });
+        const answers = submissions.map(historyDto.submission);
+        return {
+          ...resultDto.result(attempt),
+          passed: attempt.status === 'PASSED',
+          answers,
+          wrongQuestionIds: submissions.filter(row => !row.isCorrect).map(row => row.questionId),
+          passHistory: {
+            firstPassedAt: progress?.firstPassedAt ? new Date(progress.firstPassedAt).toISOString() : null,
+            firstPassAttemptId: progress?.firstPassAttemptId ?? null,
+            isFirstPass: Boolean(attempt.isFirstPass),
+          },
+          reward: { granted: Boolean(attempt.rewardGranted) },
+        };
+      });
+    },
+    async submit(userId, questionId, { choiceId, attemptId, idempotencyKey, submissionId }) {
       if (!attemptId) throw AppError.validation('attemptId가 필요합니다.');
       try {
         return await dataSource.transaction(async manager => {
@@ -218,12 +251,12 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
           });
           if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
           const submissionRepo = repository(manager, QuestionSubmission);
-          const submissionId = idempotencyKey ? submissionIdFor(attemptId, idempotencyKey) : crypto.randomUUID();
-          if (idempotencyKey) {
-            const priorKey = await submissionRepo.findOneBy({ submissionId });
+          const effectiveSubmissionId = submissionId || (idempotencyKey ? submissionIdFor(attemptId, idempotencyKey) : crypto.randomUUID());
+          if (submissionId || idempotencyKey) {
+            const priorKey = await submissionRepo.findOneBy({ submissionId: effectiveSubmissionId });
             if (priorKey) {
               if (priorKey.attemptId !== attemptId || priorKey.questionId !== questionId || priorKey.choiceId !== choiceId) {
-                throw AppError.conflict('Idempotency-Key가 다른 답안에 이미 사용되었습니다.');
+                throw AppError.conflict('submissionId가 다른 답안에 이미 사용되었습니다.');
               }
               const priorRows = await submissionRepo.findBy({ attemptId });
               const earlier = priorRows.filter(row => row.sequenceNo <= priorKey.sequenceNo);
@@ -240,6 +273,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
                 submittedCount: priorKey.sequenceNo, correctCount, status,
                 rewardGranted: status === 'PASSED' && attempt.isFirstPass,
                 duplicate: true,
+                currentQuestion: status === 'IN_PROGRESS' ? await currentQuestion(manager, attempt) : null,
               });
             }
           }
@@ -262,7 +296,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
           const passed = status === 'PASSED';
           const now = status === 'IN_PROGRESS' ? null : new Date();
           await submissionRepo.save({
-            submissionId, attemptId, questionId, sequenceNo: order,
+            submissionId: effectiveSubmissionId, attemptId, questionId, sequenceNo: order,
             displayedChoiceOrder: choices.map(item => item.choiceId), choiceId,
             selectedPosition: choice.baseOrder, isCorrect, hpBefore, hpAfter,
           });
@@ -296,6 +330,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
             attemptId, questionId, choiceId, isCorrect, explanation: mapping.question.explanation,
             hpBefore, hpAfter, submittedCount, correctCount, status,
             endReason: attempt.endReason, rewardGranted: attempt.rewardGranted,
+            currentQuestion: status === 'IN_PROGRESS' ? await currentQuestion(manager, attempt) : null,
           });
         });
       } catch (error) {

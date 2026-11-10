@@ -20,11 +20,28 @@ test('quiz submit request requires attemptId and choiceId and rejects unknown fi
 
 test('quiz start, attempt and legacy generate requests', () => {
   assert.deepEqual(schema.start({ params: { stageId: id(1) }, body: {} }), { params: { stageId: id(1) } });
+  assert.deepEqual(schema.startNew({ params: { stageId: id(1) }, body: { mode: 'RETRY' } }), {
+    params: { stageId: id(1) }, body: { mode: 'RETRY' },
+  });
+  assert.throws(() => schema.startNew({ params: { stageId: id(1) }, body: {} }), isValidation);
+  assert.throws(() => schema.startNew({ params: { stageId: id(1) }, body: { mode: 'CONTINUE' } }), isValidation);
   assert.throws(() => schema.start({ params: { stageId: id(1) }, body: { mode: 'RETRY' } }), isValidation);
   assert.throws(() => schema.attempt({ params: { attemptId: id(1) }, query: { page: '1' } }), isValidation);
   assert.deepEqual(schema.generate({ query: {} }), { query: {} });
   assert.deepEqual(schema.generate({ query: { conceptId: id(4) } }), { query: { conceptId: id(4) } });
   assert.throws(() => schema.generate({ query: { conceptId: 'ECO-01' } }), isValidation);
+});
+
+test('new answer request requires path attemptId and app-generated submissionId', () => {
+  assert.deepEqual(schema.newAnswer({ params: { attemptId: id(6) }, body: {
+    questionId: id(7), choiceId: id(8), submissionId: id(9),
+  } }), { params: { attemptId: id(6) }, body: { questionId: id(7), choiceId: id(8), submissionId: id(9) } });
+  assert.throws(() => schema.newAnswer({ params: { attemptId: id(6) }, body: {
+    questionId: id(7), choiceId: id(8),
+  } }), isValidation);
+  assert.throws(() => schema.newAnswer({ params: { attemptId: id(6) }, body: {
+    questionId: id(7), choiceId: id(8), submissionId: id(9), score: 100,
+  } }), isValidation);
 });
 
 const attempt = {
