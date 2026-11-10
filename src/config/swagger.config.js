@@ -129,6 +129,11 @@ module.exports.definition.paths['/api/v1/users/me'].get.responses[200] = {
   } } },
 };
 
+// Internal AI-generated question draft ingestion. Never call from the mobile app.
+const questionImport = require('./question-import.swagger');
+module.exports.definition.tags.push({ name: 'Internal Question Import', description: 'AI 서버 전용 문제 적재' });
+Object.assign(module.exports.definition.components.schemas, questionImport.schemas);
+Object.assign(module.exports.definition.paths, questionImport.paths);
 const normalStageQuiz = require('./normal-stage-quiz.swagger');
 Object.assign(module.exports.definition.components.schemas, normalStageQuiz.schemas);
 Object.assign(module.exports.definition.paths, normalStageQuiz.paths);

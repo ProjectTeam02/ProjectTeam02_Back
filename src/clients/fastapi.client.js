@@ -66,6 +66,13 @@ class FastApiClient {
     return body;
   }
 
+  async generateQuestions(payload) {
+    return requestJson('/internal/v1/questions/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, this.config);
+  }
+
   async health() {
     try {
       await requestJson('/health', {}, this.config);
