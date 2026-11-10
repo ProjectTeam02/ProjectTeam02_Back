@@ -1,0 +1,29 @@
+services:
+  api:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    restart: unless-stopped
+    ports:
+      - "80:3000"
+    env_file:
+      - /opt/leren/.env.production
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_SSL: "true"
+      DB_SSL_CA: /certs/rds-ca.pem
+      FASTAPI_BASE_URL: ${FASTAPI_BASE_URL:-http://host.docker.internal:8000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /opt/leren/rds-ca.pem:/certs/rds-ca.pem:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:3000/health').then(r => {
+          if (!r.ok) process.exit(1)
+          }).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s

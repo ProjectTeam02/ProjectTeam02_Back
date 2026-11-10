@@ -12,7 +12,7 @@
     "prestart": "npm run db:build",
     "start": "node src/server.js",
     "pretest": "npm run db:build",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "db:build": "npm run build -w @leren/database",
     "db:migrate": "npm run migration:run -w @leren/database",
     "db:migrate:show": "npm run migration:show -w @leren/database",

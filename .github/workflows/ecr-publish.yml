@@ -1,0 +1,147 @@
+name: ECR image publish
+
+on:
+  workflow_run:
+    workflows: [CI, db-check]
+    types: [completed]
+
+concurrency:
+  group: ecr-develop-publish
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_ACCOUNT_ID: '955094290134'
+  ECR_REPOSITORY: leren-backend
+  DEPLOY_ROLE_ARN: arn:aws:iam::955094290134:role/leren-github-deploy-role
+
+jobs:
+  gate:
+    name: Verify develop checks
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      ready: ${{ steps.checks.outputs.ready }}
+      sha: ${{ steps.checks.outputs.sha }}
+    steps:
+      - name: Require successful CI and DB checks for the same develop commit
+        id: checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const eventRun = context.payload.workflow_run;
+            const sha = eventRun.head_sha;
+            const expectedRepo = `${owner}/${repo}`;
+
+            if (eventRun.head_branch !== 'develop'
+              || eventRun.head_repository.full_name !== expectedRepo) {
+              core.setFailed('Only successful runs from the repository develop branch may publish an image.');
+              return;
+            }
+
+            for (const workflow of ['ci.yml', 'db-check.yml']) {
+              const result = await github.rest.actions.listWorkflowRunsForWorkflow({
+                owner,
+                repo,
+                workflow_id: workflow,
+                head_sha: sha,
+                status: 'completed',
+                per_page: 20,
+              });
+              const successful = result.data.workflow_runs.some(run => (
+                run.head_sha === sha
+                && run.head_branch === 'develop'
+                && run.conclusion === 'success'
+              ));
+              if (!successful) {
+                core.setFailed(`${workflow} has not passed for ${sha}.`);
+                return;
+              }
+            }
+
+            core.setOutput('ready', 'true');
+            core.setOutput('sha', sha);
+
+  publish:
+    name: Build and publish arm64 image
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout verified commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: leren-ecr-${{ needs.gate.outputs.sha }}
+
+      - name: Set up QEMU and Buildx
+        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ECR
+        env:
+          REGISTRY: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$REGISTRY"
+
+      - name: Reuse or build the immutable SHA image
+        id: image
+        env:
+          IMAGE_SHA: ${{ needs.gate.outputs.sha }}
+          REGISTRY: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          set -euo pipefail
+          image="$REGISTRY/$ECR_REPOSITORY"
+          digest="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_SHA" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text 2>/dev/null || true)"
+
+          if [ -z "$digest" ] || [ "$digest" = "None" ]; then
+            docker buildx build \
+              --platform linux/arm64 \
+              --provenance=false \
+              --tag "$image:$IMAGE_SHA" \
+              --push .
+            digest="$(aws ecr describe-images \
+              --repository-name "$ECR_REPOSITORY" \
+              --image-ids imageTag="$IMAGE_SHA" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text)"
+            source='built'
+          else
+            source='reused'
+          fi
+
+          image_uri="$image@$digest"
+          printf 'image=%s\nsha=%s\nsource=%s\ndigest=%s\n' \
+            "$image_uri" "$IMAGE_SHA" "$source" "$digest" > image-record.txt
+          echo "image=$image_uri" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+
+      - name: Record immutable image address
+        run: cat image-record.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload image record
+        uses: actions/upload-artifact@v4
+        with:
+          name: leren-backend-image-${{ needs.gate.outputs.sha }}
+          path: image-record.txt
+          if-no-files-found: error

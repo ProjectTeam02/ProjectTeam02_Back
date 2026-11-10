@@ -1,0 +1,112 @@
+name: EC2 deploy
+
+on:
+  workflow_run:
+    workflows: [ECR image publish]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: Verified develop commit SHA whose ECR image should be deployed
+        required: true
+        type: string
+
+concurrency:
+  group: leren-production-ec2
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  AWS_ACCOUNT_ID: '955094290134'
+  ECR_REPOSITORY: leren-backend
+  EC2_INSTANCE_ID: i-0730bf0db8f92b333
+  DEPLOY_ROLE_ARN: arn:aws:iam::955094290134:role/leren-github-deploy-role
+
+jobs:
+  deploy:
+    name: Migrate, replace, and verify EC2
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'develop')
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: leren-ec2-${{ github.run_id }}
+
+      - name: Resolve and verify immutable image digest
+        id: image
+        env:
+          IMAGE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.image_sha || github.event.workflow_run.head_sha }}
+          REGISTRY: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          set -euo pipefail
+          case "$IMAGE_SHA" in
+            [0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]*) ;;
+            *) echo 'image_sha must be a commit SHA'; exit 1 ;;
+          esac
+          digest="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_SHA" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)"
+          test -n "$digest" && test "$digest" != None
+          image_uri="$REGISTRY/$ECR_REPOSITORY@$digest"
+          echo "sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "uri=$image_uri" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\ndigest=%s\nimage=%s\n' "$IMAGE_SHA" "$digest" "$image_uri" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run guarded EC2 deployment through SSM
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          IMAGE_SHA: ${{ steps.image.outputs.sha }}
+        run: |
+          set -euo pipefail
+          parameters="$(jq -cn \
+            --arg image "$IMAGE_URI" \
+            --arg sha "$IMAGE_SHA" \
+            '{commands:[
+              "set -euo pipefail",
+              ("root=/opt/leren; release=$root/releases/" + $sha + "; mkdir -p $release $root/state"),
+              ("docker pull " + $image),
+              ("extract=$(docker create " + $image + "); trap \"docker rm -f $extract >/dev/null 2>&1 || true\" EXIT; docker cp $extract:/app/deploy/ec2/docker-compose.yml $release/docker-compose.yml; docker cp $extract:/app/deploy/ec2/deploy-host.sh $release/deploy-host.sh; chmod 700 $release/deploy-host.sh"),
+              ("$release/deploy-host.sh " + $image + " " + $sha)
+            ]}')"
+          command_id="$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "leren deploy $IMAGE_SHA" \
+            --parameters "$parameters" \
+            --query 'Command.CommandId' \
+            --output text)"
+          echo "SSM command: $command_id"
+
+          for _ in $(seq 1 120); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query Status \
+              --output text)"
+            case "$status" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut)
+                aws ssm get-command-invocation --command-id "$command_id" --instance-id "$EC2_INSTANCE_ID"
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          test "$status" = Success
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "$EC2_INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent}' \
+            --output json >> "$GITHUB_STEP_SUMMARY"
