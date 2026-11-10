@@ -1,7 +1,16 @@
 /**
- * 퀴즈 API 요청·응답 데이터 형식 파일
- * 백엔드 작업: 외부 데이터와 내부 모델의 변환 규칙을 관리
- * 주의: 기존 응답 필드명과 JSON 구조 유지
- * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
+ * 퀴즈 결과 응답 데이터 형식 파일
+ * 대상: GET /quizzes/attempts/:attemptId/result (PASSED·FAILED 응시만)
+ * 백엔드 작업: 완료된 LearningAttempt를 결과 화면용으로 변환
+ * 주의: 기존 응답 필드명과 JSON 구조 유지 (attemptResponse.dto.js의 attempt와 같은 필드)
+ *
+ * data: attemptId, stageId, status, mode, attemptNo, maxQuestionCount, submittedCount,
+ *       correctCount, hp, endReason, endedAt, rewardGranted
  */
-module.exports = {};
+const { summary } = require('./attemptResponse.dto');
+
+function result(attempt) {
+  return summary(attempt);
+}
+
+module.exports = { result };

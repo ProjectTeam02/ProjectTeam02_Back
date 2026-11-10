@@ -72,7 +72,7 @@ test('quiz idempotency rejects reuse with a different answer', async () => {
 test('quiz submission schema validates route and answer UUIDs', () => {
   const result = quizSchema.submit({
     params: { id: '123e4567-e89b-12d3-a456-426614174000' },
-    body: { choiceId: '123e4567-e89b-12d3-a456-426614174001' },
+    body: { attemptId: '123e4567-e89b-42d3-a456-426614174002', choiceId: '123e4567-e89b-12d3-a456-426614174001' },
     headers: { 'idempotency-key': 'request-1' },
   });
   assert.equal(result.body.idempotencyKey, 'request-1');
