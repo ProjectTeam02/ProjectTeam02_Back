@@ -16,8 +16,8 @@ function paginationMiddleware(req, _res, next) { req.pagination = pagination(req
 const router = express.Router();
 router.use(auth);
 router.post('/conversations', validate(schema.conversation), controller.createConversation);
-router.get('/conversations', paginationMiddleware, controller.listConversations);
-router.get('/conversations/:id/messages', paginationMiddleware, controller.messages);
+router.get('/conversations', validate(schema.list), paginationMiddleware, controller.listConversations);
+router.get('/conversations/:id/messages', validate(schema.messages), paginationMiddleware, controller.messages);
 router.post('/messages', validate(schema.message), controller.sendMessage);
 router.get('/usage', controller.usage);
 module.exports = router;

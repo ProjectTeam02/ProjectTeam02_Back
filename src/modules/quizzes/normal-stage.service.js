@@ -6,6 +6,9 @@ const {
 } = require('@leren/database');
 const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
+const attemptDto = require('./dto/attemptResponse.dto');
+const resultDto = require('./dto/quizResultResponse.dto');
+const submitDto = require('./dto/submitAnswerResponse.dto');
 
 const normalRules = { questions: 3, correct: 2, hp: 2 };
 const repository = (manager, entity) => manager.getRepository(entity);
@@ -16,31 +19,6 @@ function submissionIdFor(attemptId, key) {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-function publicQuestion(question, choices) {
-  return {
-    id: question.questionId,
-    title: question.questionText,
-    difficulty: question.difficulty,
-    conceptId: question.conceptId,
-    choices: choices.map(choice => ({
-      id: choice.choiceId,
-      label: String.fromCharCode(64 + choice.baseOrder),
-      content: choice.choiceText,
-    })),
-  };
-}
-
-function summary(attempt) {
-  return {
-    attemptId: attempt.attemptId, stageId: attempt.stageId, status: attempt.status,
-    mode: attempt.mode, attemptNo: attempt.attemptNo,
-    maxQuestionCount: attempt.maxQuestionCount, submittedCount: attempt.submittedCount,
-    correctCount: attempt.correctCount, hp: attempt.finalHp ?? attempt.initialHp,
-    endReason: attempt.endReason, endedAt: attempt.endedAt,
-    rewardGranted: attempt.rewardGranted,
-  };
 }
 
 function transition(attempt, isCorrect) {
@@ -69,11 +47,11 @@ async function currentQuestion(manager, attempt) {
     where: { questionId: mapping.questionId }, order: { baseOrder: 'ASC' },
   });
   if (choices.length !== 4) throw AppError.unavailable('문항 선택지 구성이 올바르지 않습니다.');
-  return publicQuestion(mapping.question, choices);
+  return attemptDto.question(mapping.question, choices);
 }
 
 async function view(manager, attempt) {
-  return { ...summary(attempt), currentQuestion: await currentQuestion(manager, attempt) };
+  return attemptDto.view(attempt, await currentQuestion(manager, attempt));
 }
 
 async function requireStage(manager, stageId) {
@@ -195,7 +173,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         const stage = await requireStage(manager, stageId);
         const attemptRepo = repository(manager, LearningAttempt);
         const active = await attemptRepo.findOneBy({ userId, stageId, status: 'IN_PROGRESS' });
-        if (active) return { ...(await view(manager, active)), resumed: true };
+        if (active) return attemptDto.started(active, await currentQuestion(manager, active), true);
         const progress = await requireUnlocked(manager, userId, stage);
         await requireQuestionPool(manager, stageId);
         const previous = await attemptRepo.findOne({ where: { userId, stageId }, order: { attemptNo: 'DESC' } });
@@ -210,7 +188,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         if (!progress) await repository(manager, UserStageProgress).save({
           userId, stageId, progressStatus: 'IN_PROGRESS', startedAt: new Date(),
         });
-        return { ...(await view(manager, attempt)), resumed: false };
+        return attemptDto.started(attempt, await currentQuestion(manager, attempt), false);
       });
     },
     async get(userId, attemptId) {
@@ -227,7 +205,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
         await requireNormalAttempt(manager, attempt);
         if (!['PASSED', 'FAILED'].includes(attempt.status)) throw AppError.conflict('완료된 일반 Stage 결과가 없습니다.');
-        return summary(attempt);
+        return resultDto.result(attempt);
       });
     },
     async submit(userId, questionId, { choiceId, attemptId, idempotencyKey }) {
@@ -255,15 +233,14 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
               const question = await repository(manager, StageQuestion).findOne({
                 where: { stageId: attempt.stageId, questionId }, relations: { question: true },
               });
-              return {
-                attemptId, quizId: questionId, choiceId, isCorrect: priorKey.isCorrect,
-                score: priorKey.isCorrect ? 100 : 0, explanation: question?.question?.explanation ?? null,
+              return submitDto.submitted({
+                attemptId, questionId, choiceId, isCorrect: priorKey.isCorrect,
+                explanation: question?.question?.explanation,
                 hpBefore: priorKey.hpBefore, hpAfter: priorKey.hpAfter,
                 submittedCount: priorKey.sequenceNo, correctCount, status,
-                endReason: status === 'PASSED' ? 'MONSTER_DEFEATED' : status === 'FAILED' ? 'QUESTIONS_EXHAUSTED' : null,
                 rewardGranted: status === 'PASSED' && attempt.isFirstPass,
                 duplicate: true,
-              };
+              });
             }
           }
           if (attempt.status !== 'IN_PROGRESS') throw AppError.conflict('종료된 응시에는 제출할 수 없습니다.');
@@ -283,7 +260,6 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
           const isCorrect = Boolean(choice.isCorrect);
           const { hpBefore, hpAfter, submittedCount, correctCount, status } = transition(attempt, isCorrect);
           const passed = status === 'PASSED';
-          const failed = status === 'FAILED';
           const now = status === 'IN_PROGRESS' ? null : new Date();
           await submissionRepo.save({
             submissionId, attemptId, questionId, sequenceNo: order,
@@ -292,7 +268,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
           });
           Object.assign(attempt, {
             submittedCount, correctCount, finalHp: hpAfter, status,
-            endReason: passed ? 'MONSTER_DEFEATED' : failed ? 'QUESTIONS_EXHAUSTED' : null,
+            endReason: submitDto.endReasonFor(status),
             endedAt: now, resultSavedAt: now,
           });
           if (passed) {
@@ -316,12 +292,11 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
             }
           }
           await attemptRepo.save(attempt);
-          return {
-            attemptId, quizId: questionId, choiceId, isCorrect,
-            score: isCorrect ? 100 : 0, explanation: mapping.question.explanation,
+          return submitDto.submitted({
+            attemptId, questionId, choiceId, isCorrect, explanation: mapping.question.explanation,
             hpBefore, hpAfter, submittedCount, correctCount, status,
             endReason: attempt.endReason, rewardGranted: attempt.rewardGranted,
-          };
+          });
         });
       } catch (error) {
         if (error?.code === '23505' || error?.driverError?.code === '23505') throw AppError.conflict('이미 처리된 제출입니다.');
