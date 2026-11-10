@@ -18,7 +18,8 @@
     "db:migrate:show": "npm run migration:show -w @leren/database",
     "db:check": "npm run migration:check -w @leren/database",
     "db:seed": "npm run seed -w @leren/database",
-    "db:test": "npm run test:db -w @leren/database"
+    "db:test": "npm run test:db -w @leren/database",
+    "test:question-generation:pg": "npm run db:build && node scripts/test-question-generation-postgres.js"
   },
   "dependencies": {
     "@leren/database": "0.4.0",
