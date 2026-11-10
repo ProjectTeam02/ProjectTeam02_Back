@@ -59,7 +59,7 @@ export class Concept {
   sourceDocumentIds!: string[] | null;
 
   /** 검수·공개 상태 (DRAFT / REVIEW_PENDING / PUBLISHED / ARCHIVED) */
-  @Column({ name: 'status', type: 'enum', enum: ConceptStatus, enumName: 'concept_status', default: ConceptStatus.Draft })
+  @Column({ name: 'status', type: 'enum', enum: ConceptStatus, enumName: 'concept_status', default: ConceptStatus.Published })
   status!: ConceptStatus;
 
   /** 검수자 */

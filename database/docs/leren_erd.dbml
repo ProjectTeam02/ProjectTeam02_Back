@@ -534,7 +534,7 @@ Table topics {
   map_row smallint
   map_column smallint
   icon_key varchar(255)
-  status topics_status [not null, default: 'DRAFT']
+  status topics_status [not null, default: 'PUBLISHED']
   published_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
@@ -572,7 +572,7 @@ Table stages {
   reward_total_exp integer [note: '미확정, null 허용']
   reward_economy_exp integer [note: '미확정, null 허용']
   reward_coin integer [note: '미확정, null 허용']
-  status stages_status [not null, default: 'DRAFT']
+  status stages_status [not null, default: 'PUBLISHED']
   published_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
@@ -597,7 +597,7 @@ Table concepts {
   summary varchar(255)
   estimated_minutes smallint
   source_document_ids text[] [note: '논리 참조: ai.rag_documents.document_id']
-  status concept_status [not null, default: 'DRAFT']
+  status concept_status [not null, default: 'PUBLISHED']
   reviewed_by uuid [ref: > users.user_id]
   reviewed_at timestamptz
   published_at timestamptz
