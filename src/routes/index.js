@@ -12,6 +12,9 @@ const questionRoutes = require('../modules/questions/question.routes');
 const healthRoutes = require('../health/health.routes');
 const calendarRoutes = require('../modules/calendar/calendar.routes');
 const learningRoutes = require('../modules/learning/learning.routes');
+const topicRoutes = require('../modules/topics/topic.routes');
+const stageRoutes = require('../modules/stages/stage.routes');
+const conceptRoutes = require('../modules/concepts/concept.routes');
 
 const router = express.Router();
 
@@ -23,5 +26,8 @@ router.use('/internal/questions', questionRoutes);
 router.use('/health', healthRoutes);
 router.use('/calendar', calendarRoutes);
 router.use('/learning', learningRoutes);
+router.use('/topics', topicRoutes);
+router.use('/stages', stageRoutes);
+router.use('/concepts', conceptRoutes);
 
 module.exports = router;

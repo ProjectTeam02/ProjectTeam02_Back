@@ -13,11 +13,12 @@ const { AppDataSource } = require('../../config/database');
 const KakaoClient = require('../../clients/kakao.client');
 const mobileService = require('./kakao-mobile.service');
 const mobileController = require('./kakao-mobile.controller');
+const { PostgresOAuthStore } = require('./kakao-postgres-oauth.store');
 
 const router = express.Router();
 const service = authService(AppDataSource, new KakaoClient());
 const controller = authController(service);
-const mobile = mobileController(mobileService(service));
+const mobile = mobileController(mobileService(service, { postgresStore: new PostgresOAuthStore(AppDataSource) }));
 function privateResponse(_req, res, next) {
   res.set('Cache-Control', 'no-store').set('Pragma', 'no-cache').set('Referrer-Policy', 'no-referrer');
   next();

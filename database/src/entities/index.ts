@@ -1,8 +1,9 @@
-// 자동 생성: app 스키마 엔티티 42개 (leren_erd.dbml rev.7)
+// app 스키마 엔티티: leren_erd.dbml rev.8 및 카카오 OAuth 임시 저장소
 import { User } from './account/users.entity';
 import { Terms } from './account/terms.entity';
 import { UserTermsAgreement } from './account/user-terms-agreements.entity';
 import { SocialAccount } from './account/social-accounts.entity';
+import { KakaoOAuthEntry } from './account/kakao-oauth-entries.entity';
 import { AccountToken } from './account/account-tokens.entity';
 import { UserDevice } from './account/user-devices.entity';
 import { UserSession } from './account/user-sessions.entity';
@@ -22,6 +23,8 @@ import { StageConcept } from './content/stage-concepts.entity';
 import { Question } from './content/questions.entity';
 import { QuestionChoice } from './content/question-choices.entity';
 import { StageQuestion } from './content/stage-questions.entity';
+import { GlossaryTerm } from './content/glossary-terms.entity';
+import { ConceptTerm } from './content/concept-terms.entity';
 import { UserStageProgress } from './progress/user-stage-progress.entity';
 import { LearningAttempt } from './progress/learning-attempts.entity';
 import { QuestionSubmission } from './progress/question-submissions.entity';
@@ -30,6 +33,8 @@ import { UserWallet } from './reward/user-wallets.entity';
 import { ExpLedger } from './reward/exp-ledger.entity';
 import { CoinLedger } from './reward/coin-ledger.entity';
 import { LevelThreshold } from './reward/level-thresholds.entity';
+import { Badge } from './reward/badges.entity';
+import { UserBadge } from './reward/user-badges.entity';
 import { ReviewItem } from './review/review-items.entity';
 import { ReviewMission } from './review/review-missions.entity';
 import { ReviewAttempt } from './review/review-attempts.entity';
@@ -47,6 +52,7 @@ export const entities = [
   Terms,
   UserTermsAgreement,
   SocialAccount,
+  KakaoOAuthEntry,
   AccountToken,
   UserDevice,
   UserSession,
@@ -66,6 +72,8 @@ export const entities = [
   Question,
   QuestionChoice,
   StageQuestion,
+  GlossaryTerm,
+  ConceptTerm,
   UserStageProgress,
   LearningAttempt,
   QuestionSubmission,
@@ -74,6 +82,8 @@ export const entities = [
   ExpLedger,
   CoinLedger,
   LevelThreshold,
+  Badge,
+  UserBadge,
   ReviewItem,
   ReviewMission,
   ReviewAttempt,
@@ -92,6 +102,7 @@ export {
   Terms,
   UserTermsAgreement,
   SocialAccount,
+  KakaoOAuthEntry,
   AccountToken,
   UserDevice,
   UserSession,
@@ -111,6 +122,8 @@ export {
   Question,
   QuestionChoice,
   StageQuestion,
+  GlossaryTerm,
+  ConceptTerm,
   UserStageProgress,
   LearningAttempt,
   QuestionSubmission,
@@ -119,6 +132,8 @@ export {
   ExpLedger,
   CoinLedger,
   LevelThreshold,
+  Badge,
+  UserBadge,
   ReviewItem,
   ReviewMission,
   ReviewAttempt,

@@ -1,24 +1,24 @@
 # @leren/database
 
 Leren app 스키마의 **TypeORM 엔티티 · 마이그레이션 · 검증 스크립트** 패키지입니다 (npm workspace).
-설계 원본은 `docs/leren_erd.dbml` (rev.7, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)도 **DB 담당이 DDL을 관리**합니다: 스키마·계정은 `sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `sql/init/03_ai_tables.sql`(소유자 `ai_user`). 벡터 테이블만 LlamaIndex가 처음 적재할 때 만들고, 인덱스는 `sql/ai/vector_indexes.sql`로 추가합니다. AI 관련 DB 전체 현황은 `docs/AI_DB.md`.
+설계 원본은 `docs/leren_erd.dbml` (rev.8, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)도 **DB 담당이 DDL을 관리**합니다: 스키마·계정은 `sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `sql/init/03_ai_tables.sql`(소유자 `ai_user`). 벡터 테이블만 LlamaIndex가 처음 적재할 때 만들고, 인덱스는 `sql/ai/vector_indexes.sql`로 추가합니다. AI 관련 DB 전체 현황은 `docs/AI_DB.md`.
 
 ## 구성
 
 ```
 database/
-  src/entities/              # 엔티티 42개 (영역별 폴더 7개) + common/enums.ts
+  src/entities/              # 엔티티 46개 (영역별 폴더 7개) + common/enums.ts
   src/migrations/            # 마이그레이션 (Init부터 순서대로 쌓임)
   src/index.ts               # 패키지 진입점: AppDataSource, 엔티티, Enum
   src/data-source.ts         # 서버 실행용 (app_user)
   src/migration-data-source.ts  # 마이그레이션 전용 (migrator, TypeORM CLI용)
   src/scripts/seed-minimal.ts   # 검증용 최소 시드
-  src/scripts/smoke.ts          # 엔티티 연동 테스트 19항목
+  src/scripts/smoke.ts          # 엔티티 연동 테스트 21항목
   sql/init/01_app_schema.sql    # app 스키마 + 계정(migrator, app_user) 생성. 관리자 계정으로 최초 1회
   sql/init/02_ai_schema.sql     # pgvector 확장 + ai 스키마 + 계정(ai_user). 01 다음에 최초 1회
   sql/init/03_ai_tables.sql     # ai 스키마 RAG 메타 테이블 3개 + app_user 읽기 권한. 02 다음에 (여러 번 실행해도 안전)
   sql/ai/vector_indexes.sql     # 벡터 테이블 HNSW·metadata 인덱스. AI가 처음 적재한 뒤 1회 (ai_user)
-  sql/test/constraint_test.sql  # SQL 제약 테스트 66개 (빈 DB, app_user)
+  sql/test/constraint_test.sql  # SQL 제약 테스트 86개 (빈 DB, app_user)
   sql/test/ai_schema_test.sql   # ai 스키마 검증 8개 (pgvector·권한 분리, ai_user)
   sql/test/ai_tables_test.sql   # ai RAG 테이블 검증 12개 (ai_user)
   docs/leren_erd.dbml        # 설계 원본 (dbdiagram.io에 붙여 넣으면 ERD)
@@ -51,7 +51,7 @@ await users.findOneBy({ email });
 | `npm run db:migrate:show` | 적용된 마이그레이션 목록 (`[X]` = 적용됨) | migrator |
 | `npm run db:check` | 엔티티와 DB 차이 확인 ("No changes"면 통과) | migrator |
 | `npm run db:seed` | 검증용 최소 시드 | app_user |
-| `npm run db:test` | 연동 테스트 19항목 (**테스트 데이터를 실제로 저장** → 빈 DB에서만) | app_user |
+| `npm run db:test` | 연동 테스트 21항목 (**테스트 데이터를 실제로 저장** → 빈 DB에서만) | app_user |
 | `npm run migration:generate -w @leren/database -- src/migrations/<이름>` | 엔티티 변경분으로 새 마이그레이션 생성 | migrator |
 | `npm run migration:revert -w @leren/database` | 마지막 마이그레이션 되돌리기 | migrator |
 
@@ -115,6 +115,7 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 | rev.5 | `Init` | 최초 스키마 (테이블 40개) |
 | rev.6 | `AiMessageSourcesContract` | AI 내부 API 계약 반영: `ai_message_sources.document_version` 문자열·null 허용, `chunk_id` 필수, (message_id, document_id, chunk_id) 유니크. ai 스키마·`ai_user` 분리 |
 | rev.7 | `AiMultiturnMemory` + `03_ai_tables.sql` | 멀티턴 메모리: `ai_conversation_summaries`(요약 이력), `ai_messages.summary_id`, `ai_user_memories`(장기 메모리), `ai_conversations` 요약 짝 CHECK, `ai_message_sources` 길이 확장. ai 스키마 `rag_documents`·`rag_document_chunks`·`rag_index_configurations` + app_user 읽기 권한 |
+| rev.8 | `GlossaryBadgeGoal` | 피그마 화면 검토 반영: `glossary_terms`·`concept_terms`(개념별 용어), `badges`·`user_badges`(배지), `user_settings.daily_goal_count` → `goal_count`(값 보존 RENAME) + `goal_period`(WEEKLY), `concept_sections` page_no·sort_order >= 1 |
 
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
 
@@ -124,6 +125,11 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 - 응시 시작 전 남은 `IN_PROGRESS` 응시를 `ABANDONED`로 끝내거나 이어서 반환
 - 퀴즈 `submissionId`(UUID 형식 검증)는 `insert`, PK 중복이면 기존 채점 결과 반환. 복습은 시작 시 답안 행을 미리 만들고 제출 때 `update`
 - 선택지는 문항당 4개·정답 1개, NORMAL Stage의 `stage_concepts`는 1행
+- 던전 흐름(rev.8): 입장 → 개념 학습(`concept_sections`) → 전투. 학습 마지막 페이지에서만 전투 시작 가능(`read_completed_at`, 건너뛰기 없음). BOSS Stage는 학습 카드 없이 전투만 (`content_position` 저장 요청 거부)
+- 학습 화면 헤드라인 = `concepts.short_definition`. 생활 속 예시는 EXAMPLE 카드 `body`(텍스트)
+- 클리어 화면 "학습 키워드 N개" = 던전 개념의 `concept_terms` 수 (`concept_code` 기준)
+- 목표 달성률(rev.8): `goal_count`가 null이면 표시 안 함. 기간은 `goal_period = WEEKLY` → 이번 주(월요일 00:00, `timezone` 기준) 실적 ÷ `goal_count`
+- 배지(rev.8): 지급 조건 미정. 조건을 확인하는 트랜잭션에서 `user_badges` INSERT, PK 중복(23505)이면 이미 받은 배지로 처리. 탈퇴 후에도 유지
 - `concept_code`, `question_code`, `document_id`, `chunk_id`, `coin_ledger.ref_id`는 FK 없는 논리 참조 → 저장 시 존재 여부 검증
 - AI 일일 한도는 서버 설정값 + 오늘 `usageDate`의 TUTOR 요청 수 (`usageDate`는 넣지 않음)
 - 회원 탈퇴: `accountStatus = WITHDRAWN`과 `withdrawnAt`을 함께 기록, 개인정보 비우기, 학습·보상 기록 유지

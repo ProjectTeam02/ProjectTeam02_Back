@@ -12,6 +12,9 @@ const service = require('./quiz.service')(AppDataSource);
 const controller = require('./quiz.controller')(service);
 
 const router = express.Router();
-router.get('/generate', auth, controller.generate);
+router.get('/generate', auth, validate(schema.generate), controller.generate);
+router.post('/stages/:stageId/attempts', auth, validate(schema.start), controller.start);
+router.get('/attempts/:attemptId', auth, validate(schema.attempt), controller.getAttempt);
+router.get('/attempts/:attemptId/result', auth, validate(schema.attempt), controller.result);
 router.post('/:id/submit', auth, validate(schema.submit), controller.submit);
 module.exports = router;

@@ -84,8 +84,8 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     assert.equal(new URL(url).origin, base, 'No requests outside the isolated HTTP server');
     return nativeFetch(url, init);
   });
-  async function request(path, body, token) {
-    const r = await fetch(base + '/api/v1/' + path, { method: body ? 'POST' : 'GET', redirect: 'manual',
+  async function request(path, body, token, origin = base) {
+    const r = await (origin === base ? fetch : nativeFetch)(origin + '/api/v1/' + path, { method: body ? 'POST' : 'GET', redirect: 'manual',
       headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(token ? { authorization: 'Bearer ' + token } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}) });
     if (r.status === 302) return { status: r.status, location: new URL(r.headers.get('location')), text: await r.text(), headers: r.headers };
@@ -287,5 +287,183 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
       const op = document.paths['/api/v1/auth/kakao/' + path][method]; assert.deepEqual(op.security, []); assert.ok(op.responses[422]); assert.ok(op.responses[503]); assert.ok(op.responses[500]);
     }
     assert.equal(document.paths['/api/v1/auth/kakao/callback'].get.responses[302].content, undefined);
+  });
+
+  Object.assign(env, { nodeEnv: 'production', kakaoOauthStoreMode: 'postgres' });
+  const { digest } = require(root + '/src/modules/auth/kakao-oauth.store');
+  const entries = admin.getRepository(E.KakaoOAuthEntry);
+
+  await check('production PostgreSQL stores only hashes and rejects state and exchange replay', async () => {
+    const flow = await begin();
+    const stateKey = { kind: 'state', tokenHash: digest(flow.state) };
+    const state = await entries.findOneByOrFail(stateKey);
+    assert.equal(state.payload.loginAttemptId, flow.start.loginAttemptId);
+    assert.equal(state.payload.challenge, digestBase64url(flow.verifier));
+    assert.ok(state.expiresAt > state.createdAt);
+    assert.equal(JSON.stringify(state).includes(flow.state), false);
+    assert.equal(JSON.stringify(state).includes(flow.verifier), false);
+
+    const cb = await callback(flow);
+    assert.equal(cb.status, 302);
+    const body = exchangeBody(flow, cb);
+    const exchangeKey = { kind: 'exchange', tokenHash: digest(body.loginCode) };
+    const stored = await entries.findOneByOrFail(exchangeKey);
+    assert.equal(JSON.stringify(stored).includes(body.loginCode), false);
+    assert.equal(stored.payload.loginAttemptId, flow.start.loginAttemptId);
+    assert.ok(stored.payload.userId);
+    assert.equal(await entries.existsBy(stateKey), false);
+    assert.equal((await callback(flow)).status, 422);
+
+    const wrongVerifier = crypto.randomBytes(32).toString('base64url');
+    assert.equal((await request('auth/kakao/exchange', { ...body, codeVerifier: wrongVerifier })).status, 401);
+    assert.equal((await request('auth/kakao/exchange', { ...body, loginAttemptId: crypto.randomUUID() })).status, 401);
+    assert.equal(await entries.existsBy(exchangeKey), true);
+    assert.equal((await request('auth/kakao/exchange', body)).status, 200);
+    assert.equal(await entries.existsBy(exchangeKey), false);
+    assert.equal((await request('auth/kakao/exchange', body)).status, 401);
+  });
+
+  await check('expired database state and exchange codes fail closed and are pruned', async () => {
+    const expiredState = await begin();
+    const flow = await begin(), cb = await callback(flow), body = exchangeBody(flow, cb);
+    const tokens = [digest(expiredState.state), digest(body.loginCode)];
+    await admin.query("UPDATE app.kakao_oauth_entries SET expires_at = clock_timestamp() - interval '1 second' WHERE token_hash = ANY($1)", [tokens]);
+    assert.equal((await callback(expiredState)).status, 422);
+    assert.equal((await request('auth/kakao/exchange', body)).status, 401);
+    const { PostgresOAuthStore } = require(root + '/src/modules/auth/kakao-postgres-oauth.store');
+    const freshStore = new PostgresOAuthStore(d);
+    await freshStore.put('state', { loginAttemptId: crypto.randomUUID() }, 60);
+    assert.equal((await admin.query('SELECT count(*)::int AS n FROM app.kakao_oauth_entries WHERE token_hash = ANY($1)', [tokens]))[0].n, 0);
+  });
+
+  function digestBase64url(value) {
+    return crypto.createHash('sha256').update(value).digest('base64url');
+  }
+
+  await check('independent Node processes preserve attempts across restarts and consume once', async () => {
+    const startProcess = require('../helpers/kakao-oauth-process');
+    const workers = [];
+    const options = {
+      db: { host: cfg.host, port: cfg.port, database: cfg.database, username: 'kakao_it_app', password: cfg.password },
+      config: {
+        nodeEnv: 'production', kakaoOauthStoreMode: 'postgres', kakaoRestApiKey: 'isolated-mock-key', kakaoClientSecret: 'isolated-mock-secret',
+        kakaoOauthCallbackUrl: env.kakaoOauthCallbackUrl, kakaoAllowedRedirectUris: env.kakaoAllowedRedirectUris,
+        kakaoAppDeepLink: env.kakaoAppDeepLink, kakaoAllowedAppDeepLinks: env.kakaoAllowedAppDeepLinks,
+        kakaoOauthStateTtlSeconds: 300, kakaoOauthExchangeTtlSeconds: 60,
+        jwtAccessSecret: env.jwtAccessSecret, jwtRefreshSecret: env.jwtRefreshSecret,
+      },
+      providerUserId: '900000001',
+    };
+    async function launch() {
+      const worker = await startProcess(options);
+      workers.push(worker);
+      return worker;
+    }
+    async function raceOnLockedRow(kind, token, send) {
+      const lock = admin.createQueryRunner();
+      await lock.connect();
+      let pending;
+      try {
+        await lock.startTransaction();
+        await lock.query('SELECT 1 FROM app.kakao_oauth_entries WHERE kind=$1 AND token_hash=$2 FOR UPDATE', [kind, digest(token)]);
+        pending = send();
+        let waiting = 0;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const [result] = await admin.query(`
+            SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE application_name = 'leren-kakao-oauth-worker'
+              AND wait_event_type = 'Lock' AND query LIKE '%kakao_oauth_entries%FOR UPDATE%'
+          `);
+          waiting = result.n;
+          if (waiting === 2) break;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        assert.equal(waiting, 2, 'Both processes must be waiting on the same OAuth row');
+        await lock.commitTransaction();
+        return await pending;
+      } finally {
+        if (lock.isTransactionActive) await lock.rollbackTransaction();
+        await lock.release();
+        if (pending) await pending;
+      }
+    }
+    try {
+      const before = await counts(), starter = await launch();
+      const codeVerifier = crypto.randomBytes(32).toString('base64url');
+      const start = await request('auth/kakao/start', {
+        codeChallenge: digestBase64url(codeVerifier), codeChallengeMethod: 'S256',
+      }, null, starter.base);
+      assert.equal(start.status, 200);
+      const { authorizationUrl, loginAttemptId } = start.body.data;
+      const state = new URL(authorizationUrl).searchParams.get('state');
+      await starter.close();
+
+      const first = await launch(), second = await launch();
+      assert.notEqual(first.pid, second.pid);
+      const callbackPath = 'auth/kakao/callback?' + new URLSearchParams({ state, code: 'isolated-provider-code' });
+      const callbacks = await raceOnLockedRow('state', state, () =>
+        Promise.all([first, second].map(worker => request(callbackPath, null, null, worker.base))));
+      const callbackStatuses = callbacks.map(response => response.status).sort((a, b) => a - b);
+      assert.deepEqual(callbackStatuses, [302, 422]);
+      const redirect = callbacks.find(response => response.status === 302).location;
+      assert.equal(redirect.searchParams.get('loginAttemptId'), loginAttemptId);
+      assert.deepEqual([...redirect.searchParams.keys()].sort(), ['loginAttemptId', 'loginCode']);
+      const loginCode = redirect.searchParams.get('loginCode');
+      assert.ok(loginCode);
+      await Promise.all([first.close(), second.close()]);
+
+      const third = await launch(), fourth = await launch();
+      assert.notEqual(third.pid, fourth.pid);
+      const body = { loginCode, codeVerifier, loginAttemptId };
+      const exchanges = await raceOnLockedRow('exchange', loginCode, () =>
+        Promise.all([third, fourth].map(worker => request('auth/kakao/exchange', body, null, worker.base))));
+      const exchangeStatuses = exchanges.map(response => response.status).sort((a, b) => a - b);
+      assert.deepEqual(exchangeStatuses, [200, 401]);
+      const issued = exchanges.find(response => response.status === 200).body.data;
+      assert.equal((await request('users/me', null, issued.accessToken, fourth.base)).status, 200);
+      const after = await counts();
+      assert.equal(after.socials - before.socials, 1);
+      assert.equal(after.sessions - before.sessions, 1);
+      evidence.postgresOAuth = { stateSurvivedRestart: true, exchangeSurvivedRestart: true,
+        simultaneousWaitersPerToken: 2, callbackStatuses, exchangeStatuses };
+    } finally {
+      await Promise.all(workers.map(worker => worker.close()));
+    }
+  });
+
+  await check('OAuth migration can be reversed and reapplied without changing existing auth rows', async () => {
+    const before = await counts();
+    assert.equal(migrations.at(-1).name, 'KakaoOAuthEntries1794210000000');
+    await admin.undoLastMigration();
+    try {
+      assert.equal((await admin.query("SELECT to_regclass('app.kakao_oauth_entries') AS table_name"))[0].table_name, null);
+      const response = await request('auth/kakao/start', {
+        codeChallenge: digestBase64url('synthetic-verifier'), codeChallengeMethod: 'S256',
+      });
+      assert.equal(response.status, 503);
+      assert.equal(response.body.message, 'OAuth 상태 저장소 마이그레이션이 적용되지 않았습니다.');
+      assert.deepEqual(await counts(), before);
+    } finally {
+      const reapplied = await admin.runMigrations();
+      assert.deepEqual(reapplied.map(migration => migration.name), ['KakaoOAuthEntries1794210000000']);
+      await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON app.kakao_oauth_entries TO kakao_it_app');
+    }
+    const drift = await admin.driver.createSchemaBuilder().log();
+    assert.equal(drift.upQueries.length, 0);
+    assert.deepEqual(await counts(), before);
+    assert.ok((await begin()).state);
+  });
+
+  await check('production store failure returns a sanitized 503 on each OAuth endpoint', async () => {
+    await d.destroy();
+    const proof = crypto.randomBytes(32).toString('base64url');
+    for (const response of [
+      await request('auth/kakao/start', { codeChallenge: digestBase64url(proof), codeChallengeMethod: 'S256' }),
+      await request('auth/kakao/callback?state=' + proof),
+      await request('auth/kakao/exchange', { loginCode: proof, codeVerifier: proof, loginAttemptId: crypto.randomUUID() }),
+    ]) {
+      assert.equal(response.status, 503);
+      assert.deepEqual(response.body, { success: false, message: 'OAuth 상태 저장소에 연결할 수 없습니다.', code: 'SERVICE_UNAVAILABLE' });
+    }
   });
 });

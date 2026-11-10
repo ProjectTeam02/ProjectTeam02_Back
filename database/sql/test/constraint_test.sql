@@ -1,4 +1,4 @@
--- 제약 검증 rev.7 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+-- 제약 검증 rev.8 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -166,6 +166,36 @@ INSERT INTO result SELECT 67, '탈퇴 후: 본문 0건, 대화·메시지 행과
   AND (SELECT count(*) FROM ai_message_sources) > 0 AND (SELECT count(*) FROM ai_requests) > 0
   AND (SELECT count(*) FROM ai_user_memories WHERE user_id = '00000000-0000-0000-0000-000000000001') = 0,
   'messages=' || (SELECT count(*) FROM ai_messages) || ' sources=' || (SELECT count(*) FROM ai_message_sources) || ' requests=' || (SELECT count(*) FROM ai_requests);
+
+-- 68~74 rev.8 개념별 용어 (클리어 화면 "학습 키워드 N개")
+SELECT pg_temp.expect_ok (68, '용어 저장', $q$INSERT INTO glossary_terms (term_id, term_code, term, definition) VALUES ('00000000-0000-0000-0000-000000000071','TERM-DEMAND-QTY','수요량','특정 가격에서 사려는 양'), ('00000000-0000-0000-0000-000000000072','TERM-DEMAND-LAW','수요의 법칙','가격이 오르면 수요량이 줄어드는 관계')$q$);
+SELECT pg_temp.expect_err(69, '같은 term_code 용어 중복 거부', $q$INSERT INTO glossary_terms (term_code, term, definition) VALUES ('TERM-DEMAND-QTY','수요량2','중복')$q$, '23505');
+SELECT pg_temp.expect_err(70, '빈 용어명 거부', $q$INSERT INTO glossary_terms (term_code, term, definition) VALUES ('TERM-EMPTY','','뜻')$q$, '23514');
+SELECT pg_temp.expect_ok (71, '개념에 용어 2개 연결 (concept_code 기준)', $q$INSERT INTO concept_terms (concept_code, term_id, display_order) VALUES ('C-DEMAND','00000000-0000-0000-0000-000000000071',1), ('C-DEMAND','00000000-0000-0000-0000-000000000072',2)$q$);
+SELECT pg_temp.expect_err(72, '같은 개념·용어 중복 연결 거부', $q$INSERT INTO concept_terms (concept_code, term_id) VALUES ('C-DEMAND','00000000-0000-0000-0000-000000000071')$q$, '23505');
+SELECT pg_temp.expect_err(73, '없는 용어 연결 거부 (FK)', $q$INSERT INTO concept_terms (concept_code, term_id) VALUES ('C-DEMAND','00000000-0000-0000-0000-0000000000ff')$q$, '23503');
+INSERT INTO stage_concepts (stage_id, concept_id) VALUES ('00000000-0000-0000-0000-0000000000b1','00000000-0000-0000-0000-0000000000c1');
+INSERT INTO result SELECT 74, '학습 키워드 수 = 던전 개념에 연결된 용어 수 (2개)',
+  (SELECT count(*) FROM stage_concepts sc JOIN concepts c USING (concept_id) JOIN concept_terms ct ON ct.concept_code = c.concept_code WHERE sc.stage_id = '00000000-0000-0000-0000-0000000000b1') = 2, 'OK';
+
+-- 75~80 rev.8 배지 (마이페이지 "획득 배지 N개")
+SELECT pg_temp.expect_ok (75, '배지 저장 (조건 미정이라 condition_type null)', $q$INSERT INTO badges (badge_id, badge_code, name) VALUES ('00000000-0000-0000-0000-000000000081','FIRST_CLEAR','첫 클리어')$q$);
+SELECT pg_temp.expect_err(76, '같은 badge_code 중복 거부', $q$INSERT INTO badges (badge_code, name) VALUES ('FIRST_CLEAR','첫 클리어2')$q$, '23505');
+SELECT pg_temp.expect_err(77, '조건 값 0 거부', $q$INSERT INTO badges (badge_code, name, condition_type, condition_value) VALUES ('CLEAR_0','0회 클리어','STAGE_CLEAR_COUNT',0)$q$, '23514');
+SELECT pg_temp.expect_ok (78, '배지 획득 기록', $q$INSERT INTO user_badges (user_id, badge_id) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000081')$q$);
+SELECT pg_temp.expect_err(79, '같은 배지 재지급 거부 (PK)', $q$INSERT INTO user_badges (user_id, badge_id) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000081')$q$, '23505');
+INSERT INTO result SELECT 80, '획득 배지 수 집계 (1개)', (SELECT count(*) FROM user_badges WHERE user_id = '00000000-0000-0000-0000-000000000001') = 1, 'OK';
+
+-- 81~84 rev.8 목표 (주 단위, 마이페이지 "목표 달성률")
+SELECT pg_temp.expect_ok (81, '목표 설정 goal_count = 5', $q$UPDATE user_settings SET goal_count = 5 WHERE user_id = '00000000-0000-0000-0000-000000000001'$q$);
+INSERT INTO result SELECT 82, '목표 기간 기본값 WEEKLY', goal_period = 'WEEKLY', goal_period::text FROM user_settings WHERE user_id = '00000000-0000-0000-0000-000000000001';
+SELECT pg_temp.expect_err(83, '목표 0 거부', $q$UPDATE user_settings SET goal_count = 0 WHERE user_id = '00000000-0000-0000-0000-000000000001'$q$, '23514');
+SELECT pg_temp.expect_err(84, '기간 DAILY 거부 (현재 WEEKLY만)', $q$UPDATE user_settings SET goal_period = 'DAILY' WHERE user_id = '00000000-0000-0000-0000-000000000001'$q$, '22P02');
+
+-- 85~87 rev.8 학습 카드 번호
+SELECT pg_temp.expect_ok (85, '학습 카드 저장 (1페이지 1번)', $q$INSERT INTO concept_sections (concept_id, page_no, sort_order, section_type, body) VALUES ('00000000-0000-0000-0000-0000000000c1',1,1,'EXAMPLE','작년 1,500원이던 빵이 올해 1,700원이 되었어요.')$q$);
+SELECT pg_temp.expect_err(86, '페이지 번호 0 거부', $q$INSERT INTO concept_sections (concept_id, page_no, sort_order, section_type, body) VALUES ('00000000-0000-0000-0000-0000000000c1',0,1,'INTRO','x')$q$, '23514');
+SELECT pg_temp.expect_err(87, '정렬 순서 0 거부', $q$INSERT INTO concept_sections (concept_id, page_no, sort_order, section_type, body) VALUES ('00000000-0000-0000-0000-0000000000c1',1,0,'INTRO','x')$q$, '23514');
 
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');

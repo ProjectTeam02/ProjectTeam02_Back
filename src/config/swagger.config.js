@@ -18,7 +18,7 @@ module.exports = {
       version: '1.0.0',
       description: 'Leren 1차 USECASE REST API. 실제 DB·FastAPI 상태는 health API로 확인합니다.',
     },
-    servers: [{ url: 'http://localhost:3000' }],
+    servers: [{ url: '/' }],
     tags: [
       { name: 'Auth', description: '회원가입 및 토큰' },
       { name: 'Users', description: '마이페이지 및 알림' },
@@ -53,8 +53,6 @@ module.exports = {
         },
         User: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' }, nickname: { type: 'string' }, email: { type: 'string', nullable: true, description: '카카오 전용 회원은 null' }, level: { type: 'integer', description: '전체 레벨' }, totalExp: { type: 'integer' }, economyLevel: { type: 'integer' }, economyExp: { type: 'integer' }, plan: { type: 'string', enum: ['FREE', 'PREMIUM'] }, onboardingCompleted: { type: 'boolean', description: '직업 선택 완료 여부. false면 직업 선택 화면으로 이동' } } },
         NotificationSetting: { type: 'object', properties: { userId: { type: 'string', format: 'uuid' }, learningOn: { type: 'boolean' }, reminderEnabled: { type: 'boolean' }, reminderTime: { type: 'string', nullable: true, example: '20:00:00' }, timezone: { type: 'string', example: 'Asia/Seoul' }, dailyGoalCount: { type: 'integer', nullable: true }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } },
-        Conversation: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, entryPoint: { type: 'string', nullable: true }, status: { type: 'string' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } },
-        TutorMessageRequest: { type: 'object', required: ['conversationId', 'question'], properties: { conversationId: { type: 'string', format: 'uuid' }, question: { type: 'string', minLength: 1 }, modelTier: { type: 'string', enum: ['BASIC', 'ADVANCED'] }, clientMessageId: { type: 'string' }, context: { type: 'object', nullable: true }, knowledgeScope: { type: 'object', nullable: true } } },
         Quiz: { type: 'object', properties: { id: { type: 'string', format: 'uuid' }, title: { type: 'string' }, explanation: { type: 'string' }, difficulty: { type: 'string' }, choices: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, content: { type: 'string' } } } } } },
       },
     },
@@ -80,10 +78,6 @@ module.exports = {
       } },
       '/api/v1/users/me': { get: { tags: ['Users'], security: auth, summary: '마이페이지', responses: { 200: { description: '사용자 정보' }, 401: errorResponse, 404: errorResponse } } },
       '/api/v1/users/me/notifications': { patch: { tags: ['Notifications'], security: auth, summary: '학습 알림 설정', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['learningOn'], properties: { learningOn: { type: 'boolean' } } } } } }, responses: { 200: { description: '설정 저장', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NotificationSetting' } } } } } }, 401: errorResponse, 422: errorResponse } } },
-      '/api/v1/tutor/conversations': { post: { tags: ['AI Tutor'], security: auth, summary: '대화방 생성', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { entryPoint: { type: 'string' }, contextTopicId: { type: 'string' }, contextStageId: { type: 'string' }, contextConceptId: { type: 'string' } } } } } }, responses: { 201: { description: '생성 성공' }, 401: errorResponse } }, get: { tags: ['AI Tutor'], security: auth, summary: '대화방 목록', parameters: [{ $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/pageSize' }], responses: { 200: { description: '목록 조회' }, 401: errorResponse } } },
-      '/api/v1/tutor/conversations/{id}/messages': { get: { tags: ['AI Tutor'], security: auth, summary: '대화 메시지 목록', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }, { $ref: '#/components/parameters/page' }, { $ref: '#/components/parameters/pageSize' }], responses: { 200: { description: '목록 조회' }, 404: errorResponse } } },
-      '/api/v1/tutor/messages': { post: { tags: ['AI Tutor'], security: auth, summary: 'AI Tutor 질문', parameters: [{ name: 'Idempotency-Key', in: 'header', schema: { type: 'string', maxLength: 200 } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/TutorMessageRequest' } } } }, responses: { 201: { description: '답변 저장' }, 401: errorResponse, 409: errorResponse, 429: errorResponse, 503: errorResponse } } },
-      '/api/v1/tutor/usage': { get: { tags: ['AI Tutor'], security: auth, summary: '일일 AI 사용량', responses: { 200: { description: '사용량' }, 401: errorResponse } } },
       '/api/v1/quizzes/generate': { get: { tags: ['Quizzes'], security: auth, summary: '승인된 문제 조회', parameters: [{ name: 'conceptId', in: 'query', schema: { type: 'string' } }], responses: { 200: { description: '정답을 제외한 문제', content: { 'application/json': { schema: { $ref: '#/components/schemas/Quiz' } } } }, 404: errorResponse } } },
       '/api/v1/quizzes/{id}/submit': { post: { tags: ['Quizzes'], security: auth, summary: '문제 제출 및 채점', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }, { name: 'Idempotency-Key', in: 'header', schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['choiceId'], properties: { choiceId: { type: 'string', format: 'uuid' }, attemptId: { type: 'string', format: 'uuid' } } } } } }, responses: { 201: { description: '채점 결과' }, 409: errorResponse, 422: errorResponse } } },
     },
@@ -137,3 +131,70 @@ const questionImport = require('./question-import.swagger');
 module.exports.definition.tags.push({ name: 'Internal Question Import', description: 'AI 서버 전용 문제 적재' });
 Object.assign(module.exports.definition.components.schemas, questionImport.schemas);
 Object.assign(module.exports.definition.paths, questionImport.paths);
+const normalStageQuiz = require('./normal-stage-quiz.swagger');
+Object.assign(module.exports.definition.components.schemas, normalStageQuiz.schemas);
+Object.assign(module.exports.definition.paths, normalStageQuiz.paths);
+
+const economyContent = require('./economy-content.swagger');
+module.exports.definition.tags.push({ name: 'Economy Content', description: '공개 주제, Stage 및 학습 카드 조회' });
+Object.assign(module.exports.definition.components.schemas, economyContent.schemas);
+Object.assign(module.exports.definition.paths, economyContent.paths);
+
+const submit = module.exports.definition.paths['/api/v1/quizzes/{id}/submit'].post;
+module.exports.definition.components.schemas.Quiz.properties.explanation = {
+  type: 'string', nullable: true, description: '레거시 승인 문제 조회에서는 제출 전 해설을 숨기기 위해 항상 null. 일반 Stage 채점 응답에서 해설 제공',
+};
+module.exports.definition.components.schemas.Quiz.properties.conceptId = { type: 'string', format: 'uuid' };
+const legacyGenerate = module.exports.definition.paths['/api/v1/quizzes/generate'].get;
+legacyGenerate.description = '기존 승인(APPROVED) 문제 조회 경로입니다. Stage 응시와 연결되지 않습니다. explanation 필드는 유지하지만 값은 null이며, 정답 여부도 반환하지 않습니다. 진행·채점·보상은 일반 Stage 응시 API를 사용하세요.';
+legacyGenerate.responses[200].content['application/json'] = {
+  schema: { type: 'object', required: ['success', 'data'], properties: {
+    success: { type: 'boolean' }, data: { $ref: '#/components/schemas/Quiz' },
+  } },
+  example: { success: true, data: {
+    id: '123e4567-e89b-42d3-a456-426614174001', title: '기회비용은 무엇인가요?',
+    explanation: null, difficulty: 'BEGINNER', conceptId: '123e4567-e89b-42d3-a456-426614174010',
+    choices: [
+      { id: '123e4567-e89b-42d3-a456-426614174011', label: 'A', content: '선택지 A' },
+      { id: '123e4567-e89b-42d3-a456-426614174012', label: 'B', content: '선택지 B' },
+    ],
+  } },
+};
+submit.description = '진행 중인 본인 응시의 현재 문항만 제출할 수 있습니다. 정답일 때 HP가 1 감소하며 0이면 즉시 PASSED, 3문항 후 미통과면 FAILED입니다. 종료 후 새 제출은 409입니다. Idempotency-Key를 보냈다면 같은 키·문항·선택지의 재요청은 원래 채점 결과와 duplicate=true를 반환합니다. 같은 키를 다른 답안에 재사용하면 409입니다.';
+submit.parameters[1].schema.maxLength = 200;
+submit.requestBody.content['application/json'].schema.required = ['choiceId', 'attemptId'];
+submit.responses[201] = responseForSubmission();
+submit.responses[201].content['application/json'].example = {
+  success: true, data: {
+    attemptId: '123e4567-e89b-42d3-a456-426614174020',
+    quizId: '123e4567-e89b-42d3-a456-426614174001',
+    choiceId: '123e4567-e89b-42d3-a456-426614174012',
+    isCorrect: true, score: 100, explanation: '기회비용 해설',
+    hpBefore: 1, hpAfter: 0, submittedCount: 2, correctCount: 2,
+    status: 'PASSED', endReason: 'MONSTER_DEFEATED', rewardGranted: true,
+  },
+};
+submit.responses[401] = { description: '인증 실패' };
+submit.responses[404] = { description: '본인 응시를 찾을 수 없음' };
+submit.responses[503] = { description: 'Stage 보상 또는 문항 설정 오류' };
+
+function responseForSubmission() {
+  return { description: '채점 및 상태 저장', content: { 'application/json': { schema: {
+    type: 'object', required: ['success', 'data'], properties: {
+      success: { type: 'boolean' }, data: { type: 'object', required: ['attemptId', 'quizId', 'choiceId', 'isCorrect', 'hpBefore', 'hpAfter', 'submittedCount', 'correctCount', 'status'], properties: {
+        attemptId: { type: 'string', format: 'uuid' }, quizId: { type: 'string', format: 'uuid' },
+        choiceId: { type: 'string', format: 'uuid' }, isCorrect: { type: 'boolean' },
+        score: { type: 'integer' }, explanation: { type: 'string' },
+        hpBefore: { type: 'integer' }, hpAfter: { type: 'integer' },
+        submittedCount: { type: 'integer' }, correctCount: { type: 'integer' },
+        status: { type: 'string', enum: ['IN_PROGRESS', 'PASSED', 'FAILED'] },
+        endReason: { type: 'string', nullable: true }, rewardGranted: { type: 'boolean' },
+        duplicate: { type: 'boolean', description: '같은 Idempotency-Key의 재요청이면 true' },
+      } },
+    },
+  } } } };
+}
+
+const tutor = require('./tutor.swagger');
+Object.assign(module.exports.definition.components.schemas, tutor.schemas);
+Object.assign(module.exports.definition.paths, tutor.paths);

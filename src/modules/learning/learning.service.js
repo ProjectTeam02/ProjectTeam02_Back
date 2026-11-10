@@ -21,7 +21,8 @@ module.exports = function service(dataSource = AppDataSource) {
         const grouped = new Map(attempts.map(attempt => [attempt.attemptId, []]));
         for (const row of rows) grouped.get(row.attemptId)?.push(row);
         return { items: attempts.map(attempt => dto.summary(attempt, grouped.get(attempt.attemptId))),
-          page: options.page, pageSize: options.pageSize, total, totalPages: Math.ceil(total / options.pageSize) };
+          page: options.page, pageSize: options.pageSize, total, totalPages: Math.ceil(total / options.pageSize),
+          ...(total === 0 ? { emptyMessage: '아직 학습 기록이 없습니다.' } : {}) };
       });
     },
     async historyDetail(userId, recordType, recordId) {

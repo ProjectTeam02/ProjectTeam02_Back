@@ -28,6 +28,23 @@ const summaryFields = {
 const response = name => ({ content: { 'application/json': { schema: { $ref: `#/components/schemas/${name}` } } } });
 const error = description => ({ description, ...response('Error') });
 const commonErrors = { 401: error('JWT 없음/유효하지 않은 인증 세션'), 422: error('조회 조건 또는 경로 형식 오류'), 503: error('DB 연결/쿼리 실패') };
+const listExamples = {
+  populated: { summary: '데이터가 있는 경우', value: { success: true, data: {
+    items: [{ recordType: 'LEARNING', recordId: '11111111-1111-4111-8111-111111111111',
+      attemptNo: 1, attemptType: 'PLAY', mode: 'START', status: 'PASSED', endReason: 'MONSTER_DEFEATED',
+      isFinished: true, learningDate: '2026-11-02', timeZone: 'Asia/Seoul',
+      startedAt: '2026-11-01T15:00:00.000Z', endedAt: '2026-11-01T15:02:00.000Z',
+      completedAt: '2026-11-01T15:02:00.000Z', elapsedSeconds: 120,
+      topic: { topicId: '22222222-2222-4222-8222-222222222222', title: '경제' },
+      stage: { stageId: '33333333-3333-4333-8333-333333333333', stageCode: '1-1', title: '금리', stageType: 'NORMAL' },
+      submittedCount: 1, correctCount: 1, accuracyPercentage: 100 }],
+    page: 1, pageSize: 20, total: 1, totalPages: 1,
+  } } },
+  empty: { summary: '데이터가 없는 경우', value: { success: true, data: {
+    items: [], page: 1, pageSize: 20, total: 0, totalPages: 0,
+    emptyMessage: '아직 학습 기록이 없습니다.',
+  } } },
+};
 
 module.exports = {
   schemas: {
@@ -53,6 +70,7 @@ module.exports = {
       data: { type: 'object', required: ['items', 'page', 'pageSize', 'total', 'totalPages'], properties: {
         items: { type: 'array', items: { $ref: '#/components/schemas/LearningHistorySummary' } },
         page: integer, pageSize: integer, total: integer, totalPages: integer,
+        emptyMessage: { type: 'string', description: '조회 조건에 해당하는 전체 이력이 없을 때(total=0)만 반환. 페이지 범위 초과로 items만 비면 생략' },
       } },
     } },
     LearningHistoryDetailResponse: { type: 'object', required: ['success', 'data'], properties: {
@@ -68,7 +86,9 @@ module.exports = {
         { name: 'pageSize', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
         { name: 'status', in: 'query', schema: summaryFields.status },
       ],
-      responses: { 200: { description: '본인 이력 목록', ...response('LearningHistoryListResponse') }, ...commonErrors },
+      responses: { 200: { description: '본인 이력 목록', content: { 'application/json': {
+        schema: { $ref: '#/components/schemas/LearningHistoryListResponse' }, examples: listExamples,
+      } } }, ...commonErrors },
     } },
     '/api/v1/learning/history/{recordType}/{recordId}': { get: {
       tags: ['Learning History'], security: [{ bearerAuth: [] }], summary: '내 학습 이력 상세',
