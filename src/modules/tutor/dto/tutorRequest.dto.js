@@ -40,12 +40,12 @@ const ENTRY_POINTS = ['NAV', 'CONCEPT', 'QUIZ', 'RESULT', 'REVIEW'];
 const MODEL_TIERS = ['BASIC', 'ADVANCED'];
 
 function parseConversation(body) {
-  const value = f.onlyKeys(f.object(body, 'body'), ['entryPoint', 'contextTopicId', 'contextStageId', 'contextConceptId'], 'body');
+  const value = f.onlyKeys(f.object(body, 'body'), ['entryPoint', 'contextTopicId', 'contextStageId', 'contextConceptId', 'stageId', 'conceptId'], 'body');
   return {
     entryPoint: value.entryPoint === undefined || value.entryPoint === null ? null : f.oneOf(value.entryPoint, ENTRY_POINTS, 'entryPoint'),
     contextTopicId: f.optionalUuid(value.contextTopicId, 'contextTopicId'),
-    contextStageId: f.optionalUuid(value.contextStageId, 'contextStageId'),
-    contextConceptId: f.optionalUuid(value.contextConceptId, 'contextConceptId'),
+    contextStageId: f.optionalUuid(value.contextStageId || value.stageId, 'stageId'),
+    contextConceptId: f.optionalUuid(value.contextConceptId || value.conceptId, 'conceptId'),
   };
 }
 
@@ -99,10 +99,12 @@ function parseMessage(body, headers) {
 }
 
 function parseListQuery(query) {
-  const value = f.onlyKeys(f.object(query, 'query'), ['page', 'pageSize'], 'query');
+  const value = f.onlyKeys(f.object(query, 'query'), ['page', 'pageSize', 'size', 'cursor', 'limit'], 'query');
+  const pageSize = value.pageSize || value.size || value.limit;
   return {
     page: String(f.positiveIntQuery(value.page, 'page', { fallback: 1 })),
-    pageSize: String(f.positiveIntQuery(value.pageSize, 'pageSize', { fallback: 20, max: 100 })),
+    pageSize: String(f.positiveIntQuery(pageSize, 'size', { fallback: 20, max: 100 })),
+    ...(value.cursor === undefined ? {} : { cursor: f.string(value.cursor, 'cursor', 255) }),
   };
 }
 

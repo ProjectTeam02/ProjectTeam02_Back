@@ -15,7 +15,12 @@ function service(dataSource = AppDataSource) {
   return {
     start: normalStage.start,
     getAttempt: normalStage.get,
+    getAttemptDetails: normalStage.getAttemptDetails,
     result: normalStage.result,
+    bossStart: normalStage.bossStart,
+    bossGet: normalStage.bossGet,
+    bossSubmit: normalStage.bossSubmit,
+    relearn: normalStage.relearn,
     async generate(query = {}) {
       const questionRepo = repo(Question);
       const question = await questionRepo.findOne({ where: { status: 'APPROVED', ...(query.conceptId ? { conceptId: query.conceptId } : {}) }, order: { createdAt: 'ASC' } });

@@ -199,5 +199,16 @@ function responseForSubmission() {
 }
 
 const tutor = require('./tutor.swagger');
+const extendedApi = require('./extended-api.swagger');
+module.exports.definition.tags.push({ name: 'Extended API', description: '확장 API 및 호환 경로' });
+Object.assign(module.exports.definition.components.schemas, extendedApi.schemas);
+for (const [path, operations] of Object.entries(extendedApi.paths)) {
+  module.exports.definition.paths[path] ||= {};
+  for (const [method, operation] of Object.entries(operations)) {
+    // Existing operations are authoritative for response/schema details. New
+    // operations are added without erasing the compatibility contract.
+    module.exports.definition.paths[path][method] ||= operation;
+  }
+}
 Object.assign(module.exports.definition.components.schemas, tutor.schemas);
 Object.assign(module.exports.definition.paths, tutor.paths);

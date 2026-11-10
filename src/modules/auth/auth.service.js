@@ -80,6 +80,14 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
       });
     },
     async logout(userId) { await sessions.revokeAll(userId); return { loggedOut: true }; },
+    async logoutByRefreshToken(refreshToken) {
+      let payload;
+      try { payload = verifyRefreshToken(refreshToken); } catch (_error) { throw AppError.unauthorized('유효하지 않은 Refresh Token입니다.'); }
+      const session = await sessions.findActive(payload.sid, payload.sub);
+      if (!session || session.refreshTokenHash !== hashToken(refreshToken)) throw AppError.unauthorized('Refresh Token이 만료되었거나 폐기되었습니다.');
+      await sessions.revoke(session.sessionId, 'LOGOUT');
+      return { loggedOut: true };
+    },
     async kakao(input) {
       if (!['development', 'test'].includes(env.nodeEnv) || !env.kakaoLegacyDirectLoginEnabled) {
         throw AppError.forbidden('카카오 로그인은 start/callback/exchange 흐름을 사용하세요.');

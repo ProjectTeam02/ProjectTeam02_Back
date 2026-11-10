@@ -55,31 +55,33 @@ async function view(manager, attempt) {
   return attemptDto.view(attempt, await currentQuestion(manager, attempt));
 }
 
-async function requireStage(manager, stageId) {
+async function requireStage(manager, stageId, expectedType = 'NORMAL') {
   const stage = await repository(manager, Stage).findOne({
     where: { stageId }, relations: { topic: true },
   });
   if (!stage || stage.status !== 'PUBLISHED' || stage.topic?.status !== 'PUBLISHED') {
     throw AppError.notFound('공개된 Stage를 찾을 수 없습니다.');
   }
-  if (stage.stageType !== 'NORMAL') throw AppError.validation('이번 Quiz는 일반 Stage만 지원합니다.');
-  if (stage.maxQuestionCount !== normalRules.questions
+  if (stage.stageType !== expectedType) throw AppError.validation(`이번 Quiz는 ${expectedType} Stage만 지원합니다.`);
+  if (expectedType === 'NORMAL' && (stage.maxQuestionCount !== normalRules.questions
     || stage.requiredCorrectCount !== normalRules.correct
-    || stage.initialMonsterHp !== normalRules.hp) {
+    || stage.initialMonsterHp !== normalRules.hp)) {
     throw AppError.unavailable('일반 Stage Quiz 설정이 올바르지 않습니다.');
   }
-  if ([stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin]
+  if (expectedType === 'BOSS' && ![stage.maxQuestionCount, stage.requiredCorrectCount, stage.initialMonsterHp]
+    .every(value => Number.isInteger(value) && value > 0)) throw AppError.unavailable('Boss Stage Quiz 설정이 올바르지 않습니다.');
+  if (expectedType === 'NORMAL' && [stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin]
     .some(value => !Number.isSafeInteger(value) || value < 0)) {
     throw AppError.unavailable('Stage 최초 통과 보상이 설정되지 않았습니다.');
   }
   return stage;
 }
 
-async function requireNormalAttempt(manager, attempt) {
+async function requireNormalAttempt(manager, attempt, expectedType = 'NORMAL') {
   const stage = await repository(manager, Stage).findOneBy({ stageId: attempt.stageId });
-  if (stage?.stageType !== 'NORMAL' || attempt.maxQuestionCount !== 3
-    || attempt.requiredCorrectCount !== 2 || attempt.initialHp !== 2) {
-    throw AppError.validation('이번 Quiz는 일반 Stage만 지원합니다.');
+  if (stage?.stageType !== expectedType || (expectedType === 'NORMAL' && (attempt.maxQuestionCount !== 3
+    || attempt.requiredCorrectCount !== 2 || attempt.initialHp !== 2))) {
+    throw AppError.validation(`이번 Quiz는 ${expectedType} Stage만 지원합니다.`);
   }
   return stage;
 }
@@ -105,12 +107,12 @@ async function requireUnlocked(manager, userId, stage) {
   return existing;
 }
 
-async function requireQuestionPool(manager, stageId) {
+async function requireQuestionPool(manager, stageId, expectedCount = normalRules.questions) {
   const mappings = await repository(manager, StageQuestion).find({
     where: { stageId }, relations: { question: true }, order: { questionOrder: 'ASC' },
   });
-  if (mappings.length !== normalRules.questions || mappings.some((row, i) => row.questionOrder !== i + 1 || row.question?.status !== 'PUBLISHED')) {
-    throw AppError.unavailable('일반 Stage에 공개된 문항 3개가 필요합니다.');
+  if (mappings.length !== expectedCount || mappings.some((row, i) => row.questionOrder !== i + 1 || row.question?.status !== 'PUBLISHED')) {
+    throw AppError.unavailable(`Stage에 공개된 문항 ${expectedCount}개가 필요합니다.`);
   }
   for (const row of mappings) {
     const choices = await repository(manager, QuestionChoice).findBy({ questionId: row.questionId });
@@ -167,16 +169,17 @@ async function grantFirstPass(manager, userId, stage, attempt) {
 
 module.exports = function normalStageService(dataSource = AppDataSource) {
   return {
-    async start(userId, stageId, requestedMode = null) {
+    async start(userId, stageId, requestedMode = null, attemptType = 'PLAY', expectedType = 'NORMAL') {
       return dataSource.transaction(async manager => {
         const user = await repository(manager, User).findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
         if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
-        const stage = await requireStage(manager, stageId);
+        const stage = await requireStage(manager, stageId, expectedType);
         const attemptRepo = repository(manager, LearningAttempt);
         const active = await attemptRepo.findOneBy({ userId, stageId, status: 'IN_PROGRESS' });
         if (active) return attemptDto.started(active, await currentQuestion(manager, active), true);
         const progress = await requireUnlocked(manager, userId, stage);
-        await requireQuestionPool(manager, stageId);
+        if (attemptType === 'RELEARN' && progress?.progressStatus !== 'PASSED') throw AppError.conflict('통과한 Stage만 재학습할 수 있습니다.');
+        await requireQuestionPool(manager, stageId, stage.maxQuestionCount);
         const previous = await attemptRepo.findOne({ where: { userId, stageId }, order: { attemptNo: 'DESC' } });
         if (requestedMode === 'START' && previous) {
           throw AppError.conflict('이미 시작한 Stage는 RETRY 모드로 다시 응시해야 합니다.');
@@ -186,7 +189,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         }
         const attempt = await attemptRepo.save(attemptRepo.create({
           userId, stageId, attemptNo: (previous?.attemptNo || 0) + 1,
-          attemptType: 'PLAY', mode: requestedMode || (previous ? 'RETRY' : 'START'), status: 'IN_PROGRESS',
+          attemptType, mode: requestedMode || (previous ? 'RETRY' : 'START'), status: 'IN_PROGRESS',
           maxQuestionCount: stage.maxQuestionCount,
           requiredCorrectCount: stage.requiredCorrectCount,
           initialHp: stage.initialMonsterHp,
@@ -198,28 +201,28 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         return attemptDto.started(attempt, await currentQuestion(manager, attempt), false);
       });
     },
-    async get(userId, attemptId) {
+    async get(userId, attemptId, expectedType = 'NORMAL') {
       return dataSource.transaction('REPEATABLE READ', async manager => {
         const attempt = await repository(manager, LearningAttempt).findOneBy({ attemptId, userId });
         if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
-        await requireNormalAttempt(manager, attempt);
+        await requireNormalAttempt(manager, attempt, expectedType);
         return view(manager, attempt);
       });
     },
-    async result(userId, attemptId) {
+    async result(userId, attemptId, expectedType = 'NORMAL') {
       return dataSource.transaction('REPEATABLE READ', async manager => {
         const attempt = await repository(manager, LearningAttempt).findOneBy({ attemptId, userId });
         if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
-        await requireNormalAttempt(manager, attempt);
+        await requireNormalAttempt(manager, attempt, expectedType);
         if (!['PASSED', 'FAILED'].includes(attempt.status)) throw AppError.conflict('완료된 일반 Stage 결과가 없습니다.');
         return resultDto.result(attempt);
       });
     },
-    async getAttemptDetails(userId, attemptId) {
+    async getAttemptDetails(userId, attemptId, expectedType = 'NORMAL') {
       return dataSource.transaction('REPEATABLE READ', async manager => {
         const attempt = await repository(manager, LearningAttempt).findOneBy({ attemptId, userId });
         if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
-        await requireNormalAttempt(manager, attempt);
+        await requireNormalAttempt(manager, attempt, expectedType);
         const submissions = await repository(manager, QuestionSubmission).find({
           where: { attemptId },
           relations: { question: { concept: true }, choice: true },
@@ -241,7 +244,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         };
       });
     },
-    async submit(userId, questionId, { choiceId, attemptId, idempotencyKey, submissionId }) {
+    async submit(userId, questionId, { choiceId, attemptId, idempotencyKey, submissionId }, expectedType = 'NORMAL') {
       if (!attemptId) throw AppError.validation('attemptId가 필요합니다.');
       try {
         return await dataSource.transaction(async manager => {
@@ -278,7 +281,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
             }
           }
           if (attempt.status !== 'IN_PROGRESS') throw AppError.conflict('종료된 응시에는 제출할 수 없습니다.');
-          const stage = await requireNormalAttempt(manager, attempt);
+          const stage = await requireNormalAttempt(manager, attempt, expectedType);
           const order = attempt.submittedCount + 1;
           if (order > attempt.maxQuestionCount) throw AppError.conflict('제출 가능한 문항 수를 초과했습니다.');
           const mapping = await repository(manager, StageQuestion).findOne({
@@ -315,9 +318,13 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
                 order: { endedAt: 'ASC', attemptNo: 'ASC' },
               });
               if (!earlierPass) {
-                await grantFirstPass(manager, userId, stage, attempt);
+                const rewardConfigured = [stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin]
+                  .every(value => Number.isSafeInteger(value) && value >= 0);
+                if (rewardConfigured) {
+                  await grantFirstPass(manager, userId, stage, attempt);
+                  attempt.rewardGranted = true;
+                }
                 attempt.isFirstPass = true;
-                attempt.rewardGranted = true;
               }
               progress.progressStatus = 'PASSED';
               progress.firstPassedAt = earlierPass?.endedAt || now;
@@ -338,6 +345,10 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         throw error;
       }
     },
+    bossStart: (userId, bossId, mode) => normalStageService(dataSource).start(userId, bossId, mode, 'PLAY', 'BOSS'),
+    bossGet: (userId, attemptId) => normalStageService(dataSource).get(userId, attemptId, 'BOSS'),
+    bossSubmit: (userId, questionId, input) => normalStageService(dataSource).submit(userId, questionId, input, 'BOSS'),
+    relearn: (userId, stageId) => normalStageService(dataSource).start(userId, stageId, 'RETRY', 'RELEARN', 'NORMAL'),
   };
 };
 

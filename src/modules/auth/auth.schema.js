@@ -16,8 +16,10 @@ function login({ body }) {
   return { body: loginRequest.parse(body) };
 }
 
-function refresh({ body }) {
-  return { body: loginRequest.parseRefresh(body) };
+function refresh({ body, headers }) {
+  const cookie = String(headers?.cookie || '').split(';').map(value => value.trim().split('='))
+    .find(([name]) => name === 'refreshToken')?.[1];
+  return { body: loginRequest.parseRefresh({ ...(body || {}), refreshToken: body?.refreshToken || cookie }) };
 }
 
 function kakao({ body = {} }) {
