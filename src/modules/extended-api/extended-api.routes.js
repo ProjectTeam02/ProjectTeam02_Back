@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { IsNull } = require('typeorm');
 const auth = require('../../common/middleware/auth.middleware');
+const validate = require('../../common/middleware/validate.middleware');
 const asyncHandler = require('../../common/utils/asyncHandler');
 const AppError = require('../../common/errors/AppError');
 const { AppDataSource } = require('../../config/database');
@@ -20,6 +21,17 @@ const { hashToken } = require('../../common/utils/token.util');
 const { hashPassword } = require('../../common/utils/password.util');
 const passwordResetDelivery = require('../auth/password-reset.delivery');
 const notificationSetting = require('../notifications/dto/notificationSetting.dto');
+const requestDto = require('./dto/extendedRequest.dto');
+const responseDto = require('./dto/extendedResponse.dto');
+const userUpdateDto = require('../users/dto/updateUserRequest.dto');
+const progressRequestDto = require('../learning/dto/readingProgressRequest.dto');
+const progressResponseDto = require('../learning/dto/learningProgressResponse.dto');
+const reviewSubmitDto = require('../reviews/dto/reviewSubmitRequest.dto');
+const reviewResultDto = require('../reviews/dto/reviewResultResponse.dto');
+const bookmarkResponseDto = require('../reviews/dto/bookmarkResponse.dto');
+const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
+const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
+const classChangeResponseDto = require('../characters/dto/classChangeResponse.dto');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
 const quizContractService = require('../quizzes/quiz.service')(AppDataSource);
 
@@ -51,44 +63,27 @@ function data(res, value, status = 200) { return res.status(status).json({ succe
 function repo(manager, entity) { return manager.getRepository(entity); }
 
 function publicChoice(choice) {
-  return { choiceId: choice.choiceId, label: String.fromCharCode(64 + choice.baseOrder), content: choice.choiceText };
+  return responseDto.choice(choice);
 }
 
 function publicQuestion(question, choices = []) {
-  return {
-    questionId: question.questionId,
-    questionCode: question.questionCode,
-    question: question.questionText,
-    difficulty: question.difficulty,
-    conceptId: question.conceptId,
-    choices: choices.map(publicChoice),
-  };
+  return responseDto.question(question, choices);
 }
 
 function publicStage(stage) {
-  return { stageId: stage.stageId, stageCode: stage.stageCode, stageNo: stage.stageNo,
-    stageType: stage.stageType, title: stage.title, description: stage.description,
-    estimatedMinMinutes: stage.estimatedMinMinutes, estimatedMaxMinutes: stage.estimatedMaxMinutes,
-    maxQuestionCount: stage.maxQuestionCount, requiredCorrectCount: stage.requiredCorrectCount,
-    initialMonsterHp: stage.initialMonsterHp, monsterName: stage.monsterName,
-    monsterImageKey: stage.monsterImageKey, topicId: stage.topicId };
+  return responseDto.stage(stage);
 }
 
 function publicMission(mission) {
-  return { missionId: mission.missionId, conceptCode: mission.conceptCode,
-    firstRegisteredAt: mission.firstRegisteredAt, dueDate: mission.dueDate, status: mission.status,
-    targetQuestionCount: mission.targetQuestionCount, notifiedAt: mission.notifiedAt,
-    completedAt: mission.completedAt };
+  return responseDto.mission(mission);
 }
 
 function publicGrowth(growth, userId) {
-  return { userId, totalExp: growth?.totalExp ?? 0, totalLevel: growth?.totalLevel ?? 1,
-    economyExp: growth?.economyExp ?? 0, economyLevel: growth?.economyLevel ?? 1,
-    lastLevelUpAt: growth?.lastLevelUpAt ?? null };
+  return responseDto.growth(growth, userId);
 }
 
 function publicWallet(wallet, userId) {
-  return { userId, coinBalance: wallet?.coinBalance ?? 0, version: wallet?.version ?? 0 };
+  return responseDto.wallet(wallet, userId);
 }
 
 function parseScheduleBody(body, partial = false) {
@@ -132,9 +127,7 @@ async function planUpdate(userId, planId, body) {
 }
 
 function serializeCostume(row, owned = false, equipped = false) {
-  return { itemId: row.itemId, costumeCode: row.costumeCode, name: row.name, description: row.description,
-    flavorText: row.flavorText, category: row.category, priceCoin: row.priceCoin, imageKey: row.imageKey,
-    thumbnailKey: row.thumbnailKey, isOnSale: row.isOnSale, owned, equipped };
+  return responseDto.costume(row, owned, equipped);
 }
 
 async function ownedAttempt(manager, userId, attemptId, lock = false) {
@@ -149,23 +142,14 @@ async function ownedAttempt(manager, userId, attemptId, lock = false) {
 async function reviewItemResponse(manager, item) {
   const question = item.latestQuestion || await repo(manager, Question).findOneBy({ questionId: item.latestQuestionId });
   const choices = question ? await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } }) : [];
-  return { reviewItemId: item.reviewItemId, questionId: question?.questionId, questionCode: item.questionCode,
-    conceptCode: item.conceptCode, sourceStageId: item.sourceStageId, firstReason: item.firstReason,
-    wrongCount: item.wrongCount, isBookmarked: item.isBookmarked, question: question ? publicQuestion(question, choices) : null };
+  return responseDto.reviewItem(item, question, choices);
 }
 
 async function reviewAttemptResponse(manager, attempt) {
   const submissions = await repo(manager, ReviewSubmission).find({
     where: { reviewAttemptId: attempt.reviewAttemptId }, relations: { question: true, choice: true }, order: { sequenceNo: 'ASC' },
   });
-  return { reviewAttemptId: attempt.reviewAttemptId, missionId: attempt.missionId, status: attempt.status,
-    reviewType: attempt.reviewType, entryPoint: attempt.entryPoint, conceptCode: attempt.conceptCode,
-    questionCount: attempt.questionCount, submittedCount: attempt.submittedCount, correctCount: attempt.correctCount,
-    startedAt: attempt.startedAt, completedAt: attempt.completedAt,
-    answers: submissions.map(row => ({ submissionId: row.submissionId, questionId: row.questionId,
-      sequenceNo: row.sequenceNo, choiceId: row.choiceId, isCorrect: row.isCorrect,
-      explanation: row.submittedAt ? row.question?.explanation : null })),
-  };
+  return responseDto.reviewAttempt(attempt, submissions);
 }
 
 async function createReviewAttempt(userId, missionId = null) {
@@ -283,14 +267,14 @@ async function passwordResetConfirm(token, newPassword) {
 
 function routes() {
   // Content tree and details
-  router.get('/topics/tree', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/topics/tree', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const topics = await repo(manager, Topic).find({ where: { status: 'PUBLISHED' }, order: { topicNo: 'ASC' } });
     const stages = await repo(manager, Stage).find({ where: { status: 'PUBLISHED' }, order: { stageNo: 'ASC' } });
     return { items: topics.map(topic => ({ topicId: topic.topicId, topicCode: topic.topicCode, title: topic.title,
       description: topic.description, stages: stages.filter(stage => stage.topicId === topic.topicId).map(stage => ({ stageId: stage.stageId, stageNo: stage.stageNo, stageType: stage.stageType, title: stage.title })) })) };
   }))));
-  router.get('/topics/:topicId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const topic = await repo(manager, Topic).findOneBy({ topicId: id(req.params.topicId, 'topicId'), status: 'PUBLISHED' });
+  router.get('/topics/:topicId', auth, validate(requestDto.topic), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const topic = await repo(manager, Topic).findOneBy({ topicId: req.params.topicId, status: 'PUBLISHED' });
     if (!topic) throw AppError.notFound('공개된 주제를 찾을 수 없습니다.');
     const stages = await repo(manager, Stage).find({ where: { topicId: topic.topicId, status: 'PUBLISHED' }, order: { stageNo: 'ASC' } });
     return { topicId: topic.topicId, topicCode: topic.topicCode, title: topic.title, description: topic.description, stages: stages.map(publicStage) };
@@ -308,17 +292,16 @@ function routes() {
     if (!stage) throw AppError.notFound('공개된 Stage를 찾을 수 없습니다.');
     return publicStage(stage);
   }))));
-  router.post('/stages/:stageId/relearn', auth, asyncHandler(async (req, res) => {
-    const result = await quizContractService.relearn(req.user.sub, id(req.params.stageId, 'stageId'));
+  router.post('/stages/:stageId/relearn', auth, validate(requestDto.pathOnly('stageId')), asyncHandler(async (req, res) => {
+    const result = await quizContractService.relearn(req.user.sub, req.params.stageId);
     return data(res, result, result.resumed ? 200 : 201);
   }));
-  router.get('/bosses/:bossId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const stage = await repo(manager, Stage).findOne({ where: { stageId: id(req.params.bossId, 'bossId'), stageType: 'BOSS', status: 'PUBLISHED' }, relations: { topic: true } });
+  router.get('/bosses/:bossId', auth, validate(requestDto.boss), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const stage = await repo(manager, Stage).findOne({ where: { stageId: req.params.bossId, stageType: 'BOSS', status: 'PUBLISHED' }, relations: { topic: true } });
     if (!stage) throw AppError.notFound('공개된 Boss Stage를 찾을 수 없습니다.'); return publicStage(stage);
   }))));
-  router.post('/bosses/:bossId/attempts', auth, asyncHandler(async (req, res) => {
-    if (!['START', 'RETRY'].includes(req.body?.mode)) throw AppError.validation('mode는 START 또는 RETRY여야 합니다.');
-    const result = await quizContractService.bossStart(req.user.sub, id(req.params.bossId, 'bossId'), req.body.mode);
+  router.post('/bosses/:bossId/attempts', auth, validate(requestDto.bossStart), asyncHandler(async (req, res) => {
+    const result = await quizContractService.bossStart(req.user.sub, req.params.bossId, req.body.mode);
     return data(res, result, result.resumed ? 200 : 201);
   }));
   router.get('/boss-attempts/:attemptId', auth, asyncHandler(async (req, res) => data(res, await quizContractService.bossGet(req.user.sub, id(req.params.attemptId, 'attemptId')))));
@@ -330,23 +313,19 @@ function routes() {
   router.delete('/study-plans/:planId', auth, asyncHandler(async (req, res) => data(res, await calendarService.remove(req.user.sub, id(req.params.planId, 'planId')))));
 
   // Progress and history aliases.
-  router.get('/learning/progress/active', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/learning/progress/active', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const rows = await repo(manager, UserStageProgress).find({ where: { userId: req.user.sub, progressStatus: 'IN_PROGRESS' }, relations: { stage: true }, order: { startedAt: 'DESC' } });
-    return { items: rows.map(row => ({ stageId: row.stageId, stage: row.stage ? publicStage(row.stage) : null,
-      progressStatus: row.progressStatus, contentPosition: row.contentPosition, startedAt: row.startedAt })) };
+    return { items: rows.map(row => progressResponseDto.item(row, row.stage)) };
   }))));
-  router.put('/learning/progress/:stageId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const stageId = id(req.params.stageId, 'stageId'); const position = Number(req.body?.contentPosition);
-    if (!Number.isInteger(position) || position < 1) throw AppError.validation('contentPosition은 1 이상의 정수여야 합니다.');
+  router.put('/learning/progress/:stageId', auth, validate(progressRequestDto.parse), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const stageId = req.params.stageId; const position = req.body.contentPosition;
     const stage = await repo(manager, Stage).findOneBy({ stageId, status: 'PUBLISHED' }); if (!stage) throw AppError.notFound('Stage를 찾을 수 없습니다.');
     if (stage.stageType === 'BOSS') throw AppError.validation('Boss Stage에는 학습 진도를 저장할 수 없습니다.');
     let progress = await repo(manager, UserStageProgress).findOneBy({ userId: req.user.sub, stageId });
     if (!progress) progress = repo(manager, UserStageProgress).create({ userId: req.user.sub, stageId, progressStatus: 'IN_PROGRESS', startedAt: new Date() });
     progress.contentPosition = position; progress.contentPositionUpdatedAt = new Date();
     await repo(manager, UserStageProgress).save(progress);
-    return { userId: progress.userId, stageId: progress.stageId, progressStatus: progress.progressStatus,
-      contentPosition: progress.contentPosition, contentPositionUpdatedAt: progress.contentPositionUpdatedAt,
-      startedAt: progress.startedAt };
+    return progressResponseDto.updated(progress);
   }))));
   router.get('/learning/history/:historyId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const attempt = await ownedAttempt(manager, req.user.sub, req.params.historyId);
@@ -355,104 +334,92 @@ function routes() {
   }))));
 
   // Review list, mission and answer APIs.
-  router.get('/reviews/items', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/reviews/items', auth, validate(requestDto.reviewItems), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const paging = page(req.query); let rows = await repo(manager, ReviewItem).find({ where: { userId: req.user.sub }, relations: { latestQuestion: { concept: true } }, order: { firstRegisteredAt: 'DESC' } });
     if (req.query.source === 'BOOKMARK') rows = rows.filter(row => row.isBookmarked); if (req.query.source === 'WRONG') rows = rows.filter(row => row.wrongCount > 0);
     if (req.query.conceptId) rows = rows.filter(row => row.latestQuestion?.conceptId === req.query.conceptId);
     if (req.query.topicId) rows = rows.filter(row => row.latestQuestion?.concept?.topicId === req.query.topicId);
     const total = rows.length; return { items: await Promise.all(rows.slice(paging.skip, paging.skip + paging.size).map(row => reviewItemResponse(manager, row))), page: paging.page, size: paging.size, total };
   }))));
-  router.get('/reviews/due', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const date = req.query.date || new Date().toISOString().slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw AppError.validation('date는 YYYY-MM-DD 형식이어야 합니다.');
+  router.get('/reviews/due', auth, validate(requestDto.due), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const date = req.query.date;
     const rows = await repo(manager, ReviewMission).find({ where: { userId: req.user.sub }, order: { dueDate: 'ASC' } });
     return { date, items: rows.filter(row => String(row.dueDate).slice(0, 10) <= date).map(publicMission) };
   }))));
-  router.get('/reviews/missions/:missionId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const row = await repo(manager, ReviewMission).findOneBy({ missionId: id(req.params.missionId, 'missionId'), userId: req.user.sub }); if (!row) throw AppError.notFound('복습 임무를 찾을 수 없습니다.'); return publicMission(row);
+  router.get('/reviews/missions/:missionId', auth, validate(requestDto.mission), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const row = await repo(manager, ReviewMission).findOneBy({ missionId: req.params.missionId, userId: req.user.sub }); if (!row) throw AppError.notFound('복습 임무를 찾을 수 없습니다.'); return publicMission(row);
   }))));
-  router.post('/reviews/missions/:missionId/attempts', auth, asyncHandler(async (req, res) => data(res, await createReviewAttempt(req.user.sub, req.params.missionId), 201)));
-  router.get('/review-attempts/:reviewAttemptId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const attempt = await repo(manager, ReviewAttempt).findOneBy({ reviewAttemptId: id(req.params.reviewAttemptId, 'reviewAttemptId'), userId: req.user.sub }); if (!attempt) throw AppError.notFound('복습 응시를 찾을 수 없습니다.'); return reviewAttemptResponse(manager, attempt);
+  router.post('/reviews/missions/:missionId/attempts', auth, validate(requestDto.mission), asyncHandler(async (req, res) => data(res, await createReviewAttempt(req.user.sub, req.params.missionId), 201)));
+  router.get('/review-attempts/:reviewAttemptId', auth, validate(requestDto.reviewAttempt), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const attempt = await repo(manager, ReviewAttempt).findOneBy({ reviewAttemptId: req.params.reviewAttemptId, userId: req.user.sub }); if (!attempt) throw AppError.notFound('복습 응시를 찾을 수 없습니다.'); return reviewAttemptResponse(manager, attempt);
   }))));
-  router.post('/review-attempts/:reviewAttemptId/answers', auth, asyncHandler(async (req, res) => data(res, await answerReview(req.user.sub, req.params.reviewAttemptId, req.body))));
-  router.put('/questions/:questionId/bookmark', auth, asyncHandler(async (req, res) => data(res, await upsertBookmark(req.user.sub, req.params.questionId, true, req.body?.conceptId))));
-  router.delete('/questions/:questionId/bookmark', auth, asyncHandler(async (req, res) => data(res, await upsertBookmark(req.user.sub, req.params.questionId, false))));
+  router.post('/review-attempts/:reviewAttemptId/answers', auth, validate(reviewSubmitDto.parse), asyncHandler(async (req, res) => data(res, reviewResultDto.response(await answerReview(req.user.sub, req.params.reviewAttemptId, req.body)))));
+  router.put('/questions/:questionId/bookmark', auth, validate(requestDto.question), asyncHandler(async (req, res) => data(res, bookmarkResponseDto.response(await upsertBookmark(req.user.sub, req.params.questionId, true)))));
+  router.delete('/questions/:questionId/bookmark', auth, validate(requestDto.question), asyncHandler(async (req, res) => data(res, bookmarkResponseDto.response(await upsertBookmark(req.user.sub, req.params.questionId, false)))));
 
   // User profile, settings and economy.
-  router.patch('/users/me', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    if (Object.keys(req.body || {}).some(key => key !== 'nickname') || req.body?.nickname === undefined) throw AppError.validation('nickname만 수정할 수 있습니다.');
+  router.patch('/users/me', auth, validate(userUpdateDto.parse), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const user = await repo(manager, User).findOneBy({ userId: req.user.sub }); if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
-    user.nickname = string(req.body.nickname, 'nickname', 30); user.nicknameUpdatedAt = new Date(); await repo(manager, User).save(user); return { userId: user.userId, nickname: user.nickname };
+    user.nickname = req.body.nickname; user.nicknameUpdatedAt = new Date(); await repo(manager, User).save(user); return userUpdateDto.response(user);
   }))));
-  router.get('/users/me/notification-settings', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/users/me/notification-settings', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub }); if (!setting) setting = await repo(manager, UserSetting).save(repo(manager, UserSetting).create({ userId: req.user.sub })); return notificationSetting.response(setting);
   }))));
-  router.patch('/users/me/notification-settings', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const body = req.body || {}; const allowed = ['reminderEnabled', 'reminderTime', 'timezone'];
-    if (Object.keys(body).some(key => !allowed.includes(key)) || typeof body.reminderEnabled !== 'boolean') throw AppError.validation('알림 설정 필드가 올바르지 않습니다.');
-    if (body.reminderTime !== undefined && body.reminderTime !== null && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(body.reminderTime)) throw AppError.validation('reminderTime은 HH:MM 또는 HH:MM:SS여야 합니다.');
-    if (body.timezone !== undefined) {
-      const timezone = string(body.timezone, 'timezone', 50);
-      try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(); } catch { throw AppError.validation('timezone은 IANA 시간대여야 합니다.'); }
-    }
+  router.patch('/users/me/notification-settings', auth, validate(requestDto.notificationUpdate), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const body = req.body;
     let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub }); if (!setting) setting = repo(manager, UserSetting).create({ userId: req.user.sub });
     setting.reminderEnabled = body.reminderEnabled; if (body.reminderTime !== undefined) setting.reminderTime = body.reminderTime; if (body.timezone !== undefined) setting.timezone = string(body.timezone, 'timezone', 50); await repo(manager, UserSetting).save(setting); return notificationSetting.response(setting);
   }))));
-  router.put('/users/me/character/class', auth, asyncHandler(async (req, res) => data(res, await changeClass(req.user.sub, req.body?.classId), 200)));
-  router.patch('/users/me/character/class', auth, asyncHandler(async (req, res) => data(res, await changeClass(req.user.sub, req.body?.classId), 200)));
-  router.get('/inventory', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.put('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classId)), 200)));
+  router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classId)), 200)));
+  router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const owned = await repo(manager, UserCostume).find({ where: { userId: req.user.sub }, relations: { costume: true } }); const equipped = await repo(manager, UserEquippedCostume).findBy({ userId: req.user.sub });
     return { items: owned.map(row => serializeCostume(row.costume, true, equipped.some(item => item.itemId === row.itemId))), equipped: equipped.map(row => ({ category: row.category, itemId: row.itemId })) };
   }))));
-  router.put('/inventory/:itemId/equip', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const itemId = id(req.params.itemId, 'itemId'); const owned = await repo(manager, UserCostume).findOne({ where: { userId: req.user.sub, itemId }, relations: { costume: true } }); if (!owned?.costume) throw AppError.forbidden('보유하지 않은 코스튬입니다.');
+  router.put('/inventory/:itemId/equip', auth, validate(equipCostumeRequestDto.parse), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const itemId = req.params.itemId; const owned = await repo(manager, UserCostume).findOne({ where: { userId: req.user.sub, itemId }, relations: { costume: true } }); if (!owned?.costume) throw AppError.forbidden('보유하지 않은 코스튬입니다.');
     await repo(manager, UserEquippedCostume).upsert({ userId: req.user.sub, category: owned.costume.category, itemId, equippedAt: new Date() }, ['userId', 'category']); return { category: owned.costume.category, itemId };
   }))));
-  router.get('/shop/costumes', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/shop/costumes', auth, validate(requestDto.shopList), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const p = page(req.query); const all = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } }); const rows = req.query.category ? all.filter(row => row.category === req.query.category) : all; const owned = await repo(manager, UserCostume).findBy({ userId: req.user.sub });
     return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.some(item => item.itemId === row.itemId))), page: p.page, size: p.size, total: rows.length };
   }))));
-  router.get('/shop/costumes/:itemId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const row = await repo(manager, Costume).findOneBy({ itemId: id(req.params.itemId, 'itemId'), isOnSale: true }); if (!row) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.'); const owned = await repo(manager, UserCostume).findOneBy({ userId: req.user.sub, itemId: row.itemId }); return serializeCostume(row, Boolean(owned));
+  router.get('/shop/costumes/:itemId', auth, validate(requestDto.item), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+    const row = await repo(manager, Costume).findOneBy({ itemId: req.params.itemId, isOnSale: true }); if (!row) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.'); const owned = await repo(manager, UserCostume).findOneBy({ userId: req.user.sub, itemId: row.itemId }); return serializeCostume(row, Boolean(owned));
   }))));
-  router.post('/shop/purchases', auth, asyncHandler(async (req, res) => data(res, await purchase(req.user.sub, req.body), 201)));
+  router.post('/shop/purchases', auth, validate(costumeRequestDto.parse), asyncHandler(async (req, res) => data(res, await purchase(req.user.sub, req.body), 201)));
 
   // Password reset, growth, reward ledger, home and statistics.
-  router.post('/auth/password-reset/request', asyncHandler(async (req, res) => data(res, await passwordResetRequest(req.body?.email))));
-  router.post('/auth/password-reset/confirm', asyncHandler(async (req, res) => data(res, await passwordResetConfirm(req.body?.resetToken, req.body?.newPassword))));
-  router.get('/growth/me', auth, asyncHandler(async (req, res) => data(
+  router.post('/auth/password-reset/request', validate(requestDto.passwordResetRequest), asyncHandler(async (req, res) => data(res, await passwordResetRequest(req.body.email))));
+  router.post('/auth/password-reset/confirm', validate(requestDto.passwordResetConfirm), asyncHandler(async (req, res) => data(res, await passwordResetConfirm(req.body.resetToken, req.body.newPassword))));
+  router.get('/growth/me', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(
     res,
     await AppDataSource.transaction(async manager => publicGrowth(
       await repo(manager, UserGrowth).findOneBy({ userId: req.user.sub }), req.user.sub,
     )),
   )));
-  router.get('/users/me/reward-ledger', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/users/me/reward-ledger', auth, validate(requestDto.rewardLedger), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const p = page(req.query);
     const [coins, exp] = await Promise.all([
       repo(manager, CoinLedger).find({ where: { userId: req.user.sub, transactionType: 'EARN', reason: 'STAGE_FIRST_CLEAR' }, order: { createdAt: 'DESC' } }),
       repo(manager, ExpLedger).find({ where: { userId: req.user.sub }, order: { createdAt: 'DESC' } }),
     ]);
-    const items = [...coins.map(row => ({ type: 'COIN', id: row.coinLedgerId, amount: row.amount, balanceAfter: row.balanceAfter, reason: row.reason, refId: row.refId, createdAt: row.createdAt })), ...exp.map(row => ({ type: 'EXP', id: row.expLedgerId, totalExpAmount: row.totalExpAmount, economyExpAmount: row.economyExpAmount, sourceStageId: row.sourceStageId, createdAt: row.createdAt }))].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const items = [...coins.map(row => responseDto.rewardCoin(row)), ...exp.map(row => responseDto.rewardExp(row))].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     return { items: items.slice(p.skip, p.skip + p.size), page: p.page, size: p.size, total: items.length };
   }))));
-  router.get('/home/summary', auth, asyncHandler(async (req, res) => data(res, await summary(req.user.sub))));
-  router.get('/mypage/summary', auth, asyncHandler(async (req, res) => data(res, await summary(req.user.sub))));
-  router.get('/statistics/overall', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/home/summary', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await summary(req.user.sub))));
+  router.get('/mypage/summary', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await summary(req.user.sub))));
+  router.get('/statistics/overall', auth, validate(requestDto.statisticsOverall), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const attempts = await repo(manager, LearningAttempt).findBy({ userId: req.user.sub });
-    if ((req.query.from && !/^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) || (req.query.to && !/^\d{4}-\d{2}-\d{2}$/.test(req.query.to))) throw AppError.validation('from과 to는 YYYY-MM-DD 형식이어야 합니다.');
     const from = req.query.from ? new Date(`${req.query.from}T00:00:00.000Z`) : null;
     const to = req.query.to ? new Date(`${req.query.to}T23:59:59.999Z`) : null;
     const filtered = attempts.filter(row => (!from || row.startedAt >= from) && (!to || row.startedAt <= to));
-    return { attempts: filtered.length, passedAttempts: filtered.filter(row => row.status === 'PASSED').length, failedAttempts: filtered.filter(row => row.status === 'FAILED').length, completedStages: new Set(filtered.filter(row => row.status === 'PASSED').map(row => row.stageId)).size };
+    return responseDto.statisticsOverall(filtered);
   }))));
-  router.get('/statistics/concepts', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/statistics/concepts', auth, validate(requestDto.statisticsConcepts), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const concepts = await repo(manager, Concept).find({ where: { status: 'PUBLISHED' }, order: { title: 'ASC' } });
     const submissions = await repo(manager, QuestionSubmission).find({ where: { attempt: { userId: req.user.sub } }, relations: { attempt: true, question: true } });
-    let rows = concepts.filter(concept => !req.query.topicId || concept.topicId === req.query.topicId).map(concept => { const mine = submissions.filter(row => row.question?.conceptId === concept.conceptId); return { conceptId: concept.conceptId, title: concept.title, attempts: mine.length, correct: mine.filter(row => row.isCorrect).length, accuracy: mine.length ? mine.filter(row => row.isCorrect).length / mine.length : 0 }; });
-    if (req.query.sort === 'accuracy') rows.sort((a, b) => b.accuracy - a.accuracy); else if (req.query.sort === 'attempts') rows.sort((a, b) => b.attempts - a.attempts);
-    const limit = req.query.limit === undefined ? rows.length : Math.min(100, Math.max(1, Number(req.query.limit))); if (!Number.isInteger(limit)) throw AppError.validation('limit은 정수여야 합니다.');
-    return { items: rows.slice(0, limit), sort: req.query.sort || 'title' };
+    return responseDto.conceptStatistics(concepts, submissions, req.query);
   }))));
   return router;
 }
