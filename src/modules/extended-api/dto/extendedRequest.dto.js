@@ -39,15 +39,7 @@ function stageStart({ params, query, body }) {
   return { params: path(params, 'stageId'), body: { mode: f.oneOf(value.mode, ['START', 'RETRY'], 'mode') } };
 }
 
-function answer({ params, query, body }) {
-  noQuery(query);
-  const value = f.onlyKeys(f.object(body, 'body'), ['questionId', 'choiceId', 'submissionId'], 'body');
-  return { params: path(params, 'reviewAttemptId'), body: {
-    questionId: f.uuid(value.questionId, 'questionId'),
-    choiceId: f.uuid(value.choiceId, 'choiceId'),
-    submissionId: f.uuid(value.submissionId, 'submissionId'),
-  } };
-}
+
 
 function reviewItems({ query }) {
   const value = f.onlyKeys(f.object(query, 'query'), ['source', 'conceptId', 'topicId', 'page', 'size', 'limit'], 'query');
@@ -58,18 +50,20 @@ function reviewItems({ query }) {
   return { query: result };
 }
 
+function todayKst() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+}
+
 function due({ query }) {
   const value = f.onlyKeys(f.object(query, 'query'), ['date'], 'query');
-  return { query: { date: value.date === undefined ? new Date().toISOString().slice(0, 10) : f.dateOnly(value.date, 'date') } };
+  return { query: { date: value.date === undefined ? todayKst() : f.dateOnly(value.date, 'date') } };
 }
+
+
 
 function rewardLedger({ query }) { return { query: paging(query) }; }
 
-function updateUser({ params, query, body }) {
-  noQuery(query);
-  const value = f.onlyKeys(f.object(body, 'body'), ['nickname'], 'body');
-  return { params: {}, body: { nickname: f.string(value.nickname, 'nickname', 30) } };
-}
+
 
 function notificationUpdate({ params, query, body }) {
   noQuery(query);
@@ -98,11 +92,6 @@ function shopList({ query }) {
   return { query: result };
 }
 
-function purchase({ params, query, body }) {
-  noQuery(query);
-  const value = f.onlyKeys(f.object(body, 'body'), ['itemId', 'requestId'], 'body');
-  return { params, body: { itemId: f.uuid(value.itemId, 'itemId'), requestId: f.string(value.requestId, 'requestId', 100) } };
-}
 
 function passwordResetRequest({ params, query, body }) {
   noQuery(query);
@@ -116,21 +105,14 @@ function passwordResetConfirm({ params, query, body }) {
   return { params, body: { resetToken: f.string(value.resetToken, 'resetToken', 4096), newPassword: authFields.password(value.newPassword) } };
 }
 
-function progressUpdate({ params, query, body }) {
-  noQuery(query);
-  const value = f.onlyKeys(f.object(body, 'body'), ['contentPosition'], 'body');
-  if (!Number.isInteger(value.contentPosition) || value.contentPosition < 1 || !Number.isSafeInteger(value.contentPosition)) {
-    throw AppError.validation('contentPosition은 1 이상의 정수여야 합니다.');
-  }
-  return { params: path(params, 'stageId'), body: { contentPosition: value.contentPosition } };
-}
+
 
 function statisticsOverall({ query }) {
   const value = f.onlyKeys(f.object(query, 'query'), ['from', 'to'], 'query');
-  return { query: {
-    ...(value.from === undefined ? {} : { from: f.dateOnly(value.from, 'from') }),
-    ...(value.to === undefined ? {} : { to: f.dateOnly(value.to, 'to') }),
-  } };
+  const from = value.from === undefined ? undefined : f.dateOnly(value.from, 'from');
+  const to = value.to === undefined ? undefined : f.dateOnly(value.to, 'to');
+  if (from && to && from > to) throw AppError.validation('from은 to보다 늦을 수 없습니다.');
+  return { query: { ...(from ? { from } : {}), ...(to ? { to } : {}) } };
 }
 
 function statisticsConcepts({ query }) {
@@ -153,9 +135,9 @@ function bossStart({ params, query, body }) {
 }
 
 module.exports = {
-  noQuery, noBody, pathOnly, stageStart, answer, reviewItems, due, rewardLedger,
-  updateUser, notificationUpdate, classUpdate, shopList, purchase,
-  passwordResetRequest, passwordResetConfirm, progressUpdate, statisticsOverall,
+  noQuery, noBody, pathOnly, stageStart, reviewItems, due, rewardLedger,
+  notificationUpdate, classUpdate, shopList,
+  passwordResetRequest, passwordResetConfirm, statisticsOverall,
   statisticsConcepts, passwordless, empty, bossStart,
   topic: pathOnly('topicId'), boss: pathOnly('bossId'), mission: pathOnly('missionId'),
   reviewAttempt: pathOnly('reviewAttemptId'), question: pathOnly('questionId'), item: pathOnly('itemId'),
