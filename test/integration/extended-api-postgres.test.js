@@ -93,6 +93,15 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   }
   function ok(result, status = 200) { assert.equal(result.status, status, JSON.stringify(result.body)); assert.equal(result.body.success, true); return result.body.data; }
 
+  const invalidStart = await request(`/api/v1/bosses/${boss.stageId}/attempts`, { method: 'POST', body: { mode: 'INVALID' } });
+  assert.equal(invalidStart.status, 422);
+  const invalidFilter = await request('/api/v1/reviews/items?source=ALL');
+  assert.equal(invalidFilter.status, 422);
+  const invalidReset = await request('/api/v1/auth/password-reset/request', { method: 'POST', body: { email: user.email, extra: true }, auth: false });
+  assert.equal(invalidReset.status, 422);
+  const otherMission = await request(`/api/v1/reviews/missions/${mission.missionId}`, { requestToken: otherToken });
+  assert.equal(otherMission.status, 404);
+
   ok(await request(`/api/v1/bosses/${boss.stageId}`));
   ok(await request(`/api/v1/bosses/${boss.stageId}/attempts`, { method: 'POST', body: { mode: 'START' } }), 201);
   ok(await request('/api/v1/reviews/items'));
