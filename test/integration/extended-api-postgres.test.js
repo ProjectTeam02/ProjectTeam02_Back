@@ -222,4 +222,16 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const duplicatePurchase = ok(await request('/api/v1/shop/purchases', { method: 'POST', body: { itemId: saleCostume.itemId, requestId: `purchase-${suffix}` } }), 201);
   assert.equal(duplicatePurchase.duplicate, true);
   assert.equal(duplicatePurchase.coinBalance, purchase.coinBalance);
+   // 같은 문항 북마크 동시 요청은 모두 200, review_items는 1행
+  const bookmarkTarget = questions[2].question;
+  const concurrentBookmarks = await Promise.all([1, 2, 3, 4, 5].map(() => request(`/api/v1/questions/${bookmarkTarget.questionId}/bookmark`, { method: 'PUT' })));
+  assert.deepEqual(concurrentBookmarks.map(result => result.status), [200, 200, 200, 200, 200]);
+  assert.equal(await db.getRepository(ReviewItem).countBy({ userId: user.userId, questionCode: bookmarkTarget.questionCode }), 1);
+
+  // 다른 사용자가 이미 사용된 requestId로 구매하면 503이 아니라 409
+  await db.getRepository(UserWallet).save({ userId: otherUser.userId, coinBalance: 100, version: 0 });
+  const otherUserSameRequestId = await request('/api/v1/shop/purchases', { method: 'POST', requestToken: otherToken,
+    body: { itemId: saleCostume.itemId, requestId: `purchase-${suffix}` } });
+  assert.equal(otherUserSameRequestId.status, 409, JSON.stringify(otherUserSameRequestId.body));
+
 });

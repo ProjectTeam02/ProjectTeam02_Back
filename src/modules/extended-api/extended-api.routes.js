@@ -218,12 +218,19 @@ async function answerReview(userId, reviewAttemptId, input) {
   });
 }
 
-async function upsertBookmark(userId, questionId, bookmarked, conceptId) {
+/** 트랜잭션 안에서 같은 key의 요청을 한 번에 하나씩 처리한다 (트랜잭션 종료 시 자동 해제) */
+async function lockKey(manager, key) {
+  await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+}
+
+async function upsertBookmark(userId, questionId, bookmarked) {
   return AppDataSource.transaction(async manager => {
     const question = await repo(manager, Question).findOne({ where: { questionId: id(questionId, 'questionId') }, relations: { concept: true } });
     if (!question) throw AppError.notFound('문항을 찾을 수 없습니다.');
     const conceptCode = question.concept?.conceptCode;
     if (!conceptCode) throw AppError.unavailable('문항의 개념 정보가 없습니다.');
+    // 같은 사용자·같은 문항의 동시 요청이 review_items를 중복 생성하려다 23505(→503)가 나지 않도록 순서대로 처리
+    await lockKey(manager, `bookmark:${userId}:${question.questionCode}`);
     let item = await repo(manager, ReviewItem).findOneBy({ userId, questionCode: question.questionCode });
     if (!item && !bookmarked) return { questionId: question.questionId, bookmarked: false, reviewItemId: null };
     if (!item) item = repo(manager, ReviewItem).create({ userId, questionCode: question.questionCode, latestQuestionId: question.questionId,
@@ -437,9 +444,11 @@ async function purchase(userId, body) {
   return AppDataSource.transaction(async manager => {
     const user = await repo(manager, User).findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
     if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
-    const existing = await repo(manager, CoinLedger).findOneBy({ userId, requestId });
+    // coin_ledger.request_id는 전체 사용자 기준 유니크라 사용자 구분 없이 조회하고, 다른 사용자의 동시 요청도 순서대로 처리
+    await lockKey(manager, `purchase:${requestId}`);
+    const existing = await repo(manager, CoinLedger).findOneBy({ requestId });
     if (existing) {
-      if (existing.refId !== itemId) throw AppError.conflict('requestId가 다른 상품 구매에 이미 사용되었습니다.');
+      if (existing.userId !== userId || existing.refId !== itemId) throw AppError.conflict('requestId가 다른 구매에 이미 사용되었습니다.');
       return { purchaseId: existing.coinLedgerId, itemId, duplicate: true, coinBalance: existing.balanceAfter };
     }
     const costume = await repo(manager, Costume).findOneBy({ itemId, isOnSale: true }); if (!costume || costume.priceCoin === null) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.');
