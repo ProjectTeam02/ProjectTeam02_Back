@@ -32,6 +32,7 @@ const bookmarkResponseDto = require('../reviews/dto/bookmarkResponse.dto');
 const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
 const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
 const classChangeResponseDto = require('../characters/dto/classChangeResponse.dto');
+const quizSchema = require('../quizzes/quiz.schema');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
 const quizContractService = require('../quizzes/quiz.service')(AppDataSource);
 
@@ -312,7 +313,7 @@ function routes() {
     return data(res, result, result.resumed ? 200 : 201);
   }));
   router.get('/boss-attempts/:attemptId', auth, asyncHandler(async (req, res) => data(res, await quizContractService.bossGet(req.user.sub, id(req.params.attemptId, 'attemptId')))));
-  router.post('/boss-attempts/:attemptId/answers', auth, asyncHandler(async (req, res) => data(res, await quizContractService.bossSubmit(req.user.sub, id(req.body?.questionId, 'questionId'), { ...req.body, attemptId: id(req.params.attemptId, 'attemptId') }), 201)));
+  router.post('/boss-attempts/:attemptId/answers', auth, validate(quizSchema.newAnswer), asyncHandler(async (req, res) => data(res, await quizContractService.bossSubmit(req.user.sub, req.body.questionId, { ...req.body, attemptId: req.params.attemptId }), 201)));
 
   // Study plan aliases for the public API contract.
   router.post('/study-plans', auth, asyncHandler(async (req, res) => data(res, await planCreate(req.user.sub, req.body), 201)));
