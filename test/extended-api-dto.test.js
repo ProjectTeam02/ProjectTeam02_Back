@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const requestDto = require('../src/modules/extended-api/dto/extendedRequest.dto');
 const responseDto = require('../src/modules/extended-api/dto/extendedResponse.dto');
 
+const userUpdateDto = require('../src/modules/users/dto/updateUserRequest.dto');
+const progressRequestDto = require('../src/modules/learning/dto/readingProgressRequest.dto');
+
 const uuid = '123e4567-e89b-12d3-a456-426614174000';
 
 function rejects(fn) {
@@ -24,7 +27,10 @@ test('extended request DTOs validate date, pagination, enums and numeric boundar
   rejects(() => requestDto.due({ query: { date: '2026-02-30' } }));
   rejects(() => requestDto.reviewItems({ query: { source: 'ALL' } }));
   rejects(() => requestDto.shopList({ query: { category: 'HAT' } }));
-  rejects(() => requestDto.progressUpdate({ params: { stageId: uuid }, query: {}, body: { contentPosition: 0 } }));
+  rejects(() => progressRequestDto.parse({ params: { stageId: uuid }, query: {}, body: { contentPosition: 0 } }));
+  rejects(() => progressRequestDto.parse({ params: { stageId: uuid }, query: {}, body: { contentPosition: 32768 } }));
+  assert.equal(progressRequestDto.parse({ params: { stageId: uuid }, query: {}, body: { contentPosition: 32767 } }).body.contentPosition, 32767);
+  rejects(() => requestDto.statisticsOverall({ query: { from: '2026-12-01', to: '2026-01-01' } }));
   rejects(() => requestDto.statisticsConcepts({ query: { limit: '101' } }));
 });
 
@@ -34,8 +40,11 @@ test('PATCH DTOs distinguish omitted optional fields from explicit null', () => 
   assert.deepEqual(omitted.body, { reminderEnabled: true });
   assert.deepEqual(nulled.body, { reminderEnabled: true, reminderTime: null });
   rejects(() => requestDto.notificationUpdate({ params: {}, query: {}, body: { reminderEnabled: true, unknown: 1 } }));
-  rejects(() => requestDto.updateUser({ params: {}, query: {}, body: {} }));
-  rejects(() => requestDto.updateUser({ params: {}, query: {}, body: { nickname: null } }));
+   rejects(() => userUpdateDto.parse({ params: {}, query: {}, body: {} }));
+  rejects(() => userUpdateDto.parse({ params: {}, query: {}, body: { nickname: null } }));
+  // validate 미들웨어는 result.body만 req.body에 반영하므로 body 키로 반환해야 한다
+  assert.deepEqual(userUpdateDto.parse({ params: {}, query: {}, body: { nickname: '  홍길동  ' } }), { body: { nickname: '홍길동' } });
+  rejects(() => userUpdateDto.parse({ params: {}, query: {}, body: { nickname: 'a'.repeat(31) } })); 
 });
 
 test('response DTOs whitelist public fields and omit secrets/internal columns', () => {
