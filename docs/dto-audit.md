@@ -10,6 +10,8 @@
 |---|---|---|---|---|---|
 | P0 | GET | `/bosses/{bossId}` | `extendedRequest.boss` | `extendedResponse.stage` | 적용 |
 | P0 | POST | `/bosses/{bossId}/attempts` | `extendedRequest.bossStart` | 기존 quiz service DTO | 적용 |
+| 별도 호환 | GET | `/boss-attempts/{attemptId}` | 기존 UUID 검사 | `NormalStageAttempt` 응답 | Swagger 누락 수정 |
+| 별도 호환 | POST | `/boss-attempts/{attemptId}/answers` | 기존 Boss 채점 입력 | `NormalStageAnswer` 응답 | Swagger 누락 수정 |
 | P0 | GET | `/reviews/items` | `extendedRequest.reviewItems` | `reviewListResponse.item` | 적용 |
 | P0 | PUT/DELETE | `/questions/{questionId}/bookmark` | `extendedRequest.question` | `bookmarkResponse` | 적용 |
 | P0 | GET | `/users/me/reward-ledger` | `extendedRequest.rewardLedger` | `rewardResponse.coin/exp` | 적용 |
@@ -40,6 +42,8 @@
 
 기존 기능 라우터도 확인했다. 아래 모듈은 이번 변경에서 새 DTO를 중복 작성하지 않고 기존 Schema/DTO를 계속 사용한다.
 
+현재 런타임 기준 `/api/v1` 등록 operation은 80개이며, Swagger operation도 80개로 일치한다. 그중 66개는 path/query/header/request body 중 하나 이상의 입력을 받고, 14개는 인증 정보나 서버 상태만 사용하는 입력 없는 operation이다.
+
 | 등록 모듈 | 등록 경로 | 요청 DTO/Schema 상태 |
 |---|---|---|
 | auth | `/auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/kakao*` | `authSchema`, Kakao DTO, logout auth middleware 적용 |
@@ -65,5 +69,8 @@
 ## 검증 명령
 
 - `node --test test/extended-api-dto.test.js test/extended-api-http.test.js test/quiz-dto.test.js` — 통과
-- `npm test` — 샌드박스의 로컬 listen 권한 없이 실행한 기준 검사는 `EPERM`으로 HTTP 테스트가 실패했다. 권한 허용 후 재실행 필요
+- `node --test test/swagger-route-coverage.test.js` — `/api/v1` 등록 operation 80개와 런타임 OpenAPI operation 일치, 대표 P0~P2의 path/query/body/필수 필드·공통 오류 응답 확인
+- 런타임 `/api-docs/` — HTTP 200 HTML 응답 확인
+- 런타임 `/api-docs.json` — HTTP 200 JSON 응답, 대표 API의 path/query/body 확인, `$ref` 누락 없음
+- `npm test` — 권한을 허용해 실행한 결과 176개 중 169 pass, 1 fail, 6 skip. 유일한 실패는 Docker/PostgreSQL이 필요한 `scripts/test-question-generation-postgres.js`이며, 애플리케이션 테스트 실패는 아니었다.
 - `test/integration/extended-api-postgres.test.js` — `LEREN_EXTENDED_API_PG_TEST_CONFIG`가 없는 환경에서는 의도적으로 skip된다. PostgreSQL 설정을 주입한 실행 결과를 별도로 기록해야 한다.
