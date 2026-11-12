@@ -6,6 +6,10 @@ const config = require('../src/config/swagger.config');
 test('normal Stage Swagger matches authenticated routes and hides pre-answer solution', () => {
   const spec = swaggerJsdoc(config);
   for (const [path, method] of [
+    ['/api/v1/stages/{stageId}/attempts', 'post'],
+    ['/api/v1/attempts/{attemptId}/current-question', 'get'],
+    ['/api/v1/attempts/{attemptId}/answers', 'post'],
+    ['/api/v1/attempts/{attemptId}', 'get'],
     ['/api/v1/quizzes/stages/{stageId}/attempts', 'post'],
     ['/api/v1/quizzes/attempts/{attemptId}', 'get'],
     ['/api/v1/quizzes/attempts/{attemptId}/result', 'get'],
@@ -28,4 +32,9 @@ test('normal Stage Swagger matches authenticated routes and hides pre-answer sol
   assert.equal(submit.responses[201].content['application/json'].example.data.status, 'PASSED');
   assert.equal(spec.paths['/api/v1/quizzes/stages/{stageId}/attempts'].post.responses[201]
     .content['application/json'].examples.started.value.data.resumed, false);
+  assert.deepEqual(spec.paths['/api/v1/stages/{stageId}/attempts'].post.requestBody
+    .content['application/json'].schema.required, ['mode']);
+  assert.equal(spec.paths['/api/v1/attempts/{attemptId}/answers'].post.requestBody
+    .content['application/json'].schema.$ref, '#/components/schemas/NormalStageAnswerRequest');
+  assert.equal(spec.components.schemas.NormalStageAttemptDetails.properties.passed.type, 'boolean');
 });

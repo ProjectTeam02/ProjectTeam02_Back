@@ -14,6 +14,7 @@ const KakaoClient = require('../../clients/kakao.client');
 const mobileService = require('./kakao-mobile.service');
 const mobileController = require('./kakao-mobile.controller');
 const { PostgresOAuthStore } = require('./kakao-postgres-oauth.store');
+const asyncHandler = require('../../common/utils/asyncHandler');
 
 const router = express.Router();
 const service = authService(AppDataSource, new KakaoClient());
@@ -29,6 +30,14 @@ router.post('/kakao/exchange', privateResponse, mobile.exchange);
 router.post('/signup', validate(authSchema.signup), controller.signup);
 router.post('/login', validate(authSchema.login), controller.login);
 router.post('/refresh', validate(authSchema.refresh), controller.refresh);
+router.post('/logout', asyncHandler(async (req, res, next) => {
+  const token = String(req.headers.cookie || '').split(';').map(value => value.trim().split('='))
+    .find(([name]) => name === 'refreshToken')?.[1];
+  if (!token) return next();
+  const result = await service.logoutByRefreshToken(token);
+  res.clearCookie('refreshToken', { httpOnly: true, sameSite: 'lax' });
+  return res.json({ success: true, data: result });
+}));
 router.post('/logout', authMiddleware, controller.logout);
 router.post('/kakao', privateResponse, validate(authSchema.kakao), controller.kakao);
 module.exports = router;

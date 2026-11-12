@@ -9,12 +9,18 @@ function controller(service) {
   return {
     generate: asyncHandler(async (req, res) => res.json({ success: true, data: await service.generate(req.query) })),
     start: asyncHandler(async (req, res) => {
-      const data = await service.start(req.user.sub, req.params.stageId);
+      const data = await service.start(req.user.sub, req.params.stageId, req.body?.mode);
       res.status(data.resumed ? 200 : 201).json({ success: true, data });
     }),
     getAttempt: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getAttempt(req.user.sub, req.params.attemptId) })),
+    getAttemptDetails: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getAttemptDetails(req.user.sub, req.params.attemptId) })),
     result: asyncHandler(async (req, res) => res.json({ success: true, data: await service.result(req.user.sub, req.params.attemptId) })),
     submit: asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await service.submit(req.user.sub, req.params.id, req.body) })),
+    submitNew: asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await service.submit(req.user.sub, req.body.questionId, {
+      attemptId: req.params.attemptId,
+      choiceId: req.body.choiceId,
+      submissionId: req.body.submissionId,
+    }) })),
   };
 }
 

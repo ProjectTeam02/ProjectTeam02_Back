@@ -8,6 +8,7 @@ const authRoutes = require('../modules/auth/auth.routes');
 const userRoutes = require('../modules/users/user.routes');
 const tutorRoutes = require('../modules/tutor/tutor.routes');
 const quizRoutes = require('../modules/quizzes/quiz.routes');
+const normalStageRoutes = require('../modules/quizzes/normal-stage.routes');
 const questionRoutes = require('../modules/questions/question.routes');
 const healthRoutes = require('../health/health.routes');
 const calendarRoutes = require('../modules/calendar/calendar.routes');
@@ -16,9 +17,11 @@ const topicRoutes = require('../modules/topics/topic.routes');
 const stageRoutes = require('../modules/stages/stage.routes');
 const conceptRoutes = require('../modules/concepts/concept.routes');
 const characterRoutes = require('../modules/characters/character.routes');
+const extendedApiRoutes = require('../modules/extended-api/extended-api.routes');
 
 const router = express.Router();
 
+router.use(normalStageRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/tutor', tutorRoutes);
@@ -31,5 +34,7 @@ router.use('/topics', topicRoutes);
 router.use('/stages', stageRoutes);
 router.use('/concepts', conceptRoutes);
 router.use('/character-classes', characterRoutes);
+// 확장 API 경로와 기존 경로의 호환 alias
+router.use(extendedApiRoutes);
 
 module.exports = router;

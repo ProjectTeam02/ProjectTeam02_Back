@@ -10,7 +10,20 @@ HP 감소, PASS/FAIL, 보상 지급 여부는 DB trigger나 CHECK가 아니라 S
 
 `StageQuestion.questionOrder`와 문항 공개 상태를 이용해 현재 문항을 복원한다. 공개된 Stage의 문항 연결을 운영 중 바꾸면 기존 응시의 다음 문항이 달라질 수 있으므로, **공개 콘텐츠의 문항 연결은 진행 중 응시가 있을 때 변경하지 않는 운영 정책**이 필요하다. 응시마다 출제 목록을 완전히 고정해야 한다는 요구가 추가되면 그때 최소 스냅샷 구조를 검토한다. `QuestionStatus`에는 `APPROVED`와 `PUBLISHED`가 모두 있으나 기존 최소 시드는 `PUBLISHED`를 사용한다. 이 일반 Stage 흐름은 실제 사용자에게 공개된 `PUBLISHED` 문항만 사용한다.
 
-## HTTP 계약
+## Leren 2.0 계약과 호환 경로
+
+명세의 일반 Stage 흐름은 아래 신규 경로를 기준으로 한다. `mode`는 `START` 또는 `RETRY`이며, 진행 중인 응시는 mode와 관계없이 기존 응시를 재개한다. 최초 응시가 없는데 `RETRY`를 보내거나, 이미 응시 이력이 있는데 `START`로 새 응시를 만들려는 요청은 거부한다. 재도전은 같은 StageQuestion 순서를 사용한다.
+
+| 기능 | Method/경로 | 요청 | 성공 응답 |
+|---|---|---|---|
+| 시작·재도전 | `POST /api/v1/stages/:stageId/attempts` | 경로 UUID; `{ "mode": "START" | "RETRY" }` | 기존 응시 상태와 `currentQuestion`, 신규 201/재개 200 |
+| 현재 문항 | `GET /api/v1/attempts/:attemptId/current-question` | 경로 UUID | 본인 응시의 HP·카운터·`currentQuestion`; 정답/해설 제외 |
+| 답안 제출 | `POST /api/v1/attempts/:attemptId/answers` | 경로 UUID; `{ "questionId", "choiceId", "submissionId" }` | 채점·HP·상태·해설 및 진행 중이면 `nextQuestion` |
+| 응시 결과 | `GET /api/v1/attempts/:attemptId` | 경로 UUID | PASS/FAIL, 답안, 오답 문항 ID, 최초 통과·보상 이력 |
+
+기존 앱 호출을 확인할 수 없으므로 기존 `/api/v1/quizzes/*` 경로는 유지한다. 기존 시작 경로는 빈 Body를 계속 허용하고, 기존 제출 경로는 `attemptId`/`choiceId`와 선택적 `Idempotency-Key`를 신규 채점 서비스로 연결한다.
+
+## 기존 HTTP 계약
 
 | 기능 | Method/경로 | 요청 | 성공 응답 | 오류 |
 |---|---|---|---|---|

@@ -4,7 +4,7 @@ const { randomBytes } = require('node:crypto');
 const path = require('node:path');
 const dockerEnv = { ...process.env };
 for (const key of ['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) delete dockerEnv[key];
-const docker = args => execFileSync('docker', ['--host=unix:///var/run/docker.sock', ...args], {
+const docker = args => execFileSync('docker', args, {
   env: dockerEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
 });
 const name = `leren-question-it-${randomBytes(4).toString('hex')}`;
@@ -15,7 +15,7 @@ let created = false;
     docker(['info', '--format', '{{.ServerVersion}}']);
     // Image download is allowed; there are no external AI requests.
     docker(['pull', 'postgres:18']);
-    execFileSync('docker', ['--host=unix:///var/run/docker.sock', 'run', '-d', '--rm', '--name', name,
+    execFileSync('docker', ['run', '-d', '--rm', '--name', name,
       '--label', 'codex.purpose=leren-question-generation-integration',
       '--tmpfs', '/var/lib/postgresql:rw', '-p', '127.0.0.1::5432',
       '-e', 'POSTGRES_PASSWORD', '-e', 'POSTGRES_DB=leren_question_it', 'postgres:18'],

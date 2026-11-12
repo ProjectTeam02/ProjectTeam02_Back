@@ -59,6 +59,32 @@ function oneOf(value, allowed, name) {
   return value;
 }
 
+function integer(value, name, { min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER } = {}) {
+  if (!Number.isInteger(value) || !Number.isSafeInteger(value) || value < min || value > max) {
+    throw AppError.validation(`${name}은(는) ${min}~${max} 범위의 정수여야 합니다.`);
+  }
+  return value;
+}
+
+function dateOnly(value, name) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw AppError.validation(`${name}은(는) YYYY-MM-DD 형식이어야 합니다.`);
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw AppError.validation(`${name}은(는) 유효한 날짜여야 합니다.`);
+  }
+  return value;
+}
+
+function time(value, name) {
+  if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)) {
+    throw AppError.validation(`${name}은(는) HH:MM 또는 HH:MM:SS 형식이어야 합니다.`);
+  }
+  return value;
+}
+
 /** Query 문자열 양의 정수 (예: page). 없으면 fallback */
 function positiveIntQuery(value, name, { fallback, max = 2147483647 }) {
   if (value === undefined) return fallback;
@@ -76,5 +102,6 @@ function iso(value) {
 }
 
 module.exports = {
-  UUID, isObject, object, onlyKeys, uuid, optionalUuid, string, optionalString, oneOf, positiveIntQuery, iso,
+  UUID, isObject, object, onlyKeys, uuid, optionalUuid, string, optionalString, oneOf,
+  integer, dateOnly, time, positiveIntQuery, iso,
 };

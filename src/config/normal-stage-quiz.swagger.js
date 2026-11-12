@@ -30,6 +30,38 @@ const result = {
   type: 'object', required: ['attemptId', 'stageId', 'status', 'submittedCount', 'correctCount', 'hp', 'endReason', 'endedAt', 'rewardGranted'],
   properties: { ...attempt.properties },
 };
+const answerRequest = {
+  type: 'object', required: ['questionId', 'choiceId', 'submissionId'], additionalProperties: false,
+  properties: { questionId: uuid, choiceId: uuid, submissionId: uuid },
+};
+const answer = {
+  type: 'object', required: ['attemptId', 'quizId', 'choiceId', 'isCorrect', 'score', 'explanation',
+    'hpBefore', 'hpAfter', 'submittedCount', 'correctCount', 'status', 'endReason', 'rewardGranted'],
+  properties: {
+    attemptId: uuid, quizId: uuid, choiceId: uuid, isCorrect: { type: 'boolean' }, score: { type: 'integer' },
+    explanation: { type: 'string', nullable: true }, hpBefore: count, hpAfter: count,
+    submittedCount: count, correctCount: count,
+    status: { type: 'string', enum: ['IN_PROGRESS', 'PASSED', 'FAILED'] },
+    endReason: { type: 'string', nullable: true, enum: ['MONSTER_DEFEATED', 'QUESTIONS_EXHAUSTED', null] },
+    rewardGranted: { type: 'boolean' }, duplicate: { type: 'boolean' },
+    nextQuestion: { ...question, nullable: true },
+  },
+};
+const attemptDetails = {
+  ...result,
+  required: [...result.required, 'passed', 'answers', 'wrongQuestionIds', 'passHistory', 'reward'],
+  properties: {
+    ...result.properties,
+    passed: { type: 'boolean' },
+    answers: { type: 'array', items: { type: 'object' } },
+    wrongQuestionIds: { type: 'array', items: uuid },
+    passHistory: { type: 'object', required: ['firstPassedAt', 'firstPassAttemptId', 'isFirstPass'], properties: {
+      firstPassedAt: { type: 'string', format: 'date-time', nullable: true },
+      firstPassAttemptId: { ...uuid, nullable: true }, isFirstPass: { type: 'boolean' },
+    } },
+    reward: { type: 'object', required: ['granted'], properties: { granted: { type: 'boolean' } } },
+  },
+};
 delete result.properties.currentQuestion;
 delete result.properties.resumed;
 const response = schema => ({
@@ -57,8 +89,43 @@ const sampleAttempt = {
 };
 
 module.exports = {
-  schemas: { NormalStageQuestion: question, NormalStageAttempt: attempt, NormalStageResult: result },
+  schemas: {
+    NormalStageQuestion: question,
+    NormalStageAttempt: attempt,
+    NormalStageResult: result,
+    NormalStageAnswerRequest: answerRequest,
+    NormalStageAnswer: answer,
+    NormalStageAttemptDetails: attemptDetails,
+  },
   paths: {
+    '/api/v1/stages/{stageId}/attempts': { post: {
+      tags: ['Quizzes'], security: bearer, summary: '일반 Stage 응시 시작 또는 재도전',
+      description: 'mode는 처음 시작 START 또는 이전 응시의 재도전 RETRY입니다. 진행 중 응시는 기존 응시를 재개합니다. 일반 Stage는 3문항·HP 2·정답 2개 즉시 통과 규칙을 사용합니다.',
+      parameters: [{ name: 'stageId', in: 'path', required: true, schema: uuid }],
+      requestBody: { required: true, content: { 'application/json': { schema: {
+        type: 'object', required: ['mode'], additionalProperties: false,
+        properties: { mode: { type: 'string', enum: ['START', 'RETRY'] } },
+      } } } },
+      responses: { 200: response({ $ref: '#/components/schemas/NormalStageAttempt' }), 201: response({ $ref: '#/components/schemas/NormalStageAttempt' }),
+        401: error, 403: error, 404: error, 409: error, 422: error, 503: error },
+    } },
+    '/api/v1/attempts/{attemptId}/current-question': { get: {
+      tags: ['Quizzes'], security: bearer, summary: '현재 일반 Stage 문항 조회',
+      description: '본인 응시의 현재 문항과 HP/카운터를 반환합니다. 정답과 해설은 반환하지 않습니다.',
+      parameters: [attemptId], responses: { 200: response({ $ref: '#/components/schemas/NormalStageAttempt' }), 401: error, 404: error, 422: error, 503: error },
+    } },
+    '/api/v1/attempts/{attemptId}/answers': { post: {
+      tags: ['Quizzes'], security: bearer, summary: '일반 Stage 답안 제출·서버 채점',
+      description: 'submissionId는 앱이 생성하는 UUID입니다. 같은 submissionId의 동일 요청은 duplicate=true로 원래 결과를 반환하며, 다른 답안에 재사용하면 409입니다.',
+      parameters: [attemptId],
+      requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NormalStageAnswerRequest' } } } },
+      responses: { 201: response({ $ref: '#/components/schemas/NormalStageAnswer' }), 401: error, 404: error, 409: error, 422: error, 503: error },
+    } },
+    '/api/v1/attempts/{attemptId}': { get: {
+      tags: ['Quizzes'], security: bearer, summary: '일반 Stage 응시 결과·답안 이력 조회',
+      description: '본인 응시의 PASS/FAIL, 종료 원인, 답안, 오답 문항 ID, 최초 통과·보상 이력을 반환합니다.',
+      parameters: [attemptId], responses: { 200: response({ $ref: '#/components/schemas/NormalStageAttemptDetails' }), 401: error, 404: error, 422: error, 503: error },
+    } },
     '/api/v1/quizzes/stages/{stageId}/attempts': { post: {
       tags: ['Quizzes'], security: bearer, summary: '일반 Stage 응시 시작 또는 진행 중 응시 재개',
       description: '공개된 일반 Stage, 잠금 상태, 공개 문항 3개와 선택지를 확인합니다. 진행 중 응시가 있으면 새로 만들지 않고 200으로 재개합니다. 처음 시작하면 201입니다.',

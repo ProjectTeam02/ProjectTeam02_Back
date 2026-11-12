@@ -9,6 +9,8 @@ const attemptRequest = require('./dto/attemptRequest.dto');
 module.exports = {
   submit: submitRequest.parse,
   start: attemptRequest.parseStart,
+  startNew: attemptRequest.parseStartNew,
   attempt: attemptRequest.parseAttempt,
   generate: attemptRequest.parseGenerate,
+  newAnswer: attemptRequest.parseNewAnswer,
 };
