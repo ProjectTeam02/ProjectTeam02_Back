@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_conversations)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (tutor.ai_conversations)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { AiEntryPoint, ConversationStatus } from '../common/enums';
 import { Concept } from '../content/concepts.entity';
@@ -11,7 +11,7 @@ import { User } from '../account/users.entity';
 /** AI Tutor 대화방. */
 @Index('ai_conversations_user_id_updated_at_idx', ['userId', 'updatedAt'])
 @Check('chk_ai_conversations_summary', `(summary IS NULL) = (summary_until_seq IS NULL)`)
-@Entity({ name: 'ai_conversations', schema: 'app' })
+@Entity({ name: 'ai_conversations', schema: 'tutor' })
 export class AiConversation {
   /** 대화 ID. API conversationId */
   @PrimaryGeneratedColumn('uuid', { name: 'conversation_id', primaryKeyConstraintName: 'ai_conversations_pkey' })

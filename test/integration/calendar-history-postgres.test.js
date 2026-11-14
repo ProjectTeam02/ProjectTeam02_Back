@@ -30,7 +30,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   const options = { ...oldOptions, host: cfg.host, port: cfg.port, database: cfg.database,
     username: 'postgres', password: cfg.password, ssl: false, synchronize: false, migrationsRun: false,
     migrations: [root + '/database/dist/migrations/*.js'], logging: false,
-    extra: { options: '-c search_path=app,public', max: 12, application_name: 'leren-calendar-it' } };
+    extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public', max: 12, application_name: 'leren-calendar-it' } };
   let admin, server;
   t.after(async () => {
     if (server) await new Promise(resolve => server.close(resolve));
@@ -44,7 +44,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   await admin.initialize();
   const [database] = await admin.query('SELECT current_database() AS name');
   assert.equal(database.name, 'leren_calendar_it');
-  assert.equal((await admin.query("SELECT to_regclass('app.users') AS existing"))[0].existing, null);
+  assert.equal((await admin.query("SELECT to_regclass('account.users') AS existing"))[0].existing, null);
   await admin.query('CREATE SCHEMA app');
   await admin.runMigrations();
   E.AppDataSource.setOptions({ ...options, migrations: [] });
@@ -178,7 +178,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   });
 
   await t.test('database query errors remain 503 responses', async () => {
-    await admin.query('ALTER TABLE app.learning_attempts RENAME TO learning_attempts_test_unavailable');
+    await admin.query('ALTER TABLE learning.learning_attempts RENAME TO learning_attempts_test_unavailable');
     try {
       for (const route of ['/api/v1/calendar?month=2026-04', '/api/v1/calendar/days/2026-04-10', '/api/v1/learning/history']) {
         const response = await get(route);
@@ -187,7 +187,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
         assert.equal('emptyMessage' in response.body, false);
       }
     } finally {
-      await admin.query('ALTER TABLE app.learning_attempts_test_unavailable RENAME TO learning_attempts');
+      await admin.query('ALTER TABLE learning.learning_attempts_test_unavailable RENAME TO learning_attempts');
     }
   });
 

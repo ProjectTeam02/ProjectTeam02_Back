@@ -1,10 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.terms)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (account.terms)
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import { TermsType } from '../common/enums';
 
 /** 약관·개인정보 동의 항목 마스터. 내용이 바뀌면 version을 올려 새 행을 추가합니다(기존 행 수정 금지). */
 @Index('terms_terms_type_version_idx', ['termsType', 'version'], { unique: true })
-@Entity({ name: 'terms', schema: 'app' })
+@Entity({ name: 'terms', schema: 'account' })
 export class Terms {
   /** 약관 ID. API termsId */
   @PrimaryGeneratedColumn('uuid', { name: 'terms_id', primaryKeyConstraintName: 'terms_pkey' })

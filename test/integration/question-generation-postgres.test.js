@@ -37,10 +37,10 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
   db.setOptions({ host: '127.0.0.1', port, username: 'postgres', password, database: 'leren_question_it',
     ssl: false, synchronize: false, migrationsRun: false, logging: false,
     migrations: [path.resolve(__dirname, '../../database/dist/migrations/*.js')],
-    extra: { options: '-c search_path=app,public' } });
+    extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public' } });
   await db.initialize();
   assert.equal((await db.query('SELECT current_database() AS name'))[0].name, 'leren_question_it');
-  assert.equal((await db.query("SELECT to_regclass('app.questions') AS existing"))[0].existing, null);
+  assert.equal((await db.query("SELECT to_regclass('content.questions') AS existing"))[0].existing, null);
   await db.query('CREATE SCHEMA app'); await db.runMigrations();
   const topic = await db.getRepository(E.Topic).save({ topicCode: 'IT_TOPIC', topicNo: 1, title: '인플레이션' });
   const concept = await db.getRepository(E.Concept).save({ topicId: topic.topicId, conceptCode: 'IT_CONCEPT', title: '인플레이션' });
@@ -127,14 +127,14 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
     const before = await counts(); aiCode = 200; aiBody = result(3);
     const retryKey = randomUUID(); let failed;
     await db.query(`CREATE FUNCTION app.fail_second_question() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
-      IF EXISTS (SELECT 1 FROM app.questions WHERE question_id = NEW.question_id AND question_text LIKE '%2번%')
+      IF EXISTS (SELECT 1 FROM content.questions WHERE question_id = NEW.question_id AND question_text LIKE '%2번%')
       THEN RAISE EXCEPTION 'synthetic choice failure'; END IF; RETURN NEW; END $$`);
-    await db.query('CREATE TRIGGER question_it_fail BEFORE INSERT ON app.question_choices FOR EACH ROW EXECUTE FUNCTION app.fail_second_question()');
+    await db.query('CREATE TRIGGER question_it_fail BEFORE INSERT ON content.question_choices FOR EACH ROW EXECUTE FUNCTION app.fail_second_question()');
     try {
       failed = await post(payload(3), env.questionImportApiKey, '/generate', retryKey);
       assert.equal(failed.status, 503); assert.deepEqual(await counts(), before);
       assert.equal(await db.getRepository(E.AiRequest).countBy({ status: 'RESERVED' }), 0);
-    } finally { await db.query('DROP TRIGGER question_it_fail ON app.question_choices'); await db.query('DROP FUNCTION app.fail_second_question()'); }
+    } finally { await db.query('DROP TRIGGER question_it_fail ON content.question_choices'); await db.query('DROP FUNCTION app.fail_second_question()'); }
     const beforeRetry = calls;
     assert.deepEqual(await post(payload(3), env.questionImportApiKey, '/generate', retryKey), failed);
     assert.equal(calls, beforeRetry); assert.deepEqual(await counts(), before);
@@ -143,11 +143,11 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
     const before = await counts(); aiBody = result();
     await db.query(`CREATE FUNCTION app.fail_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
       IF NEW.status = 'SUCCEEDED' THEN RAISE EXCEPTION 'synthetic completion failure'; END IF; RETURN NEW; END $$`);
-    await db.query('CREATE TRIGGER question_it_job_fail BEFORE UPDATE ON app.ai_requests FOR EACH ROW EXECUTE FUNCTION app.fail_completion()');
+    await db.query('CREATE TRIGGER question_it_job_fail BEFORE UPDATE ON tutor.ai_requests FOR EACH ROW EXECUTE FUNCTION app.fail_completion()');
     try {
       assert.equal((await post(payload())).status, 503); assert.deepEqual(await counts(), before);
       assert.equal(await db.getRepository(E.AiRequest).countBy({ status: 'RESERVED' }), 0);
-    } finally { await db.query('DROP TRIGGER question_it_job_fail ON app.ai_requests'); await db.query('DROP FUNCTION app.fail_completion()'); }
+    } finally { await db.query('DROP TRIGGER question_it_job_fail ON tutor.ai_requests'); await db.query('DROP FUNCTION app.fail_completion()'); }
   });
   await t.test('existing draft ingestion still saves GENERATED with no generation job', async () => {
     const draft = { conceptId: concept.conceptId, questionText: '기존 적재 API 호환성 확인 문제', explanation: '기존 저장 방식의 호환성을 검증합니다.',
@@ -249,12 +249,12 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
     const key = randomUUID(); const before = calls;
     await db.query(`CREATE FUNCTION app.fail_reservation_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
       IF NEW.status = 'RESERVED' THEN RAISE EXCEPTION 'synthetic reservation commit failure'; END IF; RETURN NEW; END $$`);
-    await db.query('CREATE CONSTRAINT TRIGGER question_it_commit_fail AFTER INSERT ON app.ai_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.fail_reservation_commit()');
+    await db.query('CREATE CONSTRAINT TRIGGER question_it_commit_fail AFTER INSERT ON tutor.ai_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.fail_reservation_commit()');
     try {
       assert.equal((await postWithKey(payload(), key)).status, 503);
       assert.equal(calls, before);
       assert.equal(await db.getRepository(E.AiRequest).countBy({ idempotencyKey: questionKey(key) }), 0);
-    } finally { await db.query('DROP TRIGGER question_it_commit_fail ON app.ai_requests'); await db.query('DROP FUNCTION app.fail_reservation_commit()'); }
+    } finally { await db.query('DROP TRIGGER question_it_commit_fail ON tutor.ai_requests'); await db.query('DROP FUNCTION app.fail_reservation_commit()'); }
     assert.equal((await postWithKey(payload(), key)).status, 201);
   });
   await t.test('other request types are never replayed or overwritten on storage-key collision', async () => {

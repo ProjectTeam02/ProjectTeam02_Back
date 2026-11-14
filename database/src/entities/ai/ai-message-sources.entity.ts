@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_message_sources)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (tutor.ai_message_sources)
 // rev.6: AI 내부 API 계약 반영 — document_version 문자열·null 허용, chunk_id 필수, 같은 근거 중복 저장 방지
 // rev.7: 길이를 ai 스키마(rag_documents·rag_document_chunks)와 맞춤 — document_id·chunk_id 255, document_version 100, title_snapshot 500
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
@@ -6,7 +6,7 @@ import { AiMessage } from './ai-messages.entity';
 
 /** 답변별 검색 근거 (API 검색 출처). AI 내부 API 응답 sources[]를 그대로 저장. */
 @Unique('uq_ai_message_sources_message_document_chunk', ['messageId', 'documentId', 'chunkId'])
-@Entity({ name: 'ai_message_sources', schema: 'app' })
+@Entity({ name: 'ai_message_sources', schema: 'tutor' })
 export class AiMessageSource {
   /** 근거 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'message_source_id', primaryKeyConstraintName: 'ai_message_sources_pkey' })

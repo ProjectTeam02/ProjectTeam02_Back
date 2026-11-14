@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.8) 기준 (app.user_settings)
+// 자동 생성: leren_erd.dbml (rev.8) 기준 (account.user_settings)
 import { Check, Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { GoalPeriod } from '../common/enums';
 import { User } from './users.entity';
 
 /** 사용자 설정 (users와 1:1). */
 @Check('chk_settings_goal_count', `(goal_count IS NULL) OR (goal_count > 0)`)
-@Entity({ name: 'user_settings', schema: 'app' })
+@Entity({ name: 'user_settings', schema: 'account' })
 export class UserSetting {
   /** 사용자 (1:1) */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_settings_pkey' })

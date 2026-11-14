@@ -31,11 +31,11 @@ test('economy content API against isolated PostgreSQL', { skip: !config, timeout
     host: '127.0.0.1', port, username: 'postgres', password, database: 'leren_economy_it',
     ssl: false, synchronize: false, migrationsRun: false, logging: false,
     migrations: [path.resolve(__dirname, '../../database/dist/migrations/*.js')],
-    extra: { options: '-c search_path=app,public' },
+    extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public' },
   });
   await db.initialize();
   assert.equal((await db.query('SELECT current_database() AS name'))[0].name, 'leren_economy_it');
-  assert.equal((await db.query("SELECT to_regclass('app.topics') AS existing"))[0].existing, null);
+  assert.equal((await db.query("SELECT to_regclass('content.topics') AS existing"))[0].existing, null);
   await db.query('CREATE SCHEMA app');
   await db.runMigrations();
   env.jwtAccessSecret = randomBytes(32).toString('hex');

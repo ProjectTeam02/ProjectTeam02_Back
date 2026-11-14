@@ -258,7 +258,7 @@ async function main() {
     }), ['22001', '23514']));
 
   await check(16, '허용되지 않은 Enum 값 (소문자)', '거부', async () =>
-    expectReject(() => ds.query(`UPDATE app.users SET plan = 'free' WHERE user_id = $1`, [userId]), ['22P02']));
+    expectReject(() => ds.query(`UPDATE account.users SET plan = 'free' WHERE user_id = $1`, [userId]), ['22P02']));
 
   await check(17, 'AI 멀티턴 한 턴: 예약 → 질문 → 답변 대기', 'usage_date KST, 답변 대기 1개·clientMessageId 중복 거부', async () => {
     const clientMessageId = randomUUID();
@@ -311,7 +311,7 @@ async function main() {
   });
 
   await check(21, 'app_user로 테이블 삭제 시도', '권한 오류', async () =>
-    expectReject(() => ds.query('DROP TABLE app.users'), ['42501']));
+    expectReject(() => ds.query('DROP TABLE account.users'), ['42501']));
 
   await ds.destroy();
 

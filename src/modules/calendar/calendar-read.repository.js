@@ -28,7 +28,7 @@ module.exports = function repository(manager) {
       const [row] = await manager.query(`
         WITH dates AS MATERIALIZED (
           SELECT DISTINCT (ended_at AT TIME ZONE 'Asia/Seoul')::date AS day
-          FROM app.learning_attempts
+          FROM learning.learning_attempts
           WHERE user_id = $1 AND status = 'PASSED' AND ended_at < $2
         ), anchor AS (
           SELECT MAX(day) AS day FROM dates WHERE day IN ($3::date, $3::date - 1)

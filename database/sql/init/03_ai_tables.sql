@@ -5,8 +5,7 @@
 -- 기준: ProjectTeam02_AI app/db/models.py (RAGDocument, RAGChunk, RAGIndexConfiguration)와 컬럼·타입·제약·인덱스 이름 1:1
 --   + 서버 기본값(id, metadata_json)과 CHECK 추가 (AI 코드가 값을 넣으므로 동작은 같음)
 -- 여기서 만들지 않는 것
---   - 벡터 테이블 ai.data_<컬렉션> (기본 ai.data_projectteam02): LlamaIndex PGVectorStore가 처음 적재할 때 직접 만든다
---     (직접 만들면 LlamaIndex 내부 구조와 어긋날 위험). 적재 후 database/sql/ai/vector_indexes.sql로 인덱스 추가
+--   - 벡터 테이블 ai.data_projectteam02: 04_ai_vector_table.sql (LlamaIndex PGVectorStore 구조와 1:1, #96)
 --   - ai_conversations·ai_messages·ai_message_sources·ai_requests·ai_user_memories: app 스키마(Node 소유, TypeORM 마이그레이션)
 -- 이 파일은 여러 번 실행해도 안전하다 (IF NOT EXISTS). AI 서버가 테이블을 먼저 만든 DB(RDS)에서도 실행 가능 → 3-1에서 기본값·CHECK만 보완
 -- 컬럼을 바꿀 때는 이 파일을 고치지 말고 database/sql/ai/에 변경 SQL을 추가한다
@@ -89,12 +88,12 @@ BEGIN
   END IF;
 END $$;
 
-COMMENT ON TABLE  ai.rag_documents IS 'RAG 원문 문서 메타. app.ai_message_sources.document_id가 논리 참조';
+COMMENT ON TABLE  ai.rag_documents IS 'RAG 원문 문서 메타. tutor.ai_message_sources.document_id가 논리 참조';
 COMMENT ON COLUMN ai.rag_documents.review_status IS '검수 상태. AI 설정 approved_review_status(기본 approved)인 문서만 검색';
 COMMENT ON COLUMN ai.rag_documents.concept_id IS '연결된 학습 개념 (현재 BOK 문서는 null, knowledge_scope=global)';
 COMMENT ON TABLE  ai.rag_document_chunks IS '청크 메타·본문 기록. 벡터는 LlamaIndex 테이블 ai.data_<컬렉션>에 저장';
 COMMENT ON COLUMN ai.rag_document_chunks.embedding IS 'AI 코드가 항상 null로 저장 (벡터는 LlamaIndex 테이블). AI 모델에서 제거되면 함께 삭제 예정';
-COMMENT ON COLUMN ai.rag_document_chunks.chunk_id IS '{documentId}:{hash12}:{순번}. app.ai_message_sources.chunk_id가 논리 참조';
+COMMENT ON COLUMN ai.rag_document_chunks.chunk_id IS '{documentId}:{hash12}:{순번}. tutor.ai_message_sources.chunk_id가 논리 참조';
 COMMENT ON TABLE  ai.rag_index_configurations IS '벡터 컬렉션별 임베딩 provider·모델·차원 (불일치 시 적재 거부)';
 
 -- 4. 백엔드(app_user) 읽기 권한: 문서 메타만 (출처 표시·document_id 존재 검증용). 청크 본문·벡터는 비공개

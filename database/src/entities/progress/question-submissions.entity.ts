@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.question_submissions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (learning.question_submissions)
 import { Check, Column, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { LearningAttempt } from './learning-attempts.entity';
 import { Question } from '../content/questions.entity';
@@ -9,7 +9,7 @@ import { QuestionChoice } from '../content/question-choices.entity';
 @Index('question_submissions_attempt_id_sequence_no_idx', ['attemptId', 'sequenceNo'], { unique: true })
 @Index('question_submissions_question_id_idx', ['questionId'])
 @Check('chk_submissions_position', `(selected_position >= 1) AND (selected_position <= 4)`)
-@Entity({ name: 'question_submissions', schema: 'app' })
+@Entity({ name: 'question_submissions', schema: 'learning' })
 export class QuestionSubmission {
   /** 답안 ID = API submissionId. 앱이 만든 UUID를 그대로 저장, 같은 값 재제출은 거부 */
   @PrimaryColumn({ name: 'submission_id', type: 'uuid', primaryKeyConstraintName: 'question_submissions_pkey' })

@@ -24,7 +24,7 @@ SELECT pg_temp.expect_ok (3, 'ai 스키마에 벡터 테이블 생성 (1536차�
 SELECT pg_temp.expect_ok (4, '벡터 저장', $q$INSERT INTO ai.zz_vector_check SELECT 'd' || i, array_fill(i::real, ARRAY[1536])::vector FROM generate_series(1,3) i$q$);
 INSERT INTO result SELECT 8, '가장 가까운 벡터 검색 (유사도 검색)', id IS NOT NULL, coalesce(id, '결과 없음') FROM (SELECT (SELECT id FROM ai.zz_vector_check ORDER BY embedding <-> array_fill(1::real, ARRAY[1536])::vector LIMIT 1) AS id) x;
 SELECT pg_temp.expect_err(5, '차원이 다른 벡터 거부 (임베딩 모델 불일치 방지)', $q$INSERT INTO ai.zz_vector_check VALUES ('bad', '[1,2,3]')$q$, '22000');
-SELECT pg_temp.expect_err(6, 'app 스키마(백엔드 소유) 조회 거부', $q$SELECT count(*) FROM app.users$q$, '42501');
+SELECT pg_temp.expect_err(6, '백엔드 스키마(account) 조회 거부', $q$SELECT count(*) FROM account.users$q$, '42501');
 SELECT pg_temp.expect_err(7, 'public 스키마에 테이블 생성 거부 (ai 스키마로만)', $q$CREATE TABLE public.zz_public_check (id int)$q$, '42501');
 DROP TABLE IF EXISTS ai.zz_vector_check;
 

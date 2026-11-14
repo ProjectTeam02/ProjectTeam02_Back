@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.costumes)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (character.costumes)
 import { Check, Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { CostumeCategory } from '../common/enums';
 
@@ -8,7 +8,7 @@ import { CostumeCategory } from '../common/enums';
 @Index('costumes_item_id_category_idx', ['itemId', 'category'], { unique: true })
 @Check('chk_costumes_on_sale_price', `(NOT is_on_sale) OR (price_coin IS NOT NULL)`)
 @Check('chk_costumes_price', `(price_coin IS NULL) OR (price_coin >= 0)`)
-@Entity({ name: 'costumes', schema: 'app' })
+@Entity({ name: 'costumes', schema: 'character' })
 export class Costume {
   /** 코스튬 ID. API itemId */
   @PrimaryGeneratedColumn('uuid', { name: 'item_id', primaryKeyConstraintName: 'costumes_pkey' })

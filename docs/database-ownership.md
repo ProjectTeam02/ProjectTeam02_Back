@@ -2,30 +2,31 @@
 
 ## 담당과 기준
 
-- DB 스키마(app 스키마)·ERD·마이그레이션·AWS RDS는 DB 담당이 관리합니다.
+- DB 스키마(영역별 스키마 7개 + ai 스키마)·ERD·마이그레이션·AWS RDS는 DB 담당이 관리합니다.
+- #98부터 업무 테이블은 영역별 스키마에 있습니다: `account`, `character`, `content`, `learning`, `reward`, `review`, `tutor`. `app` 스키마에는 TypeORM 관리용(`migrations`, `typeorm_metadata`)만 남습니다. 테이블·컬럼 이름은 그대로라 API·DTO는 영향이 없고, 서버 코드에서 SQL을 직접 쓸 때는 `account.users`처럼 스키마 이름을 붙입니다.
 - **기준은 `database/` 패키지의 엔티티와 마이그레이션**입니다. 설계 문서(`database/docs/leren_erd.dbml`, 테이블 정의서, ERD)는 같은 내용을 따라갑니다.
 - ORM은 TypeORM 0.3 (Prisma 사용 안 함). 서버 코드는 `require('@leren/database')`로 엔티티·Enum·DataSource를 가져옵니다.
-- ai 스키마(문서·청크·임베딩, pgvector)의 **DDL도 DB 담당이 관리**합니다 (2026-11 변경, 이전 ProjectTeam02_AI #5 합의는 "FastAPI가 직접 생성"). 스키마·계정·pgvector는 `database/sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `03_ai_tables.sql`(소유자 `ai_user`), 벡터 인덱스는 `database/sql/ai/vector_indexes.sql`. LlamaIndex 벡터 테이블(`ai.data_<컬렉션>`)만 AI 서버가 처음 적재할 때 생성합니다. AI 서버는 RDS에서 `create_tables()`·`migrations/*.sql`을 실행하지 않습니다.
-- AI Tutor 대화 기록·멀티턴 메모리 6개 테이블(`ai_conversations`, `ai_conversation_summaries`, `ai_messages`, `ai_message_sources`, `ai_requests`, `ai_user_memories`)은 백엔드(app 스키마) 소유입니다. AI 서버는 이 테이블에 직접 접근하지 않고, Node가 요청에 담아 보내고 응답을 저장합니다. app 스키마는 `document_id`·`chunk_id`를 FK 없이 논리 참조만 하고, `app_user`는 `ai.rag_documents`만 읽을 수 있습니다. 자세한 내용은 `database/docs/AI_DB.md`.
+- ai 스키마(문서·청크·임베딩, pgvector)의 **DDL도 DB 담당이 관리**합니다 (2026-11 변경, 이전 ProjectTeam02_AI #5 합의는 "FastAPI가 직접 생성"). 스키마·계정·pgvector는 `database/sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `03_ai_tables.sql`, 벡터 테이블(`ai.data_projectteam02`)은 `04_ai_vector_table.sql`(모두 소유자 `ai_user`, #96), 벡터 검색 인덱스는 `database/sql/ai/vector_indexes.sql`. AI 서버는 테이블을 만들지 않고(`perform_setup=False`) 데이터 적재·검색만 하며, RDS에서 `create_tables()`·`migrations/*.sql`을 실행하지 않습니다.
+- AI Tutor 대화 기록·멀티턴 메모리 6개 테이블(`ai_conversations`, `ai_conversation_summaries`, `ai_messages`, `ai_message_sources`, `ai_requests`, `ai_user_memories`)은 백엔드(`tutor` 스키마) 소유입니다. AI 서버는 이 테이블에 직접 접근하지 않고, Node가 요청에 담아 보내고 응답을 저장합니다. app 스키마는 `document_id`·`chunk_id`를 FK 없이 논리 참조만 하고, `app_user`는 `ai.rag_documents`만 읽을 수 있습니다. 자세한 내용은 `database/docs/AI_DB.md`.
 
-## 데이터 경계 (영역별 엔티티 폴더)
+## 데이터 경계 (영역별 엔티티 폴더 = DB 스키마)
 
-| 영역 | 폴더 | 주요 테이블 | 쓰는 모듈 |
+| 영역 | 폴더 → 스키마 | 주요 테이블 | 쓰는 모듈 |
 |---|---|---|---|
-| 계정·인증·약관 | `account/` | users, terms, user_terms_agreements, social_accounts, account_tokens, user_devices, user_sessions, user_settings | auth, users, notifications |
-| 캐릭터·상점 | `character/` | character_classes, costumes, user_characters, user_costumes, user_equipped_costumes | characters, costumes |
-| 학습 콘텐츠 | `content/` | topics, stages, concepts, concept_sections, questions, question_choices 외 | topics, stages, concepts, questions |
-| 진행도·퀴즈 | `progress/` | user_stage_progress, learning_attempts, question_submissions | learning, quizzes |
-| 보상·성장 | `reward/` | user_growth, user_wallets, exp_ledger, coin_ledger, level_thresholds | rewards |
-| 오답·복습·일정 | `review/` | review_items, review_missions, review_attempts, review_submissions, study_plans | reviews, calendar |
-| AI Tutor | `ai/` | ai_conversations, ai_conversation_summaries, ai_messages, ai_message_sources, ai_requests, ai_user_memories | tutor |
-| RAG 문서 (ai 스키마) | `sql/init/03_ai_tables.sql` | ai.rag_documents, ai.rag_document_chunks, ai.rag_index_configurations (+ LlamaIndex 벡터 테이블) | AI 서버 (FastAPI) |
+| 계정·인증·약관 | `account/` → `account` | users, terms, user_terms_agreements, social_accounts, account_tokens, user_devices, user_sessions, user_settings, kakao_oauth_entries | auth, users, notifications |
+| 캐릭터·상점 | `character/` → `character` | character_classes, costumes, user_characters, user_costumes, user_equipped_costumes | characters, costumes |
+| 학습 콘텐츠 | `content/` → `content` | topics, stages, concepts, concept_sections, questions, question_choices 외 | topics, stages, concepts, questions |
+| 진행도·퀴즈 | `progress/` → `learning` | user_stage_progress, learning_attempts, question_submissions | learning, quizzes |
+| 보상·성장 | `reward/` → `reward` | user_growth, user_wallets, exp_ledger, coin_ledger, level_thresholds, badges, user_badges | rewards |
+| 오답·복습·일정 | `review/` → `review` | review_items, review_missions, review_attempts, review_submissions, study_plans | reviews, calendar |
+| AI Tutor | `ai/` → `tutor` | ai_conversations, ai_conversation_summaries, ai_messages, ai_message_sources, ai_requests, ai_user_memories | tutor |
+| RAG 문서·벡터 (ai 스키마) | `sql/init/03_ai_tables.sql`, `04_ai_vector_table.sql` | ai.rag_documents, ai.rag_document_chunks, ai.rag_index_configurations, ai.data_projectteam02 | AI 서버 (FastAPI) |
 
 ## 변경 절차
 
 1. DB 변경이 필요하면 DB 담당에게 요청 (이슈 또는 PR 코멘트)
 2. 엔티티 수정 + 새 마이그레이션 + 문서 갱신을 한 PR로
-3. CI `db-check`(컴파일·마이그레이션·차이 없음·연동 19개·SQL 제약 66개·ai 스키마 8개·ai 테이블 12개) 통과 후 병합
+3. CI `db-check`(컴파일·마이그레이션·차이 없음·연동 21개·SQL 제약 97개·ai 스키마 8개·ai 테이블 20개) 통과 후 병합
 4. 병합된 마이그레이션은 수정하지 않고, 바꿀 게 있으면 새 마이그레이션 추가
 
 자세한 사용법은 `database/README.md`, 엔티티 목록은 `database/docs/ENTITIES.md`를 봅니다.

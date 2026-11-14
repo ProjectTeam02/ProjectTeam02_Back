@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.stage_questions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.stage_questions)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { Question } from './questions.entity';
 import { Stage } from './stages.entity';
 
 /** Stage별 출제 문항과 순서. */
 @Index('stage_questions_stage_id_question_id_idx', ['stageId', 'questionId'], { unique: true })
-@Entity({ name: 'stage_questions', schema: 'app' })
+@Entity({ name: 'stage_questions', schema: 'content' })
 export class StageQuestion {
   /** Stage */
   @PrimaryColumn({ name: 'stage_id', type: 'uuid', primaryKeyConstraintName: 'stage_questions_pkey' })

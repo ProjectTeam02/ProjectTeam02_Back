@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_requests)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (tutor.ai_requests)
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { AiRequestStatus, AiRequestType, ModelTier } from '../common/enums';
 import { AiConversation } from './ai-conversations.entity';
@@ -7,7 +7,7 @@ import { User } from '../account/users.entity';
 /** AI 호출 기록·비용·일일 사용량. 턴 1회 = TUTOR 요청 1건. */
 @Unique('ai_requests_idempotency_key_key', ['idempotencyKey'])
 @Index('ai_requests_user_id_usage_date_status_idx', ['userId', 'usageDate', 'status'])
-@Entity({ name: 'ai_requests', schema: 'app' })
+@Entity({ name: 'ai_requests', schema: 'tutor' })
 export class AiRequest {
   /** AI 요청 ID. 내부 API requestId */
   @PrimaryGeneratedColumn('uuid', { name: 'request_id', primaryKeyConstraintName: 'ai_requests_pkey' })

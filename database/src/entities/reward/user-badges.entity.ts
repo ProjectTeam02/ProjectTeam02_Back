@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.8) 기준 (app.user_badges)
+// 자동 생성: leren_erd.dbml (rev.8) 기준 (reward.user_badges)
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { Badge } from './badges.entity';
 import { User } from '../account/users.entity';
 
 /** 사용자 배지 획득 기록 (rev.8). (user_id, badge_id) PK로 같은 배지는 한 번만 지급됩니다. */
 @Index('user_badges_user_id_earned_at_idx', ['userId', 'earnedAt'])
-@Entity({ name: 'user_badges', schema: 'app' })
+@Entity({ name: 'user_badges', schema: 'reward' })
 export class UserBadge {
   /** 사용자 */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_badges_pkey' })

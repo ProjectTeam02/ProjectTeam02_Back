@@ -1,7 +1,7 @@
 import { Check, Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm';
 
 /** 짧게 유지되는 카카오 OAuth state 및 교환 코드. 토큰 원문은 저장하지 않는다. */
-@Entity({ name: 'kakao_oauth_entries', schema: 'app' })
+@Entity({ name: 'kakao_oauth_entries', schema: 'account' })
 @Check('chk_kakao_oauth_entries_kind', `"kind" IN ('state', 'exchange')`)
 @Index('kakao_oauth_entries_expires_at_idx', ['expiresAt'])
 export class KakaoOAuthEntry {

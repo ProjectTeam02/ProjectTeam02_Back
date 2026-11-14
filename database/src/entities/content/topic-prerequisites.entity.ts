@@ -1,10 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.topic_prerequisites)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.topic_prerequisites)
 import { Check, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { Topic } from './topics.entity';
 
 /** 주제 선수관계 (1→2→3, 3→4·5, 5→6, 1→7→8→9). 선수 주제의 BOSS를 통과하면 해금됩니다. */
 @Check('chk_topic_prereq_not_self', `topic_id <> prerequisite_topic_id`)
-@Entity({ name: 'topic_prerequisites', schema: 'app' })
+@Entity({ name: 'topic_prerequisites', schema: 'content' })
 export class TopicPrerequisite {
   /** 주제 */
   @PrimaryColumn({ name: 'topic_id', type: 'uuid', primaryKeyConstraintName: 'topic_prerequisites_pkey' })

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.review_attempts)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (review.review_attempts)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { ReviewAttemptStatus, ReviewAttemptType, ReviewEntryPoint } from '../common/enums';
 import { ReviewMission } from './review-missions.entity';
@@ -7,7 +7,7 @@ import { User } from '../account/users.entity';
 /** 복습 응시 (전투·HP 없음). */
 @Index('review_attempts_user_id_started_at_idx', ['userId', 'startedAt'])
 @Check('chk_review_attempts_counts', `(correct_count <= submitted_count) AND (submitted_count <= question_count)`)
-@Entity({ name: 'review_attempts', schema: 'app' })
+@Entity({ name: 'review_attempts', schema: 'review' })
 export class ReviewAttempt {
   /** 복습 응시 ID. API reviewAttemptId */
   @PrimaryGeneratedColumn('uuid', { name: 'review_attempt_id', primaryKeyConstraintName: 'review_attempts_pkey' })

@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_terms_agreements)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (account.user_terms_agreements)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Terms } from './terms.entity';
 import { User } from './users.entity';
 
 /** 사용자가 어느 약관 버전에 언제 동의(또는 거부)했는지 기록합니다. 탈퇴 후에도 이력은 보존합니다. */
 @Index('user_terms_agreements_user_id_terms_id_idx', ['userId', 'termsId'], { unique: true })
-@Entity({ name: 'user_terms_agreements', schema: 'app' })
+@Entity({ name: 'user_terms_agreements', schema: 'account' })
 export class UserTermsAgreement {
   /** 동의 기록 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'agreement_id', primaryKeyConstraintName: 'user_terms_agreements_pkey' })

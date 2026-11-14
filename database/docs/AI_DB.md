@@ -2,32 +2,32 @@
 
 - 작성: 2026-11-02, DB 담당
 - 기준: 백엔드 `main` e16d252 + 이 브랜치(`feat/ai-multiturn-db`), AI 레포 `main` 453ebea
-- 결정: AI 관련 DB(app 스키마의 AI 테이블 + ai 스키마)는 **DB 담당이 모두 관리**. AI 파트는 멀티턴 로직을 구현하고, DB 구조 변경이 필요하면 DB 담당에게 요청
+- 결정: AI 관련 DB(tutor 스키마의 AI 테이블 + ai 스키마, #98 전에는 app 스키마)는 **DB 담당이 모두 관리**. AI 파트는 멀티턴 로직을 구현하고, DB 구조 변경이 필요하면 DB 담당에게 요청
 
 ## 1. 전체 구성
 
 ```
-┌─ app 스키마 (Node.js 소유, TypeORM 마이그레이션, app_user) ─────────────────────┐
+┌─ tutor 스키마 (Node.js 소유, TypeORM 마이그레이션, app_user. #98 전 app) ───────┐
 │  ai_conversations ──< ai_messages ──< ai_message_sources                     │
 │        │   └──< ai_conversation_summaries (rev.7)   └── summary_id (rev.7)   │
 │        └──< ai_requests                                                      │
-│  users ──< ai_user_memories (rev.7)                                          │
+│  account.users ──< ai_user_memories (rev.7)                                  │
 └──────────────────────────────────────────────────────────────────────────────┘
         │ document_id·chunk_id 논리 참조 (FK 없음)   ▲ app_user는 rag_documents만 SELECT
         ▼                                            │
 ┌─ ai 스키마 (소유자 ai_user, DDL은 DB 담당 SQL 파일) ─────────────────────────────┐
 │  rag_documents ──< rag_document_chunks      rag_index_configurations        │
-│  data_projectteam02 (LlamaIndex 벡터 테이블, AI 서버가 첫 적재 때 생성)         │
+│  data_projectteam02 (벡터, LlamaIndex 구조, 04 파일로 생성)                    │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| 계정 | app 스키마 | ai 스키마 |
+| 계정 | 영역별 스키마 (tutor 등) | ai 스키마 |
 |---|---|---|
 | `migrator` | 소유자 (마이그레이션) | 접근 불가 |
 | `app_user` (Node) | 읽기·쓰기 | `rag_documents` SELECT만 (rev.7) |
-| `ai_user` (FastAPI) | 접근 불가 | 소유자 (읽기·쓰기, 벡터 테이블 생성) |
+| `ai_user` (FastAPI) | 접근 불가 | 소유자 (데이터 적재·검색. 테이블은 DB 담당 SQL로 생성) |
 
-AI 서버는 상태를 갖지 않습니다. 대화 기록·요약·장기 메모리는 Node가 app 스키마에서 읽어 내부 API 요청에 담아 보내고, 응답으로 받은 결과를 Node가 저장합니다.
+AI 서버는 상태를 갖지 않습니다. 대화 기록·요약·장기 메모리는 Node가 tutor 스키마에서 읽어 내부 API 요청에 담아 보내고, 응답으로 받은 결과를 Node가 저장합니다.
 
 ## 2. 테이블별 역할
 
@@ -42,15 +42,15 @@ AI 서버는 상태를 갖지 않습니다. 대화 기록·요약·장기 메모
 | ai | **`rag_documents`** (rev.7) | 원문 문서 메타 (제목, 출처, 검수 상태, content_hash) | AI 서버 (적재) |
 | ai | **`rag_document_chunks`** (rev.7) | 청크 메타·본문 기록 (벡터 없음) | AI 서버 (적재) |
 | ai | **`rag_index_configurations`** (rev.7) | 컬렉션별 임베딩 모델·차원 (불일치 시 적재 거부) | AI 서버 (적재) |
-| ai | `data_projectteam02` | 실제 벡터 (id, text, metadata_, node_id, embedding vector(1536)) | LlamaIndex |
+| ai | `data_projectteam02` | 실제 벡터 (id, text, metadata_, node_id, embedding vector(1536)). 정의는 `04_ai_vector_table.sql` (#96) | AI 서버 (LlamaIndex 적재) |
 
 ## 3. 원래 AI가 맡기로 해서 비어 있던 부분 → 이번 처리
 
 | 항목 | 이전 상태 | rev.7 처리 |
 |---|---|---|
 | `rag_documents`·`rag_document_chunks`·`rag_index_configurations` | 레포에 DDL 없음. RDS에는 AI 서버 `create_tables()`로 이미 생성·적재됨 (2026-10-27~28, 문서 760·청크 1,400·벡터 1,400, 전부 approved·global, 1536차원) | `sql/init/03_ai_tables.sql` (AI SQLAlchemy 모델과 컬럼·제약·인덱스 이름 1:1). 이미 있는 DB에서는 3-1절이 기본값·CHECK만 추가 |
-| 벡터 테이블 | 만들 주체가 정해지지 않음. `VECTOR_STORE_SCHEMA` 기본값이 `public`이라 그대로 두면 권한 오류 | LlamaIndex가 `ai_user`로 ai 스키마에 생성하는 것을 확인 (실제 실행). 적재 후 `sql/ai/vector_indexes.sql`로 HNSW + 검색 필터 인덱스 |
-| 장기 메모리 `ai_user_memories` | AI `create_tables()`로 RDS ai 스키마에 빈 테이블(0행)이 생김. ai 스키마에 두면 users FK·탈퇴 삭제 불가 | **app 스키마**에 새로 설계 (users FK, 종류·upsert 키·상태). `ai.ai_user_memories`는 AI 파트 합의 후 삭제 |
+| 벡터 테이블 | 만들 주체가 정해지지 않음. `VECTOR_STORE_SCHEMA` 기본값이 `public`이라 그대로 두면 권한 오류 | LlamaIndex가 `ai_user`로 ai 스키마에 생성하는 것을 확인 (실제 실행). 적재 후 `sql/ai/vector_indexes.sql`로 HNSW + 검색 필터 인덱스. **#96(2026-11-14)**: 정의를 `sql/init/04_ai_vector_table.sql`로 이관 (RDS 실제 테이블과 동일 확인), AI는 `perform_setup=False` |
+| 장기 메모리 `ai_user_memories` | AI `create_tables()`로 RDS ai 스키마에 빈 테이블(0행)이 생김. ai 스키마에 두면 users FK·탈퇴 삭제 불가 | **app 스키마**에 새로 설계 (users FK, 종류·upsert 키·상태). `ai.ai_user_memories`는 **2026-11-14 RDS에서 삭제** (0행 확인, 삭제 전 스냅샷 `leren-dev-db-11-14`) |
 | 요약 | `ai_conversations.summary` 컬럼만 있고 이력 없음. 어떤 요약으로 답했는지 기록 안 됨 | `ai_conversation_summaries` + `ai_messages.summary_id` |
 | 근거 컬럼 길이 | app 100/100/50/255자 ↔ AI 255/255/100/500자 | app을 AI와 같게 확장 (데이터 보존 ALTER) |
 | 백엔드 읽기 권한 | `app_user`가 ai 스키마 접근 불가 → "documentId 존재 검증" 규칙을 지킬 수 없음 | `ai.rag_documents` SELECT만 허용 (청크·벡터는 비공개) |
@@ -65,7 +65,7 @@ AI 서버는 상태를 갖지 않습니다. 대화 기록·요약·장기 메모
 | 3 | `rag_document_chunks.embedding` | AI 코드가 항상 null로 저장 (벡터는 LlamaIndex 테이블) | AI 모델에서 빼면 DB에서도 삭제 |
 | 4 | ~~회원 탈퇴 시 AI 대화~~ | **결정(2026-11-03): 행은 남기고 본문만 비움** (5.3절 SQL). FK 삭제 동작은 바꾸지 않음 | 완료 |
 | 5 | 메모리·요약 계약 | 5.4절 제안 (요청 `memories[]`, 응답 `summaryUpdate`·`memoryUpdates[]`) | AI 파트 + Node 합의 |
-| 6 | AI 레포 레거시 정리 | `app/db/models.py`의 `AIConversation`·`AIMessage`·`AIMessageSource`·`AIUserMemory`, `migrations/001·003·004`. `create_tables()`가 `AIUserMemory`를 ai 스키마에 만듦 | AI 파트: `create_tables` 목록에서 `AIUserMemory` 제거, `/memory` 라우터는 Node 계약으로 대체 |
+| 6 | AI 레포 레거시 정리 | `app/db/models.py`의 `AIConversation`·`AIMessage`·`AIMessageSource`·`AIUserMemory`, `migrations/001~005`, `/api/memory` 라우터. `create_tables()`가 `AIUserMemory`를 ai 스키마에 만듦 (RDS의 빈 테이블은 11-14 삭제). `vector_store.py` `perform_setup=False` | AI 파트: `create_tables` 목록에서 `AIUserMemory` 제거, `/memory` 라우터는 Node 계약으로 대체 |
 | 7 | Node `tutor.service.js` | history를 오래된 순 50개로 가져옴, 실패 메시지 포함, PENDING 답변 행을 먼저 만들지 않음, 저장이 한 트랜잭션이 아님 | 백엔드 담당 (5.2절 규칙대로 수정) |
 | 8 | RDS 적재 | 03 적용 후 승인 문서 적재 → `vector_indexes.sql` | DB 담당 + AI 파트 일정 |
 
@@ -179,22 +179,23 @@ DELETE FROM ai_user_memories WHERE user_id = :u;                                
 1. 환경변수: `DATABASE_URL`은 `ai_user`, **`VECTOR_STORE_SCHEMA=ai`**, `VECTOR_STORE_COLLECTION=projectteam02` (바꾸면 DB 담당에게 알려서 인덱스 스크립트를 그 이름으로 실행)
 2. RDS에서 `create_tables()`, `migrations/*.sql`을 실행하지 않음. ai 테이블 구조를 바꿀 때는 SQLAlchemy 모델 수정 전에 DB 담당에게 공유 → `database/sql/ai/`에 변경 SQL 추가
 3. 첫 적재가 끝나면 DB 담당에게 알림 → `vector_indexes.sql` 실행 (HNSW cosine + `review_status`·`knowledge_scope`·`concept_code`·`concept_id`·`stage_id`·`term` 인덱스)
-4. app 스키마(대화·요약·메모리)에는 접근하지 않음. 필요한 데이터는 Node 요청으로 받음
+4. 백엔드 스키마(tutor 등 대화·요약·메모리)에는 접근하지 않음. 필요한 데이터는 Node 요청으로 받음
 
 ## 7. 적용 순서
 
 ```bash
-# 로컬 (Docker): 볼륨이 이미 있으면 03만 수동 실행 (AI 서버가 먼저 테이블을 만들었어도 실행 가능)
+# 로컬 (Docker): 볼륨이 이미 있으면 03·04만 수동 실행 (AI 서버가 먼저 테이블을 만들었어도 실행 가능)
 docker compose exec -T db psql -U postgres -d leren -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/03_ai_tables.sql
+docker compose exec -T db psql -U postgres -d leren -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/04_ai_vector_table.sql
 npm run db:migrate && npm run db:check
 
 # RDS (EC2에서, 적용 전 수동 스냅샷 leren-before-ai-multiturn-YYYYMMDD)
 psql -h <RDS> -U <마스터> -d leren -v ON_ERROR_STOP=1 -f database/sql/init/03_ai_tables.sql
+psql -h <RDS> -U <마스터> -d leren -v ON_ERROR_STOP=1 -f database/sql/init/04_ai_vector_table.sql   # 이미 같은 구조가 있으면 변화 없음
 npm run db:migrate && npm run db:migrate:show && npm run db:check
 # 벡터가 약 1만 개를 넘으면 (2026-11-03 기준 1,400개 → 아직 불필요)
 psql -h <RDS> -U ai_user -d leren -v ON_ERROR_STOP=1 -v collection=projectteam02 -f database/sql/ai/vector_indexes.sql
-# AI 파트 합의 후 (빈 테이블 확인: SELECT count(*) FROM ai.ai_user_memories; → 0)
-# SET ROLE ai_user; DROP TABLE ai.ai_user_memories;
+# ai.ai_user_memories: 2026-11-14 삭제 완료 (SET ROLE ai_user; DROP TABLE ai.ai_user_memories;)
 ```
 
 ## 8. 검증 (로컬 PostgreSQL 16.15 + pgvector 0.6, 운영과 같은 계정 구조)
@@ -207,7 +208,7 @@ psql -h <RDS> -U ai_user -d leren -v ON_ERROR_STOP=1 -v collection=projectteam02
 | 되돌리기 → 다시 실행 | 통과 |
 | SQL 제약 테스트 (app_user) | **66/66 PASS** (rev.7 추가 19개, 탈퇴 비우기 절차 5개 포함) |
 | ai 스키마 테스트 (ai_user) | **8/8 PASS** |
-| ai RAG 테이블 테스트 (ai_user) | **12/12 PASS** |
+| ai RAG·벡터 테이블 테스트 (ai_user) | **20/20 PASS** (#96에서 벡터 테이블 8개 추가) |
 | 연동 테스트 | 19/19 PASS |
 | AI 레포 코드로 실제 저장 | `RAGDocumentRepository`(설정 저장·불일치 거부, 문서·청크 저장·재적재, 해시 조회) 통과. LlamaIndex `PGVectorStore`가 `ai_user`로 `ai.data_projectteam02` 생성·저장·필터 검색 통과 |
 | `vector_indexes.sql` | 인덱스 7개 생성, 다시 실행해도 안전, 테이블이 없으면 안내 후 중단 |
