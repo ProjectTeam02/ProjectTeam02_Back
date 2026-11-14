@@ -1,5 +1,5 @@
 # PR·push마다 임시 PostgreSQL 18에서 database/ 패키지를 자동 검증
-# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 + Stage Quiz HTTP → SQL 제약 테스트 97개 → ai 스키마(pgvector) 8개 → ai RAG·벡터 테이블 20개
+# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 + Stage Quiz HTTP → SQL 제약 테스트 97개 → ai 스키마(pgvector) 8개 → ai RAG·벡터 테이블 21개
 name: db-check
 on:
   pull_request:
@@ -67,9 +67,9 @@ jobs:
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_schema_test.sql | tee ai-test.log
           grep -q "TOTAL 8/8" ai-test.log
-      - name: 7-1. ai RAG·벡터 테이블 검증 20개 (03·04, ai_user로 실행)
+      - name: 7-1. ai RAG·벡터 테이블 검증 21개 (03·04, ai_user로 실행)
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_tables_test.sql | tee ai-tables-test.log
-          grep -q "TOTAL 20/20" ai-tables-test.log
+          grep -q "TOTAL 21/21" ai-tables-test.log
       - name: 8. 서버가 database 패키지를 불러오는지 확인
         run: node -e "const db=require('@leren/database'); if(db.entities.length!==47 || !db.entities.includes(db.KakaoOAuthEntry)) throw new Error('Unexpected entity registration'); console.log('entities', db.entities.length)"

@@ -1236,7 +1236,6 @@ Table ai.rag_document_chunks {
   document_id varchar(255) [not null, ref: > ai.rag_documents.document_id, note: 'ON DELETE CASCADE']
   chunk_id varchar(255) [not null, note: '{documentId}:{hash12}:{순번}']
   content text [not null]
-  embedding vector(1536) [note: '항상 null (벡터는 LlamaIndex 테이블)']
   metadata_json jsonb [not null, default: '{}']
   indexes {
     (document_id, chunk_id) [unique]
