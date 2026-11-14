@@ -243,3 +243,64 @@ test('tutor service continues sequenceNo after 50 messages and marks invalid AI 
   assert.equal(failed.status, 'FAILED');
   assert.equal(dataSource.tables.get(AiMessageSource).some(row => row.conceptCode?.length > 30), false);
 });
+
+/* ---------- #99 저장 흐름 ---------- */
+
+test('#99: 튜터 저장 키는 대화방 단위로 구분하고 100자 이하다', () => {
+  const { tutorKey } = require('../src/modules/tutor/tutor.service');
+  const a = tutorKey(id(1), 'c-1');
+  const b = tutorKey(id(2), 'c-1');
+  assert.notEqual(a, b);
+  assert.match(a, /^TUTOR:[0-9a-f]{64}$/);
+  assert.ok(a.length <= 100);
+});
+
+test('#99: 다른 대화방에서 같은 clientMessageId를 써도 각각 정상 처리된다', async () => {
+  const dataSource = fakeDataSource();
+  const userId = id(9);
+  const service = tutorService(dataSource, { answer: async body => aiAnswer(body.requestId) });
+  const first = await service.createConversation(userId, { entryPoint: 'NAV' });
+  const second = await service.createConversation(userId, { entryPoint: 'NAV' });
+  for (const conversation of [first, second]) {
+    const result = await service.sendMessage(userId, { conversationId: conversation.conversationId, question: '물가?', modelTier: 'BASIC', clientMessageId: 'same-id', context: null, knowledgeScope: null }, null);
+    assert.equal(result.assistantMessage.status, 'COMPLETED');
+  }
+  const keys = dataSource.tables.get(AiRequest).map(row => row.idempotencyKey);
+  assert.equal(new Set(keys).size, 2);
+});
+
+test('#99: 답변 생성 중 같은 대화방 요청(동시 요청)은 409', async () => {
+  const dataSource = fakeDataSource();
+  const userId = id(9);
+  const service = tutorService(dataSource, { answer: async body => aiAnswer(body.requestId) });
+  const conversation = await service.createConversation(userId, { entryPoint: 'NAV' });
+  const violation = Object.assign(new Error('duplicate key'), { driverError: { code: '23505', constraint: 'uq_ai_messages_one_pending_answer' } });
+  dataSource.transaction = async () => { throw violation; };
+  await assert.rejects(
+    service.sendMessage(userId, { conversationId: conversation.conversationId, question: 'q', modelTier: 'BASIC', clientMessageId: null, context: null, knowledgeScope: null }, null),
+    error => error.statusCode === 409,
+  );
+});
+
+test('#99: 처리 중·실패한 clientMessageId 재전송은 409, history에는 완료된 메시지만', async () => {
+  const dataSource = fakeDataSource();
+  const userId = id(9);
+  let sent;
+  const service = tutorService(dataSource, { answer: async body => { sent = body; return aiAnswer(body.requestId); } });
+  const conversation = await service.createConversation(userId, { entryPoint: 'NAV' });
+  const messages = dataSource.tables.get(AiMessage);
+  const pendingUser = { messageId: crypto.randomUUID(), conversationId: conversation.conversationId, sequenceNo: 1, role: 'USER', content: '처리 중 질문', clientMessageId: 'p-1', status: 'PENDING' };
+  messages.push(pendingUser, { messageId: crypto.randomUUID(), conversationId: conversation.conversationId, parentMessageId: pendingUser.messageId, sequenceNo: 2, role: 'ASSISTANT', content: '', status: 'PENDING' });
+  await assert.rejects(
+    service.sendMessage(userId, { conversationId: conversation.conversationId, question: '처리 중 질문', modelTier: 'BASIC', clientMessageId: 'p-1', context: null, knowledgeScope: null }, null),
+    error => error.statusCode === 409 && /처리 중/.test(error.message),
+  );
+  messages.forEach(row => { row.status = 'FAILED'; });
+  await assert.rejects(
+    service.sendMessage(userId, { conversationId: conversation.conversationId, question: '처리 중 질문', modelTier: 'BASIC', clientMessageId: 'p-1', context: null, knowledgeScope: null }, null),
+    error => error.statusCode === 409 && /실패/.test(error.message),
+  );
+  const result = await service.sendMessage(userId, { conversationId: conversation.conversationId, question: '새 질문', modelTier: 'BASIC', clientMessageId: 'n-1', context: null, knowledgeScope: null }, null);
+  assert.equal(result.userMessage.sequenceNo, 3);
+  assert.equal(sent.history.length, 0); // FAILED 메시지는 history에서 제외
+});
