@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.topics)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.topics)
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { PublishStatus } from '../common/enums';
 
 /** 경제 지식 트리의 주제 (1~9). */
 @Unique('topics_topic_code_key', ['topicCode'])
 @Unique('topics_topic_no_key', ['topicNo'])
-@Entity({ name: 'topics', schema: 'app' })
+@Entity({ name: 'topics', schema: 'content' })
 export class Topic {
   /** 주제 ID. API topicId */
   @PrimaryGeneratedColumn('uuid', { name: 'topic_id', primaryKeyConstraintName: 'topics_pkey' })

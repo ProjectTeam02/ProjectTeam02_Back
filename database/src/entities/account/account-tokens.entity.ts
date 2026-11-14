@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.account_tokens)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (account.account_tokens)
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { TokenType } from '../common/enums';
 import { User } from './users.entity';
 
 /** 이메일 인증·비밀번호 재설정 토큰. */
 @Unique('account_tokens_token_hash_key', ['tokenHash'])
-@Entity({ name: 'account_tokens', schema: 'app' })
+@Entity({ name: 'account_tokens', schema: 'account' })
 export class AccountToken {
   /** 토큰 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'token_id', primaryKeyConstraintName: 'account_tokens_pkey' })

@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_equipped_costumes)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (character.user_equipped_costumes)
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { CostumeCategory } from '../common/enums';
 import { Costume } from './costumes.entity';
 import { UserCostume } from './user-costumes.entity';
 
 /** 부위별 장착 상태. 부위당 1행이고, 행이 없으면 미장착입니다. 다시 장착하면 같은 행을 교체합니다. */
-@Entity({ name: 'user_equipped_costumes', schema: 'app' })
+@Entity({ name: 'user_equipped_costumes', schema: 'character' })
 export class UserEquippedCostume {
   /** 사용자 */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_equipped_costumes_pkey' })

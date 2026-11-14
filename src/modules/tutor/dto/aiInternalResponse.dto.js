@@ -12,9 +12,9 @@
  * groundingStatus  'GROUNDED' | 'INSUFFICIENT'
  * historyFromSeq   number | null
  * sources[]        documentId ≤255, documentVersion ≤100, chunkId ≤255, titleSnapshot ≤500,
- *                  conceptCode ≤30, rank ≥1, relevanceScore 0~1 | null   (app.ai_message_sources)
+ *                  conceptCode ≤30, rank ≥1, relevanceScore 0~1 | null   (tutor.ai_message_sources)
  * usage            modelId ≤100, embeddingModelId ≤100, retrievalStrategy ≤50, currency 3자,
- *                  inputTokens·outputTokens·latencyMs ≥0 정수, cacheHit boolean, estimatedCost ≥0 (app.ai_requests)
+ *                  inputTokens·outputTokens·latencyMs ≥0 정수, cacheHit boolean, estimatedCost ≥0 (tutor.ai_requests)
  */
 const AppError = require('../../../common/errors/AppError');
 

@@ -2,16 +2,16 @@
 
 - 작성: 2026-11-02, DB 담당
 - 기준: 백엔드 `main` e16d252 + 이 브랜치(`feat/ai-multiturn-db`), AI 레포 `main` 453ebea
-- 결정: AI 관련 DB(app 스키마의 AI 테이블 + ai 스키마)는 **DB 담당이 모두 관리**. AI 파트는 멀티턴 로직을 구현하고, DB 구조 변경이 필요하면 DB 담당에게 요청
+- 결정: AI 관련 DB(tutor 스키마의 AI 테이블 + ai 스키마, #98 전에는 app 스키마)는 **DB 담당이 모두 관리**. AI 파트는 멀티턴 로직을 구현하고, DB 구조 변경이 필요하면 DB 담당에게 요청
 
 ## 1. 전체 구성
 
 ```
-┌─ app 스키마 (Node.js 소유, TypeORM 마이그레이션, app_user) ─────────────────────┐
+┌─ tutor 스키마 (Node.js 소유, TypeORM 마이그레이션, app_user. #98 전 app) ───────┐
 │  ai_conversations ──< ai_messages ──< ai_message_sources                     │
 │        │   └──< ai_conversation_summaries (rev.7)   └── summary_id (rev.7)   │
 │        └──< ai_requests                                                      │
-│  users ──< ai_user_memories (rev.7)                                          │
+│  account.users ──< ai_user_memories (rev.7)                                  │
 └──────────────────────────────────────────────────────────────────────────────┘
         │ document_id·chunk_id 논리 참조 (FK 없음)   ▲ app_user는 rag_documents만 SELECT
         ▼                                            │
@@ -21,13 +21,13 @@
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| 계정 | app 스키마 | ai 스키마 |
+| 계정 | 영역별 스키마 (tutor 등) | ai 스키마 |
 |---|---|---|
 | `migrator` | 소유자 (마이그레이션) | 접근 불가 |
 | `app_user` (Node) | 읽기·쓰기 | `rag_documents` SELECT만 (rev.7) |
 | `ai_user` (FastAPI) | 접근 불가 | 소유자 (데이터 적재·검색. 테이블은 DB 담당 SQL로 생성) |
 
-AI 서버는 상태를 갖지 않습니다. 대화 기록·요약·장기 메모리는 Node가 app 스키마에서 읽어 내부 API 요청에 담아 보내고, 응답으로 받은 결과를 Node가 저장합니다.
+AI 서버는 상태를 갖지 않습니다. 대화 기록·요약·장기 메모리는 Node가 tutor 스키마에서 읽어 내부 API 요청에 담아 보내고, 응답으로 받은 결과를 Node가 저장합니다.
 
 ## 2. 테이블별 역할
 
@@ -179,7 +179,7 @@ DELETE FROM ai_user_memories WHERE user_id = :u;                                
 1. 환경변수: `DATABASE_URL`은 `ai_user`, **`VECTOR_STORE_SCHEMA=ai`**, `VECTOR_STORE_COLLECTION=projectteam02` (바꾸면 DB 담당에게 알려서 인덱스 스크립트를 그 이름으로 실행)
 2. RDS에서 `create_tables()`, `migrations/*.sql`을 실행하지 않음. ai 테이블 구조를 바꿀 때는 SQLAlchemy 모델 수정 전에 DB 담당에게 공유 → `database/sql/ai/`에 변경 SQL 추가
 3. 첫 적재가 끝나면 DB 담당에게 알림 → `vector_indexes.sql` 실행 (HNSW cosine + `review_status`·`knowledge_scope`·`concept_code`·`concept_id`·`stage_id`·`term` 인덱스)
-4. app 스키마(대화·요약·메모리)에는 접근하지 않음. 필요한 데이터는 Node 요청으로 받음
+4. 백엔드 스키마(tutor 등 대화·요약·메모리)에는 접근하지 않음. 필요한 데이터는 Node 요청으로 받음
 
 ## 7. 적용 순서
 

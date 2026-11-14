@@ -1,10 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.stage_concepts)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.stage_concepts)
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { Concept } from './concepts.entity';
 import { Stage } from './stages.entity';
 
 /** Stage–개념 연결. NORMAL Stage는 1개(앱 검증), BOSS는 여러 개념입니다. */
-@Entity({ name: 'stage_concepts', schema: 'app' })
+@Entity({ name: 'stage_concepts', schema: 'content' })
 export class StageConcept {
   /** Stage */
   @PrimaryColumn({ name: 'stage_id', type: 'uuid', primaryKeyConstraintName: 'stage_concepts_pkey' })

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.review_items)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (review.review_items)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { AnswerResult, ReviewFirstReason } from '../common/enums';
 import { Question } from '../content/questions.entity';
@@ -9,7 +9,7 @@ import { User } from '../account/users.entity';
 @Index('review_items_user_id_concept_code_idx', ['userId', 'conceptCode'])
 @Index('review_items_user_id_is_bookmarked_idx', ['userId', 'isBookmarked'])
 @Index('review_items_user_id_question_code_idx', ['userId', 'questionCode'], { unique: true })
-@Entity({ name: 'review_items', schema: 'app' })
+@Entity({ name: 'review_items', schema: 'review' })
 export class ReviewItem {
   /** 오답·북마크 항목 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'review_item_id', primaryKeyConstraintName: 'review_items_pkey' })

@@ -1,9 +1,9 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.concept_prerequisites)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.concept_prerequisites)
 import { Check, Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
 
 /** 개념 선수관계. 개념이 새 버전이 되어도 유지되도록 concept_code로 연결합니다. */
 @Check('chk_concept_prereq_not_self', `(concept_code)::text <> (prerequisite_concept_code)::text`)
-@Entity({ name: 'concept_prerequisites', schema: 'app' })
+@Entity({ name: 'concept_prerequisites', schema: 'content' })
 export class ConceptPrerequisite {
   /** 개념 코드 (논리 참조) */
   @PrimaryColumn({ name: 'concept_code', type: 'varchar', length: 30, primaryKeyConstraintName: 'concept_prerequisites_pkey' })

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.study_plans)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (review.study_plans)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { PlanStatus, PlanType } from '../common/enums';
 import { Concept } from '../content/concepts.entity';
@@ -8,7 +8,7 @@ import { User } from '../account/users.entity';
 /** 학습 일정 (소프트 삭제). */
 @Index('study_plans_user_id_scheduled_date_idx', ['userId', 'scheduledDate'])
 @Check('chk_study_plans_title', `(char_length((title)::text) >= 1) AND (char_length((title)::text) <= 30)`)
-@Entity({ name: 'study_plans', schema: 'app' })
+@Entity({ name: 'study_plans', schema: 'review' })
 export class StudyPlan {
   /** 일정 ID. API planId */
   @PrimaryGeneratedColumn('uuid', { name: 'plan_id', primaryKeyConstraintName: 'study_plans_pkey' })

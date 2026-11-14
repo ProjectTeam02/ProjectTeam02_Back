@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_devices)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (account.user_devices)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { DevicePlatform } from '../common/enums';
 import { User } from './users.entity';
@@ -6,7 +6,7 @@ import { User } from './users.entity';
 /** 기기와 푸시 토큰. */
 @Unique('user_devices_push_token_key', ['pushToken'])
 @Index('user_devices_user_id_device_uuid_idx', ['userId', 'deviceUuid'], { unique: true })
-@Entity({ name: 'user_devices', schema: 'app' })
+@Entity({ name: 'user_devices', schema: 'account' })
 export class UserDevice {
   /** 기기 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'device_id', primaryKeyConstraintName: 'user_devices_pkey' })
