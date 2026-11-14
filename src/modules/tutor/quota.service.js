@@ -13,7 +13,8 @@ function quotaService(dataSource) {
   const repoFor = (manager = dataSource.manager) => manager.getRepository(AiRequest);
   const whereFor = (userId) => ({ userId, requestType: 'TUTOR', reservedAt: MoreThanOrEqual(startOfSeoulDay()), status: Not('FAILED') });
   return {
-    async reserve(userId, reservation) {
+    // manager를 넘기면 그 트랜잭션 안에서 예약한다 (#99: 메시지 생성과 같은 트랜잭션)
+    async reserve(userId, reservation, manager = null) {
       // 레거시 단위 테스트용 최소 어댑터. 운영 경로는 TypeORM DataSource를 사용한다.
       if (typeof dataSource.transaction !== 'function' && typeof dataSource.$transaction === 'function') {
         return dataSource.$transaction(async (tx) => {
@@ -23,7 +24,9 @@ function quotaService(dataSource) {
           return { used, remaining: Math.max(0, env.aiDailyLimit - used - 1) };
         });
       }
-      return dataSource.transaction(async (manager) => {
+      const reserveIn = async (manager) => {
+        // #99 같은 사용자의 동시 요청이 한도 확인(count)과 예약(insert) 사이에 끼어들지 않도록 사용자별 잠금
+        if (typeof manager.query === 'function') await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`tutor:quota:${userId}`]);
         const used = await repoFor(manager).count({ where: whereFor(userId) });
         if (used >= env.aiDailyLimit) throw AppError.rateLimited();
         if (reservation) {
@@ -31,7 +34,8 @@ function quotaService(dataSource) {
           await repo.save(repo.create(reservation));
         }
         return { used, remaining: Math.max(0, env.aiDailyLimit - used - 1) };
-      });
+      };
+      return manager ? reserveIn(manager) : dataSource.transaction(reserveIn);
     },
     async usage(userId) {
       const used = await repoFor().count({ where: whereFor(userId) });
