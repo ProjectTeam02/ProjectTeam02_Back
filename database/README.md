@@ -1,7 +1,7 @@
 # @leren/database
 
 Leren app 스키마의 **TypeORM 엔티티 · 마이그레이션 · 검증 스크립트** 패키지입니다 (npm workspace).
-설계 원본은 `docs/leren_erd.dbml` (rev.8, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)도 **DB 담당이 DDL을 관리**합니다: 스키마·계정은 `sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `sql/init/03_ai_tables.sql`(소유자 `ai_user`). 벡터 테이블만 LlamaIndex가 처음 적재할 때 만들고, 인덱스는 `sql/ai/vector_indexes.sql`로 추가합니다. AI 관련 DB 전체 현황은 `docs/AI_DB.md`.
+설계 원본은 `docs/leren_erd.dbml` (rev.8, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)도 **DB 담당이 DDL을 관리**합니다: 스키마·계정은 `sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `sql/init/03_ai_tables.sql`, 벡터 테이블은 `sql/init/04_ai_vector_table.sql`(모두 소유자 `ai_user`). 벡터 검색 인덱스는 `sql/ai/vector_indexes.sql`로 추가합니다. AI 관련 DB 전체 현황은 `docs/AI_DB.md`.
 
 ## 구성
 
@@ -17,6 +17,7 @@ database/
   sql/init/01_app_schema.sql    # app 스키마 + 계정(migrator, app_user) 생성. 관리자 계정으로 최초 1회
   sql/init/02_ai_schema.sql     # pgvector 확장 + ai 스키마 + 계정(ai_user). 01 다음에 최초 1회
   sql/init/03_ai_tables.sql     # ai 스키마 RAG 메타 테이블 3개 + app_user 읽기 권한. 02 다음에 (여러 번 실행해도 안전)
+  sql/init/04_ai_vector_table.sql # ai 스키마 벡터 테이블 ai.data_projectteam02 (LlamaIndex 구조). 03 다음에 (여러 번 실행해도 안전)
   sql/ai/vector_indexes.sql     # 벡터 테이블 HNSW·metadata 인덱스. AI가 처음 적재한 뒤 1회 (ai_user)
   sql/test/constraint_test.sql  # SQL 제약 테스트 86개 (빈 DB, app_user)
   sql/test/ai_schema_test.sql   # ai 스키마 검증 8개 (pgvector·권한 분리, ai_user)
@@ -84,7 +85,7 @@ npm run db:test                      # 테스트 DB에서만 실행
 |---|---|---|
 | `migrator` | 마이그레이션 실행 | app 스키마 소유자 (테이블 생성·변경) |
 | `app_user` | Node.js 서버 실행 | app 스키마 테이블 읽기·쓰기만 (삭제·변경 불가) |
-| `ai_user` | AI 서버(FastAPI) 실행 | ai 스키마 테이블 소유자 (DDL은 DB 담당이 03 파일로 관리, LlamaIndex 벡터 테이블은 AI 서버가 생성). app 스키마 접근 불가 |
+| `ai_user` | AI 서버(FastAPI) 실행 | ai 스키마 테이블 소유자 (DDL은 DB 담당이 03·04 파일로 관리, AI 서버는 테이블을 만들지 않음). app 스키마 접근 불가 |
 
 AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (빠지면 public에 만들려다 권한 오류). AI 서버는 `create_tables()`·`migrations/*.sql`을 RDS에서 실행하지 않습니다. 백엔드(`app_user`)는 `ai.rag_documents`만 읽을 수 있고, AI 응답의 `documentId`·`chunkId`를 `ai_message_sources`에 FK 없이 기록합니다.
 
@@ -103,7 +104,7 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 ## AWS RDS에 적용할 때
 
 1. RDS PostgreSQL 18 생성 (Private, Public access OFF, SG-DB는 SG-EC2만 허용)
-2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` → `02_ai_schema.sql` → `03_ai_tables.sql` 순서로 실행 (비밀번호는 실제 값으로 변경, pgvector는 RDS PostgreSQL 18 기본 지원)
+2. EC2에서 마스터 계정으로 `database/sql/init/01_app_schema.sql` → `02_ai_schema.sql` → `03_ai_tables.sql` → `04_ai_vector_table.sql` 순서로 실행 (비밀번호는 실제 값으로 변경, pgvector는 RDS PostgreSQL 18 기본 지원)
 3. 환경변수는 Parameter Store에서 주입, `DB_SSL=true`와 RDS CA 인증서 지정
 4. `npm run db:migrate` → `npm run db:migrate:show` → `npm run db:check`
 5. `db:test`는 실제 데이터가 있는 DB에서 실행하지 않습니다 (테스트 데이터가 남음)

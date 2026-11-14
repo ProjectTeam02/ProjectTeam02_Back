@@ -1184,7 +1184,7 @@ Table ai_user_memories {
 // =====================================================================
 // 9. ai 스키마 — RAG 문서·청크 (rev.7, database/sql/init/03_ai_tables.sql, 소유자 ai_user)
 //   app 스키마와 FK 없음: app.ai_message_sources.document_id·chunk_id가 논리 참조
-//   벡터 테이블 ai.data_<컬렉션>(id, text, metadata_ jsonb, node_id, embedding vector(1536))은 LlamaIndex가 생성
+//   벡터 테이블 ai.data_projectteam02(id, text, metadata_ jsonb, node_id, embedding vector(1536))은 database/sql/init/04_ai_vector_table.sql (#96)
 //   → 적재 후 database/sql/ai/vector_indexes.sql로 HNSW·metadata 인덱스
 // =====================================================================
 Table ai.rag_documents {
