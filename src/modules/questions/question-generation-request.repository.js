@@ -10,7 +10,7 @@ module.exports = function repository(dataSource) {
       // Returning from this awaited transaction means COMMIT has completed.
       return dataSource.transaction(async manager => {
         const scope = { generationInput: input, idempotency: { version: 1, requestFingerprint: fingerprint } };
-        const rows = await manager.query(`INSERT INTO app.ai_requests
+        const rows = await manager.query(`INSERT INTO tutor.ai_requests
           (request_type, status, model_tier, idempotency_key, knowledge_scope)
           VALUES ('QUESTION_GEN', 'RESERVED', 'BASIC', $1, $2::jsonb)
           ON CONFLICT (idempotency_key) DO NOTHING RETURNING request_id`, [key, JSON.stringify(scope)]);

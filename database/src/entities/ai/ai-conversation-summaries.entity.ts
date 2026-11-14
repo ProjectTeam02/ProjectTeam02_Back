@@ -1,4 +1,4 @@
-// rev.7: 멀티턴 대화 요약 이력 (app.ai_conversation_summaries)
+// rev.7: 멀티턴 대화 요약 이력 (tutor.ai_conversation_summaries)
 import { Check, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { AiConversation } from './ai-conversations.entity';
 import { AiRequest } from './ai-requests.entity';
@@ -11,7 +11,7 @@ import { AiRequest } from './ai-requests.entity';
 @Unique('ai_conversation_summaries_conversation_id_summary_until_seq_key', ['conversationId', 'summaryUntilSeq'])
 @Check('chk_ai_summaries_until_seq', `summary_until_seq >= 1`)
 @Check('chk_ai_summaries_content', `(char_length(content) >= 1) AND (char_length(content) <= 12000)`)
-@Entity({ name: 'ai_conversation_summaries', schema: 'app' })
+@Entity({ name: 'ai_conversation_summaries', schema: 'tutor' })
 export class AiConversationSummary {
   /** 요약 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'summary_id', primaryKeyConstraintName: 'ai_conversation_summaries_pkey' })

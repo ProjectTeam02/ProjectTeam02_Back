@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.learning_attempts)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (learning.learning_attempts)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { AttemptEndReason, AttemptMode, AttemptStatus, AttemptType } from '../common/enums';
 import { Stage } from '../content/stages.entity';
@@ -10,7 +10,7 @@ import { User } from '../account/users.entity';
 @Index('learning_attempts_user_id_started_at_idx', ['userId', 'startedAt'])
 @Index('uq_learning_attempts_one_in_progress', ['userId', 'stageId'], { unique: true, where: `"status" = 'IN_PROGRESS'` })
 @Check('chk_attempts_counts', `(correct_count <= submitted_count) AND (submitted_count <= max_question_count)`)
-@Entity({ name: 'learning_attempts', schema: 'app' })
+@Entity({ name: 'learning_attempts', schema: 'learning' })
 export class LearningAttempt {
   /** 응시 ID (재학습 세션 포함). API attemptId */
   @PrimaryGeneratedColumn('uuid', { name: 'attempt_id', primaryKeyConstraintName: 'learning_attempts_pkey' })

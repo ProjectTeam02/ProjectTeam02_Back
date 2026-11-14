@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS projectteam02_idx_1 ON ai.data_projectteam02 ((metada
 
 COMMENT ON TABLE  ai.data_projectteam02 IS 'RAG 벡터 (LlamaIndex PGVectorStore 구조). 청크 1개 = 1행, 정의는 백엔드 레포 04_ai_vector_table.sql';
 COMMENT ON COLUMN ai.data_projectteam02.text IS '청크 본문';
-COMMENT ON COLUMN ai.data_projectteam02.metadata_ IS 'document_id·chunk_id·review_status·knowledge_scope·concept_code·term 등. app.ai_message_sources가 document_id·chunk_id를 논리 참조';
+COMMENT ON COLUMN ai.data_projectteam02.metadata_ IS 'document_id·chunk_id·review_status·knowledge_scope·concept_code·term 등. tutor.ai_message_sources가 document_id·chunk_id를 논리 참조';
 COMMENT ON COLUMN ai.data_projectteam02.node_id IS 'LlamaIndex 노드 ID';
 COMMENT ON COLUMN ai.data_projectteam02.embedding IS '임베딩 (openai/text-embedding-3-small, 1536차원). ai.rag_index_configurations와 같아야 함';
 

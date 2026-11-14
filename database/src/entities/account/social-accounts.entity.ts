@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.social_accounts)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (account.social_accounts)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { SocialProvider } from '../common/enums';
 import { User } from './users.entity';
 
 /** 소셜 로그인 연결. 탈퇴 시 행을 삭제해 같은 계정으로 재가입할 수 있게 합니다. */
 @Index('social_accounts_provider_provider_user_id_idx', ['provider', 'providerUserId'], { unique: true })
-@Entity({ name: 'social_accounts', schema: 'app' })
+@Entity({ name: 'social_accounts', schema: 'account' })
 export class SocialAccount {
   /** 소셜 계정 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'social_account_id', primaryKeyConstraintName: 'social_accounts_pkey' })

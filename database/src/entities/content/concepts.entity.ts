@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.concepts)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.concepts)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { ConceptStatus } from '../common/enums';
 import { Topic } from './topics.entity';
@@ -6,7 +6,7 @@ import { User } from '../account/users.entity';
 
 /** 경제 개념 (버전 관리). */
 @Index('concepts_concept_code_version_idx', ['conceptCode', 'version'], { unique: true })
-@Entity({ name: 'concepts', schema: 'app' })
+@Entity({ name: 'concepts', schema: 'content' })
 export class Concept {
   /** 개념 ID (버전별). API conceptId */
   @PrimaryGeneratedColumn('uuid', { name: 'concept_id', primaryKeyConstraintName: 'concepts_pkey' })

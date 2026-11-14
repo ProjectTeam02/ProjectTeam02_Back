@@ -1,4 +1,4 @@
-// rev.7: 사용자 장기 메모리 (app.ai_user_memories)
+// rev.7: 사용자 장기 메모리 (tutor.ai_user_memories)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { AiMemoryStatus, AiMemoryType } from '../common/enums';
 import { User } from '../account/users.entity';
@@ -14,7 +14,7 @@ import { AiMessage } from './ai-messages.entity';
 @Check('chk_ai_memories_content', `(char_length((content)::text) >= 1) AND (char_length((content)::text) <= 500)`)
 @Check('chk_ai_memories_confidence', `confidence IS NULL OR (confidence >= 0 AND confidence <= 1)`)
 @Check('chk_ai_memories_archived', `(status = 'ARCHIVED'::ai_memory_status) = (archived_at IS NOT NULL)`)
-@Entity({ name: 'ai_user_memories', schema: 'app' })
+@Entity({ name: 'ai_user_memories', schema: 'tutor' })
 export class AiUserMemory {
   /** 메모리 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'memory_id', primaryKeyConstraintName: 'ai_user_memories_pkey' })

@@ -1,4 +1,4 @@
--- 제약 검증 rev.8 + #97 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+-- 제약 검증 rev.8 + #97 + #98 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -129,7 +129,7 @@ SELECT pg_temp.expect_err(35, '같은 약관 동의 행 중복 거부', $q$INSER
 SELECT pg_temp.expect_ok (36, '회원 탈퇴: 상태·시각 기록 + 이메일·비밀번호 제거, 닉네임 익명화 (학습 기록 유지)', $q$UPDATE users SET account_status = 'WITHDRAWN', withdrawn_at = now(), withdrawal_reason = '사용 안 함', email = NULL, password_hash = NULL, nickname = '탈퇴회원' WHERE user_id = '00000000-0000-0000-0000-000000000001'$q$);
 SELECT pg_temp.expect_ok (37, '탈퇴한 이메일로 재가입 허용', $q$INSERT INTO users (email, nickname) VALUES ('pia@example.com','pia2')$q$);
 INSERT INTO result SELECT 38, '조회 인덱스 3개 존재 (questions.concept_id, question_submissions.question_id, review_items(user_id,is_bookmarked))', count(*) = 3, count(*)::text || '개'
-  FROM pg_indexes WHERE schemaname = 'app' AND (indexdef LIKE '%ON app.questions USING btree (concept_id)%' OR indexdef LIKE '%ON app.question_submissions USING btree (question_id)%' OR indexdef LIKE '%ON app.review_items USING btree (user_id, is_bookmarked)%');
+  FROM pg_indexes WHERE schemaname IN ('content', 'learning', 'review') AND (indexdef LIKE '%ON content.questions USING btree (concept_id)%' OR indexdef LIKE '%ON learning.question_submissions USING btree (question_id)%' OR indexdef LIKE '%ON review.review_items USING btree (user_id, is_bookmarked)%');
 
 -- 45~48 AI 답변 근거 (rev.6: AI 내부 API 계약 반영)
 SELECT pg_temp.expect_ok (45, '근거 저장: documentVersion 문자열 ''2026''', $q$INSERT INTO ai_message_sources (message_id, document_id, document_version, chunk_id, title_snapshot, rank, relevance_score) SELECT message_id, 'bok2026-0154', '2026', 'bok2026-0154:0', '기준금리', 1, 0.9123 FROM ai_messages WHERE conversation_id = '00000000-0000-0000-0000-0000000000f1' AND sequence_no = 2$q$);
@@ -207,6 +207,15 @@ SELECT pg_temp.expect_err(93, '빈 해설 거부', $q$INSERT INTO questions (que
 SELECT pg_temp.expect_err(94, '근거 문서 없는 AI 문항 거부 (null·빈 배열)', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, source_document_ids) VALUES ('Q-97-2','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','AI','{}')$q$, '23514');
 SELECT pg_temp.expect_ok (95, 'AI 문항 저장 (근거·분류·학습 목표 포함)', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, source_document_ids, question_category, learning_objective) VALUES ('Q-97-3','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','AI','{bok2026-0504}','SCENARIO','인플레이션의 의미를 설명할 수 있다')$q$);
 SELECT pg_temp.expect_err(96, '정의되지 않은 문제 분류 거부', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, question_category) VALUES ('Q-97-4','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','MANUAL','QUIZ')$q$, '22P02');
+
+-- 97~98 #98 영역별 스키마
+INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 (account 9, character 5, content 12, learning 3, reward 7, review 5, tutor 6)',
+  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:9,character:5,content:12,learning:3,review:5,reward:7,tutor:6',
+  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname)
+  FROM (SELECT schemaname, count(*) n FROM pg_tables WHERE schemaname IN ('account','character','content','learning','reward','review','tutor') GROUP BY 1) x;
+INSERT INTO result SELECT 98, 'app 스키마에는 TypeORM 관리 테이블만 (migrations, typeorm_metadata)',
+  coalesce(string_agg(tablename, ',' ORDER BY tablename), '') = 'migrations,typeorm_metadata', coalesce(string_agg(tablename, ',' ORDER BY tablename), '없음')
+  FROM pg_tables WHERE schemaname = 'app';
 
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');

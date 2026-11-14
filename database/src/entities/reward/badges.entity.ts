@@ -1,10 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.8) 기준 (app.badges)
+// 자동 생성: leren_erd.dbml (rev.8) 기준 (reward.badges)
 import { Check, Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 
 /** 배지 마스터 (rev.8). 획득 조건은 미정이라 condition_type은 문자열로 두고, 확정되면 Enum으로 바꿉니다. */
 @Unique('badges_badge_code_key', ['badgeCode'])
 @Check('chk_badges_condition_value', `(condition_value IS NULL) OR (condition_value > 0)`)
-@Entity({ name: 'badges', schema: 'app' })
+@Entity({ name: 'badges', schema: 'reward' })
 export class Badge {
   /** 배지 ID. API badgeId */
   @PrimaryGeneratedColumn('uuid', { name: 'badge_id', primaryKeyConstraintName: 'badges_pkey' })

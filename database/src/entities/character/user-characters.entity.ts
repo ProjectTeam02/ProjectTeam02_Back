@@ -1,10 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_characters)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (character.user_characters)
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { CharacterClass } from './character-classes.entity';
 import { User } from '../account/users.entity';
 
 /** 사용자 캐릭터 (users와 1:1). 장착 정보는 user_equipped_costumes에 있습니다. */
-@Entity({ name: 'user_characters', schema: 'app' })
+@Entity({ name: 'user_characters', schema: 'character' })
 export class UserCharacter {
   /** 사용자 (1:1) */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_characters_pkey' })

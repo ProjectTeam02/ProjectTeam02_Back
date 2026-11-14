@@ -28,7 +28,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   db.setOptions({ host: '127.0.0.1', port: options.port, username: options.username || 'app_user',
     password: options.password || 'app_local', database: options.database || 'leren_it', ssl: false,
     synchronize: false, migrationsRun: false, logging: false, migrations: [path.resolve(__dirname, '../../database/dist/migrations/*.js')],
-    extra: { options: '-c search_path=app,public' } });
+    extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public' } });
   await db.initialize();
   env.jwtAccessSecret = randomBytes(32).toString('hex');
   env.jwtRefreshSecret = randomBytes(32).toString('hex');

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.review_submissions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (review.review_submissions)
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Question } from '../content/questions.entity';
 import { QuestionChoice } from '../content/question-choices.entity';
@@ -8,7 +8,7 @@ import { ReviewItem } from './review-items.entity';
 /** 복습 문항별 답안. */
 @Index('review_submissions_review_attempt_id_review_item_id_idx', ['reviewAttemptId', 'reviewItemId'], { unique: true })
 @Index('review_submissions_review_attempt_id_sequence_no_idx', ['reviewAttemptId', 'sequenceNo'], { unique: true })
-@Entity({ name: 'review_submissions', schema: 'app' })
+@Entity({ name: 'review_submissions', schema: 'review' })
 export class ReviewSubmission {
   /** 답안 ID = API submissionId. 복습 시작 시 서버가 문항별로 미리 발급 */
   @PrimaryGeneratedColumn('uuid', { name: 'submission_id', primaryKeyConstraintName: 'review_submissions_pkey' })

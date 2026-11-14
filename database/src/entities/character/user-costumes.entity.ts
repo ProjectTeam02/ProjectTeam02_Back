@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_costumes)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (character.user_costumes)
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
 import { CostumeAcquireType } from '../common/enums';
 import { CoinLedger } from '../reward/coin-ledger.entity';
@@ -7,7 +7,7 @@ import { User } from '../account/users.entity';
 
 /** 보유 코스튬 (인벤토리). */
 @Unique('user_costumes_coin_ledger_id_key', ['coinLedgerId'])
-@Entity({ name: 'user_costumes', schema: 'app' })
+@Entity({ name: 'user_costumes', schema: 'character' })
 export class UserCostume {
   /** 사용자 */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_costumes_pkey' })

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.stages)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.stages)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { PublishStatus, StageType } from '../common/enums';
 import { Topic } from './topics.entity';
@@ -8,7 +8,7 @@ import { Topic } from './topics.entity';
 @Index('stages_topic_id_stage_no_idx', ['topicId', 'stageNo'], { unique: true })
 @Check('chk_stages_counts', `(required_correct_count <= max_question_count) AND (initial_monster_hp = required_correct_count)`)
 @Check('chk_stages_minutes', `(estimated_min_minutes IS NULL) OR (estimated_max_minutes IS NULL) OR (estimated_min_minutes <= estimated_max_minutes)`)
-@Entity({ name: 'stages', schema: 'app' })
+@Entity({ name: 'stages', schema: 'content' })
 export class Stage {
   /** Stage ID. API stageId (stage_type = BOSS이면 API bossId) */
   @PrimaryGeneratedColumn('uuid', { name: 'stage_id', primaryKeyConstraintName: 'stages_pkey' })

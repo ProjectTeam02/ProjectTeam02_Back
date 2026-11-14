@@ -29,7 +29,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
   const logger = { logQuery() {}, logQueryError(error) { errors.push({ code: error.code, constraint: error.constraint }); }, logQuerySlow() {}, logSchemaBuild() {}, logMigration() {}, log() {} };
   const options = { ...originalOptions, host: cfg.host, port: cfg.port, database: cfg.database, username: 'postgres', password: cfg.password,
     ssl: false, synchronize: false, migrationsRun: false, migrations: [root + '/database/dist/migrations/*.js'], logging: false,
-    extra: { options: '-c search_path=app,public', max: 12, application_name: 'leren-kakao-it' } };
+    extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public', max: 12, application_name: 'leren-kakao-it' } };
   let admin, server;
   t.after(async () => {
     try { if (server) await new Promise(resolve => server.close(resolve)); }
@@ -51,7 +51,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
   const [database] = await admin.query("SELECT current_database() AS name,current_setting('server_version') AS version");
   assert.equal(database.name, 'leren_kakao_it');
   // Never run on a previously populated DB, even when the name/port look correct.
-  assert.equal((await admin.query("SELECT to_regclass('app.users') AS existing"))[0].existing, null);
+  assert.equal((await admin.query("SELECT to_regclass('account.users') AS existing"))[0].existing, null);
   await admin.query('CREATE SCHEMA app');
   const migrations = await admin.runMigrations();
   evidence.database = database; evidence.migrations = migrations.map(x => x.name);
@@ -108,20 +108,20 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     assert.equal(cb.status, 302); assert.ok(cb.location.searchParams.has('loginCode'));
     return request('auth/kakao/exchange', exchangeBody(flow, cb));
   }
-  async function counts() { return (await admin.query('SELECT (SELECT count(*) FROM app.users)::int users,(SELECT count(*) FROM app.social_accounts)::int socials,(SELECT count(*) FROM app.user_growth)::int growth,(SELECT count(*) FROM app.user_settings)::int settings,(SELECT count(*) FROM app.user_sessions)::int sessions'))[0]; }
+  async function counts() { return (await admin.query('SELECT (SELECT count(*) FROM account.users)::int users,(SELECT count(*) FROM account.social_accounts)::int socials,(SELECT count(*) FROM reward.user_growth)::int growth,(SELECT count(*) FROM account.user_settings)::int settings,(SELECT count(*) FROM account.user_sessions)::int sessions'))[0]; }
   async function fault(table, fn) {
     assert.ok(['users', 'social_accounts', 'user_growth', 'user_settings', 'user_sessions'].includes(table));
     await admin.query("CREATE FUNCTION app.it_fail_insert() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'isolated injected failure'; END$$");
-    await admin.query(`CREATE TRIGGER it_fail_insert BEFORE INSERT ON app.${table} FOR EACH ROW EXECUTE FUNCTION app.it_fail_insert()`);
+    await admin.query(`CREATE TRIGGER it_fail_insert BEFORE INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION app.it_fail_insert()`);
     try { await fn(); } finally {
-      await admin.query(`DROP TRIGGER it_fail_insert ON app.${table}`);
+      await admin.query(`DROP TRIGGER it_fail_insert ON ${table}`);
       await admin.query('DROP FUNCTION app.it_fail_insert()');
     }
   }
 
   await check('normal migrations match actual account schema and social unique index', async () => {
     const drift = await admin.driver.createSchemaBuilder().log(); assert.equal(drift.upQueries.length, 0);
-    const qr = admin.createQueryRunner(); const tables = await qr.getTables(['app.users', 'app.social_accounts', 'app.user_growth', 'app.user_settings', 'app.user_sessions']); await qr.release();
+    const qr = admin.createQueryRunner(); const tables = await qr.getTables(['account.users', 'account.social_accounts', 'reward.user_growth', 'account.user_settings', 'account.user_sessions']); await qr.release();
     assert.equal(tables.length, 5);
     assert.ok(tables.find(x => x.name.endsWith('social_accounts')).indices.some(x => x.name === 'social_accounts_provider_provider_user_id_idx' && x.isUnique));
     evidence.schema = { drift: drift.upQueries.length, tables: tables.map(x => ({ name: x.name, columns: x.columns.map(c => c.name), indices: x.indices.map(i => ({ name: i.name, unique: i.isUnique, columns: i.columnNames })), foreignKeys: x.foreignKeys.map(f => f.name) })) };
@@ -160,7 +160,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
   await check('simultaneous first callbacks hit actual unique constraint and DB-only retry leaves one User', async () => {
     const before = await counts(), id = String(++serial), oldCalls = calls.token, errorStart = errors.length;
     await admin.query("CREATE FUNCTION app.it_delay_user() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.nickname='동시 가입' THEN PERFORM pg_sleep(0.2); END IF; RETURN NEW; END$$");
-    await admin.query('CREATE TRIGGER it_delay_user BEFORE INSERT ON app.users FOR EACH ROW EXECUTE FUNCTION app.it_delay_user()');
+    await admin.query('CREATE TRIGGER it_delay_user BEFORE INSERT ON account.users FOR EACH ROW EXECUTE FUNCTION app.it_delay_user()');
     try {
       const pair = await Promise.all([begin(identity(id, { kakao_account: { profile: { nickname: '동시 가입' } } })), begin(identity(id, { kakao_account: { profile: { nickname: '동시 가입' } } }))]);
       const callbacks = await Promise.all(pair.map(callback));
@@ -174,7 +174,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
       assert.equal(logins[0].body.data.user.userId, logins[1].body.data.user.userId);
       assert.deepEqual(logins.map(x => x.body.data.isNewUser).sort(), [false, true]);
       evidence.concurrentSignup = { requests: 2, usersCreated: 1, socialAccountsCreated: 1, sessionsCreated: (await counts()).sessions - before.sessions, uniqueViolationObserved: true, kakaoTokenCalls: calls.token - oldCalls };
-    } finally { await admin.query('DROP TRIGGER it_delay_user ON app.users'); await admin.query('DROP FUNCTION app.it_delay_user()'); }
+    } finally { await admin.query('DROP TRIGGER it_delay_user ON account.users'); await admin.query('DROP FUNCTION app.it_delay_user()'); }
   });
   for (const table of ['users', 'social_accounts', 'user_growth', 'user_settings', 'user_sessions']) {
     await check(`injected ${table} INSERT failure rolls back direct-login transaction`, async () => {
@@ -242,7 +242,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     await qr.connect(); await qr.startTransaction();
     let pending;
     try {
-      await qr.query('SELECT session_id FROM app.user_sessions WHERE session_id=$1 FOR UPDATE', [original.sid]);
+      await qr.query('SELECT session_id FROM account.user_sessions WHERE session_id=$1 FOR UPDATE', [original.sid]);
       pending = Promise.all([request('auth/refresh', { refreshToken: data.refreshToken }), request('auth/refresh', { refreshToken: data.refreshToken })]);
       let waiting = 0;
       for (let i = 0; i < 100; i++) {
@@ -327,13 +327,13 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     const expiredState = await begin();
     const flow = await begin(), cb = await callback(flow), body = exchangeBody(flow, cb);
     const tokens = [digest(expiredState.state), digest(body.loginCode)];
-    await admin.query("UPDATE app.kakao_oauth_entries SET expires_at = clock_timestamp() - interval '1 second' WHERE token_hash = ANY($1)", [tokens]);
+    await admin.query("UPDATE account.kakao_oauth_entries SET expires_at = clock_timestamp() - interval '1 second' WHERE token_hash = ANY($1)", [tokens]);
     assert.equal((await callback(expiredState)).status, 422);
     assert.equal((await request('auth/kakao/exchange', body)).status, 401);
     const { PostgresOAuthStore } = require(root + '/src/modules/auth/kakao-postgres-oauth.store');
     const freshStore = new PostgresOAuthStore(d);
     await freshStore.put('state', { loginAttemptId: crypto.randomUUID() }, 60);
-    assert.equal((await admin.query('SELECT count(*)::int AS n FROM app.kakao_oauth_entries WHERE token_hash = ANY($1)', [tokens]))[0].n, 0);
+    assert.equal((await admin.query('SELECT count(*)::int AS n FROM account.kakao_oauth_entries WHERE token_hash = ANY($1)', [tokens]))[0].n, 0);
   });
 
   function digestBase64url(value) {
@@ -365,7 +365,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
       let pending;
       try {
         await lock.startTransaction();
-        await lock.query('SELECT 1 FROM app.kakao_oauth_entries WHERE kind=$1 AND token_hash=$2 FOR UPDATE', [kind, digest(token)]);
+        await lock.query('SELECT 1 FROM account.kakao_oauth_entries WHERE kind=$1 AND token_hash=$2 FOR UPDATE', [kind, digest(token)]);
         pending = send();
         let waiting = 0;
         for (let attempt = 0; attempt < 100; attempt++) {
@@ -436,7 +436,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     assert.equal(migrations.at(-1).name, 'KakaoOAuthEntries1794210000000');
     await admin.undoLastMigration();
     try {
-      assert.equal((await admin.query("SELECT to_regclass('app.kakao_oauth_entries') AS table_name"))[0].table_name, null);
+      assert.equal((await admin.query("SELECT to_regclass('account.kakao_oauth_entries') AS table_name"))[0].table_name, null);
       const response = await request('auth/kakao/start', {
         codeChallenge: digestBase64url('synthetic-verifier'), codeChallengeMethod: 'S256',
       });
@@ -446,7 +446,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     } finally {
       const reapplied = await admin.runMigrations();
       assert.deepEqual(reapplied.map(migration => migration.name), ['KakaoOAuthEntries1794210000000']);
-      await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON app.kakao_oauth_entries TO kakao_it_app');
+      await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON account.kakao_oauth_entries TO kakao_it_app');
     }
     const drift = await admin.driver.createSchemaBuilder().log();
     assert.equal(drift.upQueries.length, 0);

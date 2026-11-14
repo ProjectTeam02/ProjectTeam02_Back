@@ -1,9 +1,9 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.level_thresholds)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (reward.level_thresholds)
 import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { LevelScope } from '../common/enums';
 
 /** 레벨별 필요 누적 EXP. */
-@Entity({ name: 'level_thresholds', schema: 'app' })
+@Entity({ name: 'level_thresholds', schema: 'reward' })
 export class LevelThreshold {
   /** 레벨 종류 (ACCOUNT 전체 / ECONOMY 경제) */
   @PrimaryColumn({ name: 'scope', type: 'enum', enum: LevelScope, enumName: 'level_scope', primaryKeyConstraintName: 'level_thresholds_pkey' })

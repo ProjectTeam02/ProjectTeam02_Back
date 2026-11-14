@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.question_choices)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.question_choices)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Question } from './questions.entity';
 
@@ -8,7 +8,7 @@ import { Question } from './questions.entity';
 @Index('uq_question_choices_one_correct', ['questionId'], { unique: true, where: `"is_correct"` })
 @Check('chk_choices_base_order', `(base_order >= 1) AND (base_order <= 4)`)
 @Check('chk_choices_choice_text', `char_length(btrim((choice_text)::text)) >= 1`)
-@Entity({ name: 'question_choices', schema: 'app' })
+@Entity({ name: 'question_choices', schema: 'content' })
 export class QuestionChoice {
   /** 선택지 ID. API choiceId */
   @PrimaryGeneratedColumn('uuid', { name: 'choice_id', primaryKeyConstraintName: 'question_choices_pkey' })

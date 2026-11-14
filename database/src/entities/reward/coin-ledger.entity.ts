@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.coin_ledger)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (reward.coin_ledger)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { CoinReason, CoinRefType, CoinTransactionType } from '../common/enums';
 import { LearningAttempt } from '../progress/learning-attempts.entity';
@@ -8,7 +8,7 @@ import { User } from '../account/users.entity';
 @Unique('coin_ledger_request_id_key', ['requestId'])
 @Index('coin_ledger_user_id_reason_ref_id_idx', ['userId', 'reason', 'refId'], { unique: true })
 @Check('chk_coin_ledger_balance', `(balance_after >= 0) AND (balance_after = (balance_before + amount))`)
-@Entity({ name: 'coin_ledger', schema: 'app' })
+@Entity({ name: 'coin_ledger', schema: 'reward' })
 export class CoinLedger {
   /** 코인 원장 ID (구매 시 = API 구매 ID) */
   @PrimaryGeneratedColumn('uuid', { name: 'coin_ledger_id', primaryKeyConstraintName: 'coin_ledger_pkey' })

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.exp_ledger)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (reward.exp_ledger)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { ExpSourceType } from '../common/enums';
 import { LearningAttempt } from '../progress/learning-attempts.entity';
@@ -7,7 +7,7 @@ import { User } from '../account/users.entity';
 
 /** EXP 지급 원장. */
 @Index('exp_ledger_user_id_source_type_source_stage_id_idx', ['userId', 'sourceType', 'sourceStageId'], { unique: true })
-@Entity({ name: 'exp_ledger', schema: 'app' })
+@Entity({ name: 'exp_ledger', schema: 'reward' })
 export class ExpLedger {
   /** EXP 원장 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'exp_ledger_id', primaryKeyConstraintName: 'exp_ledger_pkey' })

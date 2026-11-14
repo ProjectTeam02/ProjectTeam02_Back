@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.questions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (content.questions)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Difficulty, GeneratedBy, QuestionCategory, QuestionStatus, QuestionType } from '../common/enums';
 import { AiRequest } from '../ai/ai-requests.entity';
@@ -10,8 +10,8 @@ import { User } from '../account/users.entity';
 @Index('questions_question_code_version_idx', ['questionCode', 'version'], { unique: true })
 @Check('chk_questions_question_text', `char_length(btrim(question_text)) >= 1`)
 @Check('chk_questions_explanation', `char_length(btrim(explanation)) >= 1`)
-@Check('chk_questions_ai_sources', `(generated_by <> 'AI'::app.generated_by) OR (COALESCE(cardinality(source_document_ids), 0) >= 1)`)
-@Entity({ name: 'questions', schema: 'app' })
+@Check('chk_questions_ai_sources', `(generated_by <> 'AI'::content.generated_by) OR (COALESCE(cardinality(source_document_ids), 0) >= 1)`)
+@Entity({ name: 'questions', schema: 'content' })
 export class Question {
   /** 문항 ID (버전별). API questionId */
   @PrimaryGeneratedColumn('uuid', { name: 'question_id', primaryKeyConstraintName: 'questions_pkey' })

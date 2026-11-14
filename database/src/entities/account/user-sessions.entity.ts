@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_sessions)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (account.user_sessions)
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { LoginMethod, SessionRevokeReason } from '../common/enums';
 import { User } from './users.entity';
@@ -6,7 +6,7 @@ import { UserDevice } from './user-devices.entity';
 
 /** 로그인 세션(refresh 토큰). */
 @Unique('user_sessions_refresh_token_hash_key', ['refreshTokenHash'])
-@Entity({ name: 'user_sessions', schema: 'app' })
+@Entity({ name: 'user_sessions', schema: 'account' })
 export class UserSession {
   /** 세션 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'session_id', primaryKeyConstraintName: 'user_sessions_pkey' })

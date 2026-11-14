@@ -60,13 +60,13 @@ class PostgresOAuthStore {
     // Bound each batch and skip rows being processed by another instance.
     const [{ removed }] = await this.dataSource.query(`
       WITH expired AS (
-        SELECT kind, token_hash FROM app.kakao_oauth_entries
+        SELECT kind, token_hash FROM account.kakao_oauth_entries
         WHERE expires_at <= statement_timestamp()
         ORDER BY expires_at
         LIMIT $1
         FOR UPDATE SKIP LOCKED
       ), deleted AS (
-        DELETE FROM app.kakao_oauth_entries AS entry USING expired
+        DELETE FROM account.kakao_oauth_entries AS entry USING expired
         WHERE entry.kind = expired.kind AND entry.token_hash = expired.token_hash
         RETURNING 1
       )

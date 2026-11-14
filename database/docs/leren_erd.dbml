@@ -1,19 +1,23 @@
 // =====================================================================
-// Leren 2.0 — app 스키마 ERD v3
+// Leren 2.0 — 앱 영역별 스키마 ERD v3
 // 기준: leren_erd_v2 (Init 마이그레이션) + API 명세서 58개 (2026-10-24)
 // rev.2 (2026-10-25): API 필드명·Enum 표기 일치 — itemId, submissionId, requestId, contentPosition, mode, Enum 대문자
 // rev.3 (2026-10-25): 무결성 제약 — 진행 중 응시 1개, 보유 코스튬만 장착(복합 FK), 선택지는 해당 문항 것만(복합 FK)
 // rev.4 (2026-10-25): 조회 인덱스 3개, 회원 탈퇴(users), 약관·개인정보 동의(terms, user_terms_agreements)
 // rev.5 (2026-10-25): 코스튬을 직업과 무관하게 상의(TOP)·하의(BOTTOM)로 분류, 부위별 장착 테이블(user_equipped_costumes)
-// rev.6 (2026-10-26): AI 내부 API 계약 반영 — ai_message_sources.document_version 문자열·null 허용, chunk_id 필수, (message_id, document_id, chunk_id) 유니크
+// rev.6 (2026-10-26): AI 내부 API 계약 반영 — tutor.ai_message_sources.document_version 문자열·null 허용, chunk_id 필수, (message_id, document_id, chunk_id) 유니크
 //                     ai 스키마는 FastAPI(ai_user) 소유로 분리 (database/sql/init/02_ai_schema.sql)
 // rev.7 (2026-11-02): 멀티턴 메모리 + ai 스키마 DDL을 DB 담당이 관리
-//                     ai_conversation_summaries(요약 이력), ai_messages.summary_id, ai_user_memories(장기 메모리),
+//                     ai_conversation_summaries(요약 이력), tutor.ai_messages.summary_id, ai_user_memories(장기 메모리),
 //                     ai_conversations summary 짝 CHECK, ai_message_sources 길이 확장(255/255/100/500)
 //                     ai.rag_documents·rag_document_chunks·rag_index_configurations (database/sql/init/03_ai_tables.sql)
 // rev.8 (2026-11-08): 피그마 화면 검토 반영
 //                     glossary_terms·concept_terms(개념별 용어, 클리어 화면 "학습 키워드"), badges·user_badges(배지),
-//                     user_settings.daily_goal_count → goal_count + goal_period(WEEKLY), concept_sections page_no·sort_order >= 1
+//                     account.user_settings.daily_goal_count → goal_count + goal_period(WEEKLY), concept_sections page_no·sort_order >= 1
+// #97 (2026-11-14): 문제·선택지 저장 제약 — choice_text 500자, 문항당 정답 1개, 공백 금지, AI 문항 근거 필수, question_category·learning_objective
+// #98 (2026-11-14): app 스키마를 영역별 스키마 7개로 분리 (테이블·컬럼·제약 이름은 그대로)
+//                     account(계정·인증·약관) character(캐릭터·상점) content(학습 콘텐츠) learning(진행도·퀴즈)
+//                     reward(보상·성장) review(오답·복습·일정) tutor(AI 튜터 대화). app 스키마에는 TypeORM 관리용만 남음
 // 변경 요약
 //   1) 용어를 API 명세에 맞춤: region→topic, step→stage, job→class,
 //      concept_auto_review→review_mission, review_session→review_attempt,
@@ -40,101 +44,101 @@ Project leren {
 // ---------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------
-Enum user_role {
+Enum account.user_role {
   USER
   ADMIN
 }
-Enum user_plan {
+Enum account.user_plan {
   FREE
   PREMIUM
 }
-Enum account_status {
+Enum account.account_status {
   ACTIVE
   SUSPENDED
   LOCKED
   WITHDRAWN [note: 'rev.4 회원 탈퇴']
 }
-Enum terms_type {
+Enum account.terms_type {
   SERVICE [note: '서비스 이용약관 (필수)']
   PRIVACY [note: '개인정보 수집·이용 동의 (필수)']
   AGE_OVER_14 [note: '만 14세 이상 확인 (필수)']
   MARKETING [note: '마케팅 정보 수신 동의 (선택)']
 }
 // login_method: TypeORM이 컬럼마다 타입을 만들어서 테이블_컬럼 이름으로 분리 (값은 동일)
-Enum users_last_login_method {
+Enum account.users_last_login_method {
   EMAIL
   KAKAO
   NAVER
   GOOGLE
   APPLE
 }
-Enum user_sessions_login_method {
+Enum account.user_sessions_login_method {
   EMAIL
   KAKAO
   NAVER
   GOOGLE
   APPLE
 }
-Enum social_provider {
+Enum account.social_provider {
   KAKAO
   NAVER
   GOOGLE
   APPLE
 }
-Enum token_type {
+Enum account.token_type {
   EMAIL_VERIFICATION
   PASSWORD_RESET
 }
-Enum device_platform {
+Enum account.device_platform {
   IOS
   ANDROID
 }
-Enum session_revoke_reason {
+Enum account.session_revoke_reason {
   LOGOUT
   EXPIRED
   ROTATED
   SECURITY
 }
 
-Enum class_code {
+Enum character.class_code {
   WARRIOR
   MAGE
   ARCHER
 }
-Enum costume_category {
+Enum character.costume_category {
   TOP [note: '상의']
   BOTTOM [note: '하의']
 }
-Enum costume_acquire_type {
+Enum character.costume_acquire_type {
   DEFAULT
   PURCHASE
 }
 
 // publish_status: 테이블_컬럼 이름으로 분리 (값은 동일)
-Enum topics_status {
+Enum content.topics_status {
   DRAFT
   PUBLISHED
   ARCHIVED
 }
-Enum stages_status {
+Enum content.stages_status {
   DRAFT
   PUBLISHED
   ARCHIVED
 }
-Enum concept_status {
+Enum content.concept_status {
   DRAFT
   REVIEW_PENDING
   PUBLISHED
   ARCHIVED
 }
-Enum stage_type {
+Enum content.stage_type {
   NORMAL
   BOSS
 }
-Enum goal_period {
-  WEEKLY [note: 'rev.8 주 단위 (월요일 00:00 시작, user_settings.timezone 기준). 필요하면 DAILY 등 추가']
+Enum account.goal_period {
+  WEEKLY [note: 'rev.8 주 단위 (월요일 00:00 시작, account.user_settings.timezone 기준). 필요하면 DAILY 등 추가']
 }
-Enum section_type {
+Enum content.section_type {
   INTRO
   DEFINITION
   EXAMPLE
@@ -142,31 +146,31 @@ Enum section_type {
   REMEMBER
   QUIZ_GUIDE
 }
-Enum card_tone {
+Enum content.card_tone {
   DEFAULT
   INFO
   EXAMPLE
   SUCCESS
 }
-Enum question_type {
+Enum content.question_type {
   MULTIPLE_CHOICE
 }
-Enum question_category {
+Enum content.question_category {
   CONCEPT
   COMPARISON
   SCENARIO
   APPLICATION
 }
-Enum difficulty {
+Enum content.difficulty {
   BEGINNER
   INTERMEDIATE
   ADVANCED
 }
-Enum generated_by {
+Enum content.generated_by {
   AI
   MANUAL
 }
-Enum question_status {
+Enum content.question_status {
   GENERATED
   AUTO_VALIDATED
   REVIEW_PENDING
@@ -176,141 +180,141 @@ Enum question_status {
   RETIRED
 }
 
-Enum progress_status {
+Enum learning.progress_status {
   NOT_STARTED
   IN_PROGRESS
   PASSED
 }
-Enum attempt_type {
+Enum learning.attempt_type {
   PLAY
   RELEARN [note: 'v2 replay → API의 재학습(RELEARN)']
 }
-Enum attempt_mode {
+Enum learning.attempt_mode {
   START
   RETRY
 }
-Enum attempt_status {
+Enum learning.attempt_status {
   IN_PROGRESS
   PASSED
   FAILED
   ABANDONED
 }
-Enum attempt_end_reason {
+Enum learning.attempt_end_reason {
   MONSTER_DEFEATED
   QUESTIONS_EXHAUSTED
   ABANDONED
 }
 
-Enum exp_source_type {
+Enum reward.exp_source_type {
   STAGE_FIRST_CLEAR
 }
-Enum coin_transaction_type {
+Enum reward.coin_transaction_type {
   EARN
   SPEND
 }
-Enum coin_reason {
+Enum reward.coin_reason {
   STAGE_FIRST_CLEAR
   COSTUME_PURCHASE
 }
-Enum coin_ref_type {
+Enum reward.coin_ref_type {
   STAGE
   COSTUME
 }
-Enum level_scope {
+Enum reward.level_scope {
   ACCOUNT
   ECONOMY
 }
 
-Enum review_first_reason {
+Enum review.review_first_reason {
   WRONG
   BOOKMARK [note: 'v2 confusing(헷갈림) = 북마크']
 }
-Enum answer_result {
+Enum review.answer_result {
   CORRECT
   WRONG
 }
-Enum review_mission_status {
+Enum review.review_mission_status {
   SCHEDULED
   AVAILABLE
   IN_PROGRESS
   COMPLETED
 }
-Enum review_attempt_type {
+Enum review.review_attempt_type {
   AUTO
   RECOMMENDED
   SINGLE
 }
-Enum review_entry_point {
+Enum review.review_entry_point {
   HOME
   REVIEW_NOTE
   RESULT
   CALENDAR
 }
-Enum review_attempt_status {
+Enum review.review_attempt_status {
   IN_PROGRESS
   COMPLETED
   ABANDONED
 }
 
-Enum plan_type {
+Enum review.plan_type {
   NEW_LEARNING
   REVIEW
 }
-Enum plan_status {
+Enum review.plan_status {
   PLANNED
   DONE
 }
 
-Enum ai_entry_point {
+Enum tutor.ai_entry_point {
   NAV
   CONCEPT
   QUIZ
   RESULT
   REVIEW
 }
-Enum conversation_status {
+Enum tutor.conversation_status {
   ACTIVE
   ARCHIVED
 }
-Enum message_role {
+Enum tutor.message_role {
   USER
   ASSISTANT
 }
-Enum message_input_type {
+Enum tutor.message_input_type {
   TYPED
   SUGGESTED
 }
-Enum message_status {
+Enum tutor.message_status {
   PENDING
   COMPLETED
   FAILED
 }
-Enum grounding_status {
+Enum tutor.grounding_status {
   GROUNDED
   INSUFFICIENT
 }
-Enum ai_request_type {
+Enum tutor.ai_request_type {
   TUTOR
   QUESTION_GEN
   SUMMARIZE [note: '대화 요약 생성. 사용자 일일 한도 집계에서 제외']
 }
-Enum ai_request_status {
+Enum tutor.ai_request_status {
   RESERVED
   SUCCEEDED
   FAILED
   RELEASED
 }
-Enum ai_memory_type {
+Enum tutor.ai_memory_type {
   PREFERENCE [note: '설명 방식 선호 (예: 예시를 들면 잘 이해함)']
   MISCONCEPTION [note: '오개념']
   GOAL [note: '학습 목표']
   INTEREST [note: '관심 분야']
 }
-Enum ai_memory_status {
+Enum tutor.ai_memory_status {
   ACTIVE
   ARCHIVED
 }
-Enum model_tier {
+Enum tutor.model_tier {
   BASIC
   ADVANCED
 }
@@ -318,7 +322,7 @@ Enum model_tier {
 // =====================================================================
 // 1. 계정·인증  (API: /auth/*, /users/me, /users/me/notification-settings)
 // =====================================================================
-Table users {
+Table account.users {
   user_id uuid [pk, default: `gen_random_uuid()`]
   email varchar(255) [unique, note: 'null 허용(소셜 전용 계정)']
   email_verified_at timestamptz
@@ -326,15 +330,15 @@ Table users {
   password_changed_at timestamptz
   nickname varchar(30) [not null]
   nickname_updated_at timestamptz
-  role user_role [not null, default: 'USER']
-  plan user_plan [not null, default: 'FREE', note: 'AI Tutor 일일 한도 기준 (/tutor/usage)']
-  account_status account_status [not null, default: 'ACTIVE']
+  role account.user_role [not null, default: 'USER']
+  plan account.user_plan [not null, default: 'FREE', note: 'AI Tutor 일일 한도 기준 (/tutor/usage)']
+  account_status account.account_status [not null, default: 'ACTIVE']
   status_reason varchar(255)
   failed_login_count integer [not null, default: 0]
   locked_until timestamptz
   onboarding_completed_at timestamptz [note: 'v2 initial_setup_completed_at. null = 최초 직업 선택 필요 → API onboardingCompleted']
   last_login_at timestamptz
-  last_login_method users_last_login_method
+  last_login_method account.users_last_login_method
   withdrawn_at timestamptz [note: 'rev.4 탈퇴 시각. 탈퇴 시 email·password_hash는 null, nickname은 익명값으로 바꾸고 학습·보상 기록은 유지']
   withdrawal_reason varchar(255) [note: 'rev.4 탈퇴 사유 (선택 입력)']
   created_at timestamptz [not null, default: `now()`]
@@ -344,9 +348,9 @@ Table users {
   }
 }
 
-Table terms {
+Table account.terms {
   terms_id uuid [pk, default: `gen_random_uuid()`, note: 'rev.4 약관 ID → API termsId']
-  terms_type terms_type [not null]
+  terms_type account.terms_type [not null]
   version integer [not null, default: 1]
   title varchar(100) [not null]
   content text [not null, note: '동의 당시 문구를 그대로 보존 (기존 행 수정 금지)']
@@ -359,10 +363,10 @@ Table terms {
   Note: 'rev.4 추가. 약관·개인정보 동의 항목 마스터. 내용이 바뀌면 version을 올려 새 행 추가'
 }
 
-Table user_terms_agreements {
+Table account.user_terms_agreements {
   agreement_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  terms_id uuid [not null, ref: > terms.terms_id]
+  user_id uuid [not null, ref: > account.users.user_id]
+  terms_id uuid [not null, ref: > account.terms.terms_id]
   agreed boolean [not null, note: '동의 여부. 선택 항목은 거부(false)도 기록']
   agreed_at timestamptz [not null, default: `now()`, note: '응답 시각 (동의 또는 거부)']
   withdrawn_at timestamptz [note: '선택 동의 철회 시각. 다시 동의하면 null로 되돌리고 agreed_at 갱신']
@@ -374,10 +378,10 @@ Table user_terms_agreements {
   Note: 'rev.4 추가. 회원가입·약관 개정 시 동의 기록. 탈퇴 후에도 동의 이력은 보존'
 }
 
-Table social_accounts {
+Table account.social_accounts {
   social_account_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  provider social_provider [not null]
+  user_id uuid [not null, ref: > account.users.user_id]
+  provider account.social_provider [not null]
   provider_user_id varchar(255) [not null]
   provider_email varchar(255)
   provider_nickname varchar(100)
@@ -391,10 +395,10 @@ Table social_accounts {
   }
 }
 
-Table account_tokens {
+Table account.account_tokens {
   token_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  token_type token_type [not null]
+  user_id uuid [not null, ref: > account.users.user_id]
+  token_type account.token_type [not null]
   token_hash varchar(255) [not null, unique, note: 'password_reset = API resetToken의 해시']
   target_email varchar(255) [not null]
   send_count integer [not null, default: 1]
@@ -404,11 +408,11 @@ Table account_tokens {
   created_at timestamptz [not null, default: `now()`]
 }
 
-Table user_devices {
+Table account.user_devices {
   device_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
+  user_id uuid [not null, ref: > account.users.user_id]
   device_uuid varchar(100) [not null, note: '앱 설치 단위 식별자']
-  platform device_platform [not null]
+  platform account.device_platform [not null]
   os_version varchar(30)
   app_version varchar(30)
   device_model varchar(100)
@@ -425,24 +429,24 @@ Table user_devices {
   }
 }
 
-Table user_sessions {
+Table account.user_sessions {
   session_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  device_id uuid [ref: > user_devices.device_id]
+  user_id uuid [not null, ref: > account.users.user_id]
+  device_id uuid [ref: > account.user_devices.device_id]
   refresh_token_hash varchar(255) [not null, unique, note: 'Cookie refreshToken의 해시. /auth/refresh에서 회전']
-  login_method user_sessions_login_method [not null]
+  login_method account.user_sessions_login_method [not null]
   issued_at timestamptz [not null, default: `now()`]
   last_refreshed_at timestamptz
   expires_at timestamptz [not null]
   revoked_at timestamptz
-  revoke_reason session_revoke_reason
+  revoke_reason account.session_revoke_reason
   created_at timestamptz [not null, default: `now()`]
 }
 
-Table user_settings {
-  user_id uuid [pk, ref: - users.user_id]
+Table account.user_settings {
+  user_id uuid [pk, ref: - account.users.user_id]
   goal_count smallint [note: 'rev.8 daily_goal_count → goal_count. 사용자가 정한 목표 횟수, null = 미설정 (목표 달성률 표시 안 함)']
-  goal_period goal_period [not null, default: 'WEEKLY', note: 'rev.8 목표 기간 (현재 WEEKLY만)']
+  goal_period account.goal_period [not null, default: 'WEEKLY', note: 'rev.8 목표 기간 (현재 WEEKLY만)']
   reminder_enabled boolean [not null, default: false, note: 'v2 study_reminder_enabled → API reminderEnabled']
   reminder_time time [note: 'v2 study_reminder_time → API reminderTime']
   timezone varchar(50) [not null, default: 'Asia/Seoul', note: 'v3 추가. IANA 이름 → API timezone']
@@ -456,9 +460,9 @@ Table user_settings {
 // =====================================================================
 // 2. 캐릭터·상점  (API: /users/me/character/class, /inventory, /shop/*)
 // =====================================================================
-Table character_classes {
+Table character.character_classes {
   class_id uuid [pk, default: `gen_random_uuid()`, note: 'v2 jobs.job_id → API classId']
-  class_code class_code [not null, unique]
+  class_code character.class_code [not null, unique]
   name varchar(30) [not null, note: '검사 / 마법사 / 궁수']
   description varchar(255)
   image_key varchar(255)
@@ -471,13 +475,13 @@ Table character_classes {
   Note: 'v2 jobs. "class"는 프로그래밍 예약어라 테이블명은 character_classes'
 }
 
-Table costumes {
+Table character.costumes {
   item_id uuid [pk, default: `gen_random_uuid()`, note: 'API itemId (상점·인벤토리·구매). rev.2 costume_id → item_id']
   costume_code varchar(50) [not null, unique]
   name varchar(100) [not null]
   description varchar(255)
   flavor_text varchar(255)
-  category costume_category [not null, note: 'rev.5 부위 (TOP 상의 / BOTTOM 하의) → API Query category. 직업과 무관']
+  category character.costume_category [not null, note: 'rev.5 부위 (TOP 상의 / BOTTOM 하의) → API Query category. 직업과 무관']
   price_coin integer [note: 'is_on_sale = true 이면 필수, >= 0']
   image_key varchar(255)
   thumbnail_key varchar(255)
@@ -497,29 +501,29 @@ Table costumes {
   Note: 'rev.5 직업과 무관하게 부위(category)로 분류'
 }
 
-Table user_characters {
-  user_id uuid [pk, ref: - users.user_id, note: 'rev.5 장착 정보는 user_equipped_costumes로 분리']
-  class_id uuid [not null, ref: > character_classes.class_id]
+Table character.user_characters {
+  user_id uuid [pk, ref: - account.users.user_id, note: 'rev.5 장착 정보는 user_equipped_costumes로 분리']
+  class_id uuid [not null, ref: > character.character_classes.class_id]
   first_selected_at timestamptz [not null, default: `now()`]
   class_changed_at timestamptz [note: 'v2 job_changed_at']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
 }
 
-Table user_costumes {
-  user_id uuid [not null, ref: > users.user_id]
-  item_id uuid [not null, ref: > costumes.item_id, note: 'rev.2 costume_id → API itemId']
-  acquire_type costume_acquire_type [not null]
-  coin_ledger_id uuid [unique, ref: - coin_ledger.coin_ledger_id, note: '구매 시 차감 원장 = API 구매 ID']
+Table character.user_costumes {
+  user_id uuid [not null, ref: > account.users.user_id]
+  item_id uuid [not null, ref: > character.costumes.item_id, note: 'rev.2 costume_id → API itemId']
+  acquire_type character.costume_acquire_type [not null]
+  coin_ledger_id uuid [unique, ref: - reward.coin_ledger.coin_ledger_id, note: '구매 시 차감 원장 = API 구매 ID']
   acquired_at timestamptz [not null, default: `now()`]
   indexes {
     (user_id, item_id) [pk]
   }
 }
 
-Table user_equipped_costumes {
+Table character.user_equipped_costumes {
   user_id uuid [not null, note: '사용자']
-  category costume_category [not null, note: '장착 부위 (TOP / BOTTOM)']
+  category character.costume_category [not null, note: '장착 부위 (TOP / BOTTOM)']
   item_id uuid [not null, note: '장착한 코스튬 → API itemId']
   equipped_at timestamptz [not null, default: `now()`]
   indexes {
@@ -531,7 +535,7 @@ Table user_equipped_costumes {
 // =====================================================================
 // 3. 학습 콘텐츠  (API: /topics/*, /stages/{stageId}, /bosses/{bossId}, /concepts/{conceptId})
 // =====================================================================
-Table topics {
+Table content.topics {
   topic_id uuid [pk, default: `gen_random_uuid()`, note: 'v2 regions.region_id → API topicId']
   topic_code varchar(30) [not null, unique]
   topic_no smallint [not null, unique, note: '1~9, 화면의 STAGE n']
@@ -540,16 +544,16 @@ Table topics {
   map_row smallint
   map_column smallint
   icon_key varchar(255)
-  status topics_status [not null, default: 'PUBLISHED']
+  status content.topics_status [not null, default: 'PUBLISHED']
   published_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   Note: 'v2 regions. 경제 지식 트리의 주제'
 }
 
-Table topic_prerequisites {
-  topic_id uuid [not null, ref: > topics.topic_id]
-  prerequisite_topic_id uuid [not null, ref: > topics.topic_id]
+Table content.topic_prerequisites {
+  topic_id uuid [not null, ref: > content.topics.topic_id]
+  prerequisite_topic_id uuid [not null, ref: > content.topics.topic_id]
   created_at timestamptz [not null, default: `now()`]
   indexes {
     (topic_id, prerequisite_topic_id) [pk]
@@ -560,12 +564,12 @@ Table topic_prerequisites {
   Note: 'v2 region_prerequisites. 1→2→3, 3→4·5, 5→6, 1→7→8→9. 선수 주제 BOSS 통과 시 해금'
 }
 
-Table stages {
+Table content.stages {
   stage_id uuid [pk, default: `gen_random_uuid()`, note: 'v2 steps.step_id → API stageId. stage_type = BOSS 이면 API bossId']
-  topic_id uuid [not null, ref: > topics.topic_id]
+  topic_id uuid [not null, ref: > content.topics.topic_id]
   stage_code varchar(20) [not null, unique, note: '1-1 / 1-2 / 1-BOSS']
   stage_no smallint [not null, note: '주제 내 순차 해금 순서, BOSS는 마지막']
-  stage_type stage_type [not null]
+  stage_type content.stage_type [not null]
   title varchar(100) [not null]
   description varchar(255)
   estimated_min_minutes smallint
@@ -578,7 +582,7 @@ Table stages {
   reward_total_exp integer [note: '미확정, null 허용']
   reward_economy_exp integer [note: '미확정, null 허용']
   reward_coin integer [note: '미확정, null 허용']
-  status stages_status [not null, default: 'PUBLISHED']
+  status content.stages_status [not null, default: 'PUBLISHED']
   published_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
@@ -592,19 +596,19 @@ Table stages {
   Note: 'v2 steps. 일반 Stage와 Boss를 한 테이블로 관리 (Boss = stage_type BOSS)'
 }
 
-Table concepts {
+Table content.concepts {
   concept_id uuid [pk, default: `gen_random_uuid()`]
   concept_code varchar(30) [not null, note: '버전 무관 식별자. AI 문서 메타의 concept_code와 같은 값 (문서↔개념 매핑은 미정)']
-  topic_id uuid [not null, ref: > topics.topic_id, note: 'v2 region_id']
+  topic_id uuid [not null, ref: > content.topics.topic_id, note: 'v2 region_id']
   version integer [not null, default: 1]
-  supersedes_concept_id uuid [ref: > concepts.concept_id]
+  supersedes_concept_id uuid [ref: > content.concepts.concept_id]
   title varchar(100) [not null]
   short_definition varchar(255)
   summary varchar(255)
   estimated_minutes smallint
   source_document_ids text[] [note: '논리 참조: ai.rag_documents.document_id. #97 generated_by = AI면 1개 이상']
-  status concept_status [not null, default: 'PUBLISHED']
-  reviewed_by uuid [ref: > users.user_id]
+  status content.concept_status [not null, default: 'PUBLISHED']
+  reviewed_by uuid [ref: > account.users.user_id]
   reviewed_at timestamptz
   published_at timestamptz
   created_at timestamptz [not null, default: `now()`]
@@ -614,9 +618,9 @@ Table concepts {
   }
 }
 
-Table concept_prerequisites {
-  concept_code varchar(30) [not null, note: '논리 참조: concepts.concept_code']
-  prerequisite_concept_code varchar(30) [not null, note: '논리 참조: concepts.concept_code']
+Table content.concept_prerequisites {
+  concept_code varchar(30) [not null, note: '논리 참조: content.concepts.concept_code']
+  prerequisite_concept_code varchar(30) [not null, note: '논리 참조: content.concepts.concept_code']
   display_order smallint [not null, default: 0]
   created_at timestamptz [not null, default: `now()`]
   indexes {
@@ -628,15 +632,15 @@ Table concept_prerequisites {
   Note: 'v3 추가. GET /concepts/{conceptId}의 "선수 개념". 개념이 버전으로 바뀌어도 유지되도록 concept_code 기준'
 }
 
-Table concept_sections {
+Table content.concept_sections {
   section_id uuid [pk, default: `gen_random_uuid()`]
-  concept_id uuid [not null, ref: > concepts.concept_id]
+  concept_id uuid [not null, ref: > content.concepts.concept_id]
   page_no smallint [not null]
   sort_order smallint [not null]
-  section_type section_type [not null]
+  section_type content.section_type [not null]
   title varchar(100)
   body text [not null]
-  card_tone card_tone [not null, default: 'DEFAULT']
+  card_tone content.card_tone [not null, default: 'DEFAULT']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   indexes {
@@ -646,10 +650,10 @@ Table concept_sections {
     `page_no >= 1` [name: 'chk_concept_sections_page_no']
     `sort_order >= 1` [name: 'chk_concept_sections_sort_order']
   }
-  Note: '던전 입장 시 개념 학습 카드. 헤드라인은 concepts.short_definition, 생활 속 예시는 EXAMPLE 카드 본문(텍스트). BOSS Stage는 학습 카드 없음'
+  Note: '던전 입장 시 개념 학습 카드. 헤드라인은 content.concepts.short_definition, 생활 속 예시는 EXAMPLE 카드 본문(텍스트). BOSS Stage는 학습 카드 없음'
 }
 
-Table glossary_terms {
+Table content.glossary_terms {
   term_id uuid [pk, default: `gen_random_uuid()`, note: 'API termId']
   term_code varchar(30) [not null, unique, note: '콘텐츠 관리용 고정 식별자']
   term varchar(50) [not null, note: '용어 (예: 구매력)']
@@ -663,9 +667,9 @@ Table glossary_terms {
   Note: 'rev.8 추가. 경제 용어 마스터. 약관 테이블 terms와 구분하려고 glossary_terms'
 }
 
-Table concept_terms {
-  concept_code varchar(30) [not null, note: '논리 참조: concepts.concept_code']
-  term_id uuid [not null, ref: > glossary_terms.term_id]
+Table content.concept_terms {
+  concept_code varchar(30) [not null, note: '논리 참조: content.concepts.concept_code']
+  term_id uuid [not null, ref: > content.glossary_terms.term_id]
   display_order smallint [not null, default: 0]
   created_at timestamptz [not null, default: `now()`]
   indexes {
@@ -675,9 +679,9 @@ Table concept_terms {
   Note: 'rev.8 추가. 개념별 용어. 개념이 새 버전이 되어도 유지되도록 concept_code 기준. 클리어 화면 "학습 키워드 N개" = 던전 개념에 연결된 용어 수'
 }
 
-Table stage_concepts {
-  stage_id uuid [not null, ref: > stages.stage_id]
-  concept_id uuid [not null, ref: > concepts.concept_id]
+Table content.stage_concepts {
+  stage_id uuid [not null, ref: > content.stages.stage_id]
+  concept_id uuid [not null, ref: > content.concepts.concept_id]
   display_order smallint [not null, default: 0]
   is_primary boolean [not null, default: true]
   indexes {
@@ -686,25 +690,25 @@ Table stage_concepts {
   Note: 'v2 step_concepts. NORMAL Stage는 1행만 허용(앱 검증), BOSS는 여러 개념'
 }
 
-Table questions {
+Table content.questions {
   question_id uuid [pk, default: `gen_random_uuid()`]
   question_code varchar(30) [not null, note: '버전 무관 식별자']
   version integer [not null, default: 1]
-  supersedes_question_id uuid [ref: > questions.question_id]
-  concept_id uuid [not null, ref: > concepts.concept_id, note: '1문항 1개념']
-  question_type question_type [not null, default: 'MULTIPLE_CHOICE']
-  question_category question_category [note: '#97 AI 생성 분류. 수동 문항은 null']
+  supersedes_question_id uuid [ref: > content.questions.question_id]
+  concept_id uuid [not null, ref: > content.concepts.concept_id, note: '1문항 1개념']
+  question_type content.question_type [not null, default: 'MULTIPLE_CHOICE']
+  question_category content.question_category [note: '#97 AI 생성 분류. 수동 문항은 null']
   learning_objective varchar(255) [note: '#97 AI 생성 요청의 학습 목표']
   question_text text [not null, note: '#97 공백 금지']
   explanation text [not null, note: '정답 해설. #97 공백 금지']
   key_point varchar(255) [note: '다시 기억해요']
-  difficulty difficulty
-  generated_by generated_by [not null]
-  generation_request_id uuid [ref: > ai_requests.request_id]
+  difficulty content.difficulty
+  generated_by content.generated_by [not null]
+  generation_request_id uuid [ref: > tutor.ai_requests.request_id]
   source_document_ids text[] [note: '논리 참조: ai.rag_documents.document_id']
-  status question_status [not null, default: 'GENERATED']
+  status content.question_status [not null, default: 'GENERATED']
   review_comment text
-  reviewed_by uuid [ref: > users.user_id]
+  reviewed_by uuid [ref: > account.users.user_id]
   reviewed_at timestamptz
   published_at timestamptz
   created_at timestamptz [not null, default: `now()`]
@@ -720,9 +724,9 @@ Table questions {
   }
 }
 
-Table question_choices {
+Table content.question_choices {
   choice_id uuid [pk, default: `gen_random_uuid()`, note: 'API choiceId']
-  question_id uuid [not null, ref: > questions.question_id]
+  question_id uuid [not null, ref: > content.questions.question_id]
   base_order smallint [not null, note: '1~4']
   choice_text varchar(500) [not null, note: '#97 255 → 500 (AI 보기 최대 길이), 공백 금지']
   is_correct boolean [not null, default: false, note: '제출 전 응답 노출 금지']
@@ -740,9 +744,9 @@ Table question_choices {
   Note: '문항당 4행(앱 검증), 정답 1개(DB 부분 유니크, #97)'
 }
 
-Table stage_questions {
-  stage_id uuid [not null, ref: > stages.stage_id]
-  question_id uuid [not null, ref: > questions.question_id]
+Table content.stage_questions {
+  stage_id uuid [not null, ref: > content.stages.stage_id]
+  question_id uuid [not null, ref: > content.questions.question_id]
   question_order smallint [not null]
   created_at timestamptz [not null, default: `now()`]
   indexes {
@@ -755,17 +759,17 @@ Table stage_questions {
 // =====================================================================
 // 4. 진행도·퀴즈  (API: /learning/progress/*, /stages|bosses/{id}/attempts, /attempts/*, /stages/{id}/relearn)
 // =====================================================================
-Table user_stage_progress {
-  user_id uuid [not null, ref: > users.user_id]
-  stage_id uuid [not null, ref: > stages.stage_id]
-  progress_status progress_status [not null, default: 'NOT_STARTED', note: '잠금은 계산, PASSED는 되돌리지 않음. 응시 결과 저장과 같은 트랜잭션에서 갱신']
+Table learning.user_stage_progress {
+  user_id uuid [not null, ref: > account.users.user_id]
+  stage_id uuid [not null, ref: > content.stages.stage_id]
+  progress_status learning.progress_status [not null, default: 'NOT_STARTED', note: '잠금은 계산, PASSED는 되돌리지 않음. 응시 결과 저장과 같은 트랜잭션에서 갱신']
   started_at timestamptz
   content_position smallint [note: 'rev.2 last_concept_id + last_page_no 통합 → API contentPosition (Stage 학습 콘텐츠의 페이지 번호, 1부터)']
   content_position_updated_at timestamptz [note: 'v3 추가. 학습 위치 저장 시각 (PUT /learning/progress 응답의 수정 시간)']
   read_started_at timestamptz
   read_completed_at timestamptz
   first_passed_at timestamptz
-  first_pass_attempt_id uuid [ref: > learning_attempts.attempt_id]
+  first_pass_attempt_id uuid [ref: > learning.learning_attempts.attempt_id]
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   indexes {
@@ -777,15 +781,15 @@ Table user_stage_progress {
   Note: 'v2 user_step_progress'
 }
 
-Table learning_attempts {
+Table learning.learning_attempts {
   attempt_id uuid [pk, default: `gen_random_uuid()`, note: 'API attemptId. 재학습 세션 ID도 이 값']
-  user_id uuid [not null, ref: > users.user_id]
-  stage_id uuid [not null, ref: > stages.stage_id, note: 'v2 step_id. 일반·Boss 공통']
+  user_id uuid [not null, ref: > account.users.user_id]
+  stage_id uuid [not null, ref: > content.stages.stage_id, note: 'v2 step_id. 일반·Boss 공통']
   attempt_no integer [not null]
-  attempt_type attempt_type [not null, default: 'PLAY', note: 'PLAY = 응시, RELEARN = 완료 Stage 재학습 (보상 없음)']
-  mode attempt_mode [not null, default: 'START', note: 'rev.2 is_retry → API Body mode (START = 처음 시작, RETRY = 실패 후 재도전)']
-  status attempt_status [not null, default: 'IN_PROGRESS']
-  end_reason attempt_end_reason
+  attempt_type learning.attempt_type [not null, default: 'PLAY', note: 'PLAY = 응시, RELEARN = 완료 Stage 재학습 (보상 없음)']
+  mode learning.attempt_mode [not null, default: 'START', note: 'rev.2 is_retry → API Body mode (START = 처음 시작, RETRY = 실패 후 재도전)']
+  status learning.attempt_status [not null, default: 'IN_PROGRESS']
+  end_reason learning.attempt_end_reason
   max_question_count smallint [not null, note: '응시 시점 스냅샷']
   required_correct_count smallint [not null, note: '응시 시점 스냅샷']
   initial_hp smallint [not null, note: '응시 시점 스냅샷']
@@ -810,10 +814,10 @@ Table learning_attempts {
   Note: 'rev.3 사용자·Stage별 IN_PROGRESS 응시 1개 (부분 유니크 인덱스, schema.sql 끝)'
 }
 
-Table question_submissions {
+Table learning.question_submissions {
   submission_id uuid [pk, note: 'API Body submissionId. 앱이 만든 UUID를 PK로 저장 → 같은 값 재제출은 PK 중복으로 거부']
-  attempt_id uuid [not null, ref: > learning_attempts.attempt_id]
-  question_id uuid [not null, ref: > questions.question_id]
+  attempt_id uuid [not null, ref: > learning.learning_attempts.attempt_id]
+  question_id uuid [not null, ref: > content.questions.question_id]
   sequence_no smallint [not null]
   displayed_choice_order uuid[] [not null]
   choice_id uuid [not null, note: 'rev.2 selected_choice_id → API Body choiceId. rev.3 (question_id, choice_id) → question_choices 복합 FK']
@@ -836,8 +840,8 @@ Table question_submissions {
 // =====================================================================
 // 5. 보상·성장  (API: /users/me/reward-ledger, /growth/me)
 // =====================================================================
-Table user_growth {
-  user_id uuid [pk, ref: - users.user_id]
+Table reward.user_growth {
+  user_id uuid [pk, ref: - account.users.user_id]
   total_exp integer [not null, default: 0]
   total_level integer [not null, default: 1]
   economy_exp integer [not null, default: 0]
@@ -847,8 +851,8 @@ Table user_growth {
   Note: 'exp_ledger와 같은 트랜잭션에서만 갱신'
 }
 
-Table user_wallets {
-  user_id uuid [pk, ref: - users.user_id]
+Table reward.user_wallets {
+  user_id uuid [pk, ref: - account.users.user_id]
   coin_balance integer [not null, default: 0]
   version integer [not null, default: 0, note: '동시 구매 방지(낙관적 잠금)']
   updated_at timestamptz [not null, default: `now()`]
@@ -858,12 +862,12 @@ Table user_wallets {
   Note: 'coin_ledger와 같은 트랜잭션에서만 갱신'
 }
 
-Table exp_ledger {
+Table reward.exp_ledger {
   exp_ledger_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  source_type exp_source_type [not null]
-  source_stage_id uuid [not null, ref: > stages.stage_id, note: 'v2 source_step_id']
-  attempt_id uuid [ref: > learning_attempts.attempt_id]
+  user_id uuid [not null, ref: > account.users.user_id]
+  source_type reward.exp_source_type [not null]
+  source_stage_id uuid [not null, ref: > content.stages.stage_id, note: 'v2 source_step_id']
+  attempt_id uuid [ref: > learning.learning_attempts.attempt_id]
   total_exp_amount integer [not null]
   economy_exp_amount integer [not null]
   total_exp_after integer [not null]
@@ -876,17 +880,17 @@ Table exp_ledger {
   }
 }
 
-Table coin_ledger {
+Table reward.coin_ledger {
   coin_ledger_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  transaction_type coin_transaction_type [not null]
-  reason coin_reason [not null]
+  user_id uuid [not null, ref: > account.users.user_id]
+  transaction_type reward.coin_transaction_type [not null]
+  reason reward.coin_reason [not null]
   amount integer [not null, note: '+ 지급 / - 차감']
   balance_before integer [not null]
   balance_after integer [not null]
-  ref_type coin_ref_type [not null]
-  ref_id uuid [not null, note: '논리 참조: STAGE → stages.stage_id / COSTUME → costumes.item_id']
-  attempt_id uuid [ref: > learning_attempts.attempt_id]
+  ref_type reward.coin_ref_type [not null]
+  ref_id uuid [not null, note: '논리 참조: STAGE → content.stages.stage_id / COSTUME → character.costumes.item_id']
+  attempt_id uuid [ref: > learning.learning_attempts.attempt_id]
   request_id varchar(100) [unique, note: 'rev.2 idempotency_key → 구매 API Body requestId (중복 구매 방지). ai_requests와 무관']
   created_at timestamptz [not null, default: `now()`]
   indexes {
@@ -897,8 +901,8 @@ Table coin_ledger {
   }
 }
 
-Table level_thresholds {
-  scope level_scope [not null]
+Table reward.level_thresholds {
+  scope reward.level_scope [not null]
   level integer [not null]
   required_exp integer [not null, note: '누적 EXP 기준']
   created_at timestamptz [not null, default: `now()`]
@@ -908,7 +912,7 @@ Table level_thresholds {
   }
 }
 
-Table badges {
+Table reward.badges {
   badge_id uuid [pk, default: `gen_random_uuid()`, note: 'API badgeId']
   badge_code varchar(50) [not null, unique, note: '고정 식별자 (예: FIRST_CLEAR)']
   name varchar(50) [not null]
@@ -926,9 +930,9 @@ Table badges {
   Note: 'rev.8 추가. 배지 마스터'
 }
 
-Table user_badges {
-  user_id uuid [not null, ref: > users.user_id]
-  badge_id uuid [not null, ref: > badges.badge_id]
+Table reward.user_badges {
+  user_id uuid [not null, ref: > account.users.user_id]
+  badge_id uuid [not null, ref: > reward.badges.badge_id]
   earned_at timestamptz [not null, default: `now()`]
   indexes {
     (user_id, badge_id) [pk, note: '같은 배지는 한 번만 지급']
@@ -940,16 +944,16 @@ Table user_badges {
 // =====================================================================
 // 6. 오답·복습  (API: /reviews/*, /questions/{id}/bookmark, /review-attempts/*)
 // =====================================================================
-Table review_items {
+Table review.review_items {
   review_item_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  question_code varchar(30) [not null, note: '논리 참조: questions.question_code']
-  latest_question_id uuid [not null, ref: > questions.question_id]
-  concept_code varchar(30) [not null, note: '논리 참조: concepts.concept_code']
-  source_stage_id uuid [ref: > stages.stage_id, note: 'v2 source_step_id']
-  first_reason review_first_reason [not null, note: 'WRONG = 오답으로 등록 / BOOKMARK = 북마크로 등록']
+  user_id uuid [not null, ref: > account.users.user_id]
+  question_code varchar(30) [not null, note: '논리 참조: content.questions.question_code']
+  latest_question_id uuid [not null, ref: > content.questions.question_id]
+  concept_code varchar(30) [not null, note: '논리 참조: content.concepts.concept_code']
+  source_stage_id uuid [ref: > content.stages.stage_id, note: 'v2 source_step_id']
+  first_reason review.review_first_reason [not null, note: 'WRONG = 오답으로 등록 / BOOKMARK = 북마크로 등록']
   wrong_count integer [not null, default: 0, note: '제출과 같은 트랜잭션에서 갱신. 0보다 크면 오답 목록']
-  last_answer_result answer_result
+  last_answer_result review.answer_result
   last_answered_at timestamptz
   is_bookmarked boolean [not null, default: false, note: 'v2 is_confusing. true면 북마크 목록']
   bookmarked_at timestamptz [note: 'v2 flagged_at']
@@ -964,13 +968,13 @@ Table review_items {
   }
 }
 
-Table review_missions {
+Table review.review_missions {
   mission_id uuid [pk, default: `gen_random_uuid()`, note: 'v2 concept_auto_reviews.auto_review_id → API missionId']
-  user_id uuid [not null, ref: > users.user_id]
-  concept_code varchar(30) [not null, note: '논리 참조: concepts.concept_code']
+  user_id uuid [not null, ref: > account.users.user_id]
+  concept_code varchar(30) [not null, note: '논리 참조: content.concepts.concept_code']
   first_registered_at timestamptz [not null]
   due_date date [not null, note: '최초 등록 + 3일(Asia/Seoul)']
-  status review_mission_status [not null, default: 'SCHEDULED']
+  status review.review_mission_status [not null, default: 'SCHEDULED']
   target_question_count smallint
   notified_at timestamptz
   completed_at timestamptz
@@ -983,14 +987,14 @@ Table review_missions {
   Note: 'v2 concept_auto_reviews. 잔당 소탕 임무'
 }
 
-Table review_attempts {
+Table review.review_attempts {
   review_attempt_id uuid [pk, default: `gen_random_uuid()`, note: 'v2 review_sessions.review_session_id → API reviewAttemptId']
-  user_id uuid [not null, ref: > users.user_id]
-  mission_id uuid [ref: > review_missions.mission_id, note: 'review_type = AUTO 일 때만']
-  review_type review_attempt_type [not null, note: 'v2 session_type']
-  entry_point review_entry_point [not null]
-  concept_code varchar(30) [note: '논리 참조: concepts.concept_code']
-  status review_attempt_status [not null, default: 'IN_PROGRESS']
+  user_id uuid [not null, ref: > account.users.user_id]
+  mission_id uuid [ref: > review.review_missions.mission_id, note: 'review_type = AUTO 일 때만']
+  review_type review.review_attempt_type [not null, note: 'v2 session_type']
+  entry_point review.review_entry_point [not null]
+  concept_code varchar(30) [note: '논리 참조: content.concepts.concept_code']
+  status review.review_attempt_status [not null, default: 'IN_PROGRESS']
   question_count smallint [not null, note: '시작 시점 고정']
   submitted_count smallint [not null, default: 0]
   correct_count smallint [not null, default: 0]
@@ -1006,11 +1010,11 @@ Table review_attempts {
   Note: 'v2 review_sessions. 전투(HP) 없음. 원본 전투 결과를 바꾸지 않음'
 }
 
-Table review_submissions {
+Table review.review_submissions {
   submission_id uuid [pk, default: `gen_random_uuid()`, note: 'API Body submissionId. 복습 시작 시 서버가 문항별로 미리 만들어 내려주고, 제출 때 그대로 받음']
-  review_attempt_id uuid [not null, ref: > review_attempts.review_attempt_id]
-  review_item_id uuid [not null, ref: > review_items.review_item_id]
-  question_id uuid [not null, ref: > questions.question_id, note: '실제 출제된 문항 버전']
+  review_attempt_id uuid [not null, ref: > review.review_attempts.review_attempt_id]
+  review_item_id uuid [not null, ref: > review.review_items.review_item_id]
+  question_id uuid [not null, ref: > content.questions.question_id, note: '실제 출제된 문항 버전']
   sequence_no smallint [not null]
   displayed_choice_order uuid[] [not null]
   choice_id uuid [note: 'rev.2 selected_choice_id → API Body choiceId. 미제출 시 null. rev.3 (question_id, choice_id) → question_choices 복합 FK']
@@ -1027,15 +1031,15 @@ Table review_submissions {
 // =====================================================================
 // 7. 학습 일정  (API: /study-plans, /calendar)
 // =====================================================================
-Table study_plans {
+Table review.study_plans {
   plan_id uuid [pk, default: `gen_random_uuid()`, note: 'v2 learning_schedules.schedule_id → API planId']
-  user_id uuid [not null, ref: > users.user_id]
+  user_id uuid [not null, ref: > account.users.user_id]
   scheduled_date date [not null, note: 'v2 target_date → API scheduledDate']
-  stage_id uuid [ref: > stages.stage_id, note: 'v3 null 허용 (API stageId?)']
-  concept_id uuid [ref: > concepts.concept_id, note: 'v3 추가 (API conceptId?)']
-  plan_type plan_type [not null, default: 'NEW_LEARNING', note: 'v2 schedule_type']
+  stage_id uuid [ref: > content.stages.stage_id, note: 'v3 null 허용 (API stageId?)']
+  concept_id uuid [ref: > content.concepts.concept_id, note: 'v3 추가 (API conceptId?)']
+  plan_type review.plan_type [not null, default: 'NEW_LEARNING', note: 'v2 schedule_type']
   title varchar(30) [not null, note: 'v2 goal_memo → API title (필수, 30자 이내)']
-  status plan_status [not null, default: 'PLANNED']
+  status review.plan_status [not null, default: 'PLANNED']
   completed_at timestamptz
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
@@ -1054,17 +1058,17 @@ Table study_plans {
 //   흐름: Node가 history(요약 + 최근 N턴)를 모아 FastAPI에 보냄 → FastAPI는 상태 없음
 //        → 응답의 답변·근거·재작성 쿼리를 Node가 저장
 // =====================================================================
-Table ai_conversations {
+Table tutor.ai_conversations {
   conversation_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id, note: '대화 소유자 확인 기준']
-  entry_point ai_entry_point [note: 'v3 null 허용 (대화 생성 API에 없음)']
-  context_topic_id uuid [ref: > topics.topic_id, note: 'v2 context_region_id']
-  context_stage_id uuid [ref: > stages.stage_id, note: 'v2 context_step_id. 대화 생성 시 stageId']
-  context_concept_id uuid [ref: > concepts.concept_id, note: '대화 생성 시 conceptId']
-  context_question_id uuid [ref: > questions.question_id]
-  context_attempt_id uuid [ref: > learning_attempts.attempt_id]
+  user_id uuid [not null, ref: > account.users.user_id, note: '대화 소유자 확인 기준']
+  entry_point tutor.ai_entry_point [note: 'v3 null 허용 (대화 생성 API에 없음)']
+  context_topic_id uuid [ref: > content.topics.topic_id, note: 'v2 context_region_id']
+  context_stage_id uuid [ref: > content.stages.stage_id, note: 'v2 context_step_id. 대화 생성 시 stageId']
+  context_concept_id uuid [ref: > content.concepts.concept_id, note: '대화 생성 시 conceptId']
+  context_question_id uuid [ref: > content.questions.question_id]
+  context_attempt_id uuid [ref: > learning.learning_attempts.attempt_id]
   title varchar(100)
-  status conversation_status [not null, default: 'ACTIVE']
+  status tutor.conversation_status [not null, default: 'ACTIVE']
   summary text [note: 'v3 추가. 현재 요약 (rev.7 ai_conversation_summaries 최신 행의 복사본)']
   summary_until_seq integer [note: 'v3 추가. summary가 반영한 마지막 sequence_no. rev.7 summary와 항상 같이 채움']
   created_at timestamptz [not null, default: `now()`]
@@ -1077,13 +1081,13 @@ Table ai_conversations {
   }
 }
 
-Table ai_conversation_summaries {
+Table tutor.ai_conversation_summaries {
   summary_id uuid [pk, default: `gen_random_uuid()`]
-  conversation_id uuid [not null, ref: > ai_conversations.conversation_id]
+  conversation_id uuid [not null, ref: > tutor.ai_conversations.conversation_id]
   summary_until_seq integer [not null, note: '1 ~ 이 sequence_no까지 누적 요약']
   content text [not null, note: '내부 API summary (12,000자 이하)']
   token_count integer
-  request_id uuid [ref: > ai_requests.request_id, note: '요약을 만든 AI 호출 (SUMMARIZE 또는 TUTOR)']
+  request_id uuid [ref: > tutor.ai_requests.request_id, note: '요약을 만든 AI 호출 (SUMMARIZE 또는 TUTOR)']
   created_at timestamptz [not null, default: `now()`]
   indexes {
     (conversation_id, summary_until_seq) [unique]
@@ -1092,28 +1096,28 @@ Table ai_conversation_summaries {
     `summary_until_seq >= 1` [name: 'chk_ai_summaries_until_seq']
     `char_length(content) BETWEEN 1 AND 12000` [name: 'chk_ai_summaries_content']
   }
-  Note: 'rev.7 요약 이력. 요약할 때마다 1행 추가(수정 안 함), 같은 트랜잭션에서 ai_conversations.summary·summary_until_seq 갱신'
+  Note: 'rev.7 요약 이력. 요약할 때마다 1행 추가(수정 안 함), 같은 트랜잭션에서 tutor.ai_conversations.summary·summary_until_seq 갱신'
 }
 
-Table ai_messages {
+Table tutor.ai_messages {
   message_id uuid [pk, default: `gen_random_uuid()`]
-  conversation_id uuid [not null, ref: > ai_conversations.conversation_id]
-  parent_message_id uuid [ref: > ai_messages.message_id, note: '답변 → 질문']
+  conversation_id uuid [not null, ref: > tutor.ai_conversations.conversation_id]
+  parent_message_id uuid [ref: > tutor.ai_messages.message_id, note: '답변 → 질문']
   sequence_no integer [not null, note: '대화 내 순서. 메시지 조회 cursor 기준']
-  role message_role [not null]
-  input_type message_input_type
+  role tutor.message_role [not null]
+  input_type tutor.message_input_type
   client_message_id varchar(100) [note: 'v3 추가. user 메시지의 API clientMessageId (재전송 중복 방지)']
-  context_stage_id uuid [ref: > stages.stage_id, note: 'v3 추가. 이번 질문의 stageId']
-  context_concept_id uuid [ref: > concepts.concept_id, note: 'v3 추가. 이번 질문의 conceptId']
+  context_stage_id uuid [ref: > content.stages.stage_id, note: 'v3 추가. 이번 질문의 stageId']
+  context_concept_id uuid [ref: > content.concepts.concept_id, note: 'v3 추가. 이번 질문의 conceptId']
   content text [not null]
   rewritten_query text [note: 'v3 추가. user 메시지: 이전 대화를 반영해 다시 쓴 검색 쿼리 (FastAPI 응답)']
   history_from_seq integer [note: 'v3 추가. assistant 메시지: 프롬프트에 원문으로 넣은 첫 sequence_no']
   token_count integer [note: 'v3 추가. 히스토리 자를 때 사용']
-  summary_id uuid [ref: > ai_conversation_summaries.summary_id, note: 'rev.7 assistant 메시지: 프롬프트에 넣은 요약 (history_from_seq와 함께 답변 재현)']
-  status message_status [not null, default: 'PENDING']
-  grounding_status grounding_status [note: 'API 검색 상태']
+  summary_id uuid [ref: > tutor.ai_conversation_summaries.summary_id, note: 'rev.7 assistant 메시지: 프롬프트에 넣은 요약 (history_from_seq와 함께 답변 재현)']
+  status tutor.message_status [not null, default: 'PENDING']
+  grounding_status tutor.grounding_status [note: 'API 검색 상태']
   error_code varchar(50)
-  request_id uuid [ref: > ai_requests.request_id]
+  request_id uuid [ref: > tutor.ai_requests.request_id]
   created_at timestamptz [not null, default: `now()`]
   completed_at timestamptz
   indexes {
@@ -1124,14 +1128,14 @@ Table ai_messages {
   Note: '부분 유니크 인덱스(대화방당 pending 답변 1개)는 schema.sql 끝에 있음'
 }
 
-Table ai_message_sources {
+Table tutor.ai_message_sources {
   message_source_id uuid [pk, default: `gen_random_uuid()`]
-  message_id uuid [not null, ref: > ai_messages.message_id]
+  message_id uuid [not null, ref: > tutor.ai_messages.message_id]
   document_id varchar(255) [not null, note: '논리 참조: ai.rag_documents.document_id (AI 응답 documentId, 예: bok800-154). rev.7 100→255']
   document_version varchar(100) [note: 'rev.6 integer NOT NULL → 문자열·null 허용 (AI 응답 documentVersion, 예: 2026). rev.7 50→100']
   chunk_id varchar(255) [not null, note: 'rev.6 필수. 논리 참조: ai.rag_document_chunks.chunk_id (AI 응답 chunkId). rev.7 100→255']
   title_snapshot varchar(500) [note: 'rev.7 255→500 (ai.rag_documents.title과 같음)']
-  concept_code varchar(30) [note: '논리 참조: concepts.concept_code']
+  concept_code varchar(30) [note: '논리 참조: content.concepts.concept_code']
   rank smallint [not null]
   relevance_score numeric(5,4)
   created_at timestamptz [not null, default: `now()`]
@@ -1141,14 +1145,14 @@ Table ai_message_sources {
   Note: 'API 응답의 검색 출처 / 인용 근거. AI 내부 API 응답 sources[]를 그대로 저장'
 }
 
-Table ai_requests {
+Table tutor.ai_requests {
   request_id uuid [pk, default: `gen_random_uuid()`, note: '내부 API Body requestId']
-  user_id uuid [ref: > users.user_id]
-  conversation_id uuid [ref: > ai_conversations.conversation_id]
-  request_type ai_request_type [not null]
-  status ai_request_status [not null, default: 'RESERVED']
+  user_id uuid [ref: > account.users.user_id]
+  conversation_id uuid [ref: > tutor.ai_conversations.conversation_id]
+  request_type tutor.ai_request_type [not null]
+  status tutor.ai_request_status [not null, default: 'RESERVED']
   usage_date date [not null, note: 'reserved_at의 KST 날짜(생성 컬럼), 일일 한도 집계. 정의는 schema.sql']
-  model_tier model_tier [not null]
+  model_tier tutor.model_tier [not null]
   model_id varchar(100)
   embedding_model_id varchar(100)
   knowledge_scope jsonb [note: 'v3 추가. 내부 API knowledgeScope (검색 범위: concept_code 목록 등)']
@@ -1170,16 +1174,16 @@ Table ai_requests {
   Note: '턴 1회 = tutor 요청 1건. 사용량(/tutor/usage)은 request_type = TUTOR만 집계'
 }
 
-Table ai_user_memories {
+Table tutor.ai_user_memories {
   memory_id uuid [pk, default: `gen_random_uuid()`]
-  user_id uuid [not null, ref: > users.user_id]
-  memory_type ai_memory_type [not null]
+  user_id uuid [not null, ref: > account.users.user_id]
+  memory_type tutor.ai_memory_type [not null]
   memory_key varchar(100) [note: '덮어쓰기(upsert) 키 (예: answer_style, 개념 코드). null이면 중복 검사 안 함']
   content varchar(500) [not null, note: '한 문장 메모리']
-  concept_code varchar(30) [note: '논리 참조: concepts.concept_code']
+  concept_code varchar(30) [note: '논리 참조: content.concepts.concept_code']
   confidence numeric(3,2) [note: '0~1']
-  source_message_id uuid [ref: > ai_messages.message_id, note: '근거가 된 사용자 질문']
-  status ai_memory_status [not null, default: 'ACTIVE']
+  source_message_id uuid [ref: > tutor.ai_messages.message_id, note: '근거가 된 사용자 질문']
+  status tutor.ai_memory_status [not null, default: 'ACTIVE']
   archived_at timestamptz
   last_used_at timestamptz [note: '마지막으로 AI 요청에 담은 시각']
   created_at timestamptz [not null, default: `now()`]
@@ -1254,75 +1258,75 @@ Table ai.rag_index_configurations {
 // 복합 FK (무결성, rev.3·rev.5)
 // =====================================================================
 // rev.5 보유한 코스튬만 장착 가능
-Ref fk_equipped_owned: user_equipped_costumes.(user_id, item_id) > user_costumes.(user_id, item_id)
+Ref fk_equipped_owned: character.user_equipped_costumes.(user_id, item_id) > character.user_costumes.(user_id, item_id)
 // rev.5 장착 부위와 코스튬 부위가 같아야 함 (상의 칸에 하의 금지)
-Ref fk_equipped_category: user_equipped_costumes.(item_id, category) > costumes.(item_id, category)
+Ref fk_equipped_category: character.user_equipped_costumes.(item_id, category) > character.costumes.(item_id, category)
 // 답안의 선택지는 그 문항의 선택지여야 함
-Ref fk_question_submissions_choice: question_submissions.(question_id, choice_id) > question_choices.(question_id, choice_id)
-Ref fk_review_submissions_choice: review_submissions.(question_id, choice_id) > question_choices.(question_id, choice_id)
+Ref fk_question_submissions_choice: learning.question_submissions.(question_id, choice_id) > content.question_choices.(question_id, choice_id)
+Ref fk_review_submissions_choice: review.review_submissions.(question_id, choice_id) > content.question_choices.(question_id, choice_id)
 
 // =====================================================================
 // ERD 그룹 (dbdiagram.io에서 색으로 구분)
 // =====================================================================
 TableGroup account [color: #3B6FB6] {
-  users
-  terms
-  user_terms_agreements
-  social_accounts
-  account_tokens
-  user_devices
-  user_sessions
-  user_settings
+  account.users
+  account.terms
+  account.user_terms_agreements
+  account.social_accounts
+  account.account_tokens
+  account.user_devices
+  account.user_sessions
+  account.user_settings
 }
 TableGroup character_shop [color: #8E5BB5] {
-  character_classes
-  costumes
-  user_characters
-  user_costumes
-  user_equipped_costumes
+  character.character_classes
+  character.costumes
+  character.user_characters
+  character.user_costumes
+  character.user_equipped_costumes
 }
 TableGroup content [color: #2E8B57] {
-  topics
-  topic_prerequisites
-  stages
-  concepts
-  concept_prerequisites
-  concept_sections
-  stage_concepts
-  questions
-  question_choices
-  stage_questions
-  glossary_terms
-  concept_terms
+  content.topics
+  content.topic_prerequisites
+  content.stages
+  content.concepts
+  content.concept_prerequisites
+  content.concept_sections
+  content.stage_concepts
+  content.questions
+  content.question_choices
+  content.stage_questions
+  content.glossary_terms
+  content.concept_terms
 }
 TableGroup progress_quiz [color: #C0702A] {
-  user_stage_progress
-  learning_attempts
-  question_submissions
+  learning.user_stage_progress
+  learning.learning_attempts
+  learning.question_submissions
 }
 TableGroup reward [color: #B8932B] {
-  user_growth
-  user_wallets
-  exp_ledger
-  coin_ledger
-  level_thresholds
-  badges
-  user_badges
+  reward.user_growth
+  reward.user_wallets
+  reward.exp_ledger
+  reward.coin_ledger
+  reward.level_thresholds
+  reward.badges
+  reward.user_badges
 }
 TableGroup review_plan [color: #B5475B] {
-  review_items
-  review_missions
-  review_attempts
-  review_submissions
-  study_plans
+  review.review_items
+  review.review_missions
+  review.review_attempts
+  review.review_submissions
+  review.study_plans
 }
 TableGroup ai_tutor [color: #4A4A4A] {
-  ai_conversations
-  ai_conversation_summaries
-  ai_messages
-  ai_message_sources
-  ai_requests
-  ai_user_memories
+  tutor.ai_conversations
+  tutor.ai_conversation_summaries
+  tutor.ai_messages
+  tutor.ai_message_sources
+  tutor.ai_requests
+  tutor.ai_user_memories
 }
 TableGroup ai_rag [color: #2F6F73] {
   ai.rag_documents

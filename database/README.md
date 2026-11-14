@@ -1,6 +1,6 @@
 # @leren/database
 
-Leren app 스키마의 **TypeORM 엔티티 · 마이그레이션 · 검증 스크립트** 패키지입니다 (npm workspace).
+Leren 앱 DB(영역별 스키마 7개: account, character, content, learning, reward, review, tutor)의 **TypeORM 엔티티 · 마이그레이션 · 검증 스크립트** 패키지입니다 (npm workspace). app 스키마에는 TypeORM 관리용(migrations, typeorm_metadata)만 있습니다 (#98).
 설계 원본은 `docs/leren_erd.dbml` (rev.8, API 명세 58개 기준)입니다. ai 스키마(문서·청크·임베딩, pgvector)도 **DB 담당이 DDL을 관리**합니다: 스키마·계정은 `sql/init/02_ai_schema.sql`, RAG 메타 테이블은 `sql/init/03_ai_tables.sql`, 벡터 테이블은 `sql/init/04_ai_vector_table.sql`(모두 소유자 `ai_user`). 벡터 검색 인덱스는 `sql/ai/vector_indexes.sql`로 추가합니다. AI 관련 DB 전체 현황은 `docs/AI_DB.md`.
 
 ## 구성
@@ -14,7 +14,7 @@ database/
   src/migration-data-source.ts  # 마이그레이션 전용 (migrator, TypeORM CLI용)
   src/scripts/seed-minimal.ts   # 검증용 최소 시드
   src/scripts/smoke.ts          # 엔티티 연동 테스트 21항목
-  sql/init/01_app_schema.sql    # app 스키마 + 계정(migrator, app_user) 생성. 관리자 계정으로 최초 1회
+  sql/init/01_app_schema.sql    # 스키마 8개(app + 영역별 7개) + 계정(migrator, app_user)·권한·search_path. 관리자 계정으로 실행 (여러 번 실행해도 안전)
   sql/init/02_ai_schema.sql     # pgvector 확장 + ai 스키마 + 계정(ai_user). 01 다음에 최초 1회
   sql/init/03_ai_tables.sql     # ai 스키마 RAG 메타 테이블 3개 + app_user 읽기 권한. 02 다음에 (여러 번 실행해도 안전)
   sql/init/04_ai_vector_table.sql # ai 스키마 벡터 테이블 ai.data_projectteam02 (LlamaIndex 구조). 03 다음에 (여러 번 실행해도 안전)
@@ -83,8 +83,8 @@ npm run db:test                      # 테스트 DB에서만 실행
 
 | 계정 | 용도 | 권한 |
 |---|---|---|
-| `migrator` | 마이그레이션 실행 | app 스키마 소유자 (테이블 생성·변경) |
-| `app_user` | Node.js 서버 실행 | app 스키마 테이블 읽기·쓰기만 (삭제·변경 불가) |
+| `migrator` | 마이그레이션 실행 | app·영역별 스키마 7개 소유자 (테이블 생성·변경) |
+| `app_user` | Node.js 서버 실행 | 영역별 스키마 테이블 읽기·쓰기만 (삭제·변경 불가) |
 | `ai_user` | AI 서버(FastAPI) 실행 | ai 스키마 테이블 소유자 (DDL은 DB 담당이 03·04 파일로 관리, AI 서버는 테이블을 만들지 않음). app 스키마 접근 불가 |
 
 AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (빠지면 public에 만들려다 권한 오류). AI 서버는 `create_tables()`·`migrations/*.sql`을 RDS에서 실행하지 않습니다. 백엔드(`app_user`)는 `ai.rag_documents`만 읽을 수 있고, AI 응답의 `documentId`·`chunkId`를 `ai_message_sources`에 FK 없이 기록합니다.
@@ -120,6 +120,7 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 | — | `KakaoOAuthEntries`, `ContentDefaultPublished` | 카카오 OAuth 임시 저장소, 토픽·스테이지·개념 기본 상태 PUBLISHED |
 | #96 | `04_ai_vector_table.sql` | ai 벡터 테이블 `ai.data_projectteam02` 정의를 백엔드로 이관 (LlamaIndex 구조와 동일) |
 | #97 | `QuestionConstraints` | `question_choices.choice_text` 255 → 500(값 보존), 문항당 정답 1개(부분 유니크), 문제 본문·해설·선택지 공백 금지, AI 문항 근거 필수 CHECK, `questions.question_category`·`learning_objective` 추가 |
+| #98 | `SplitAppSchema` + `01_app_schema.sql` | app 스키마를 영역별 스키마 7개로 분리 (`ALTER TABLE/TYPE ... SET SCHEMA`, 데이터·권한 보존). 테이블·컬럼·제약 이름은 그대로. 적용 전 `01_app_schema.sql`을 다시 실행해 스키마를 먼저 만듦 |
 
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
 

@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.8) 기준 (app.concept_sections)
+// 자동 생성: leren_erd.dbml (rev.8) 기준 (content.concept_sections)
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { CardTone, SectionType } from '../common/enums';
 import { Concept } from './concepts.entity';
@@ -7,7 +7,7 @@ import { Concept } from './concepts.entity';
 @Index('concept_sections_concept_id_page_no_sort_order_idx', ['conceptId', 'pageNo', 'sortOrder'], { unique: true })
 @Check('chk_concept_sections_page_no', `page_no >= 1`)
 @Check('chk_concept_sections_sort_order', `sort_order >= 1`)
-@Entity({ name: 'concept_sections', schema: 'app' })
+@Entity({ name: 'concept_sections', schema: 'content' })
 export class ConceptSection {
   /** 학습 카드 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'section_id', primaryKeyConstraintName: 'concept_sections_pkey' })

@@ -36,10 +36,10 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
     host: '127.0.0.1', port, username: 'postgres', password, database: 'leren_character_it',
     ssl: false, synchronize: false, migrationsRun: false, logging: false,
     migrations: [path.resolve(__dirname, '../../database/dist/migrations/*.js')],
-    extra: { options: '-c search_path=app,public' },
+    extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public' },
   });
   await db.initialize();
-  const [database] = await db.query("SELECT current_database() AS name, to_regclass('app.users') AS users, version()");
+  const [database] = await db.query("SELECT current_database() AS name, to_regclass('account.users') AS users, version()");
   assert.equal(database.name, 'leren_character_it');
   assert.equal(database.users, null);
   t.diagnostic(database.version);
@@ -137,7 +137,7 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
     let pending;
     let waiting = 0;
     try {
-      await blocker.query('SELECT user_id FROM app.users WHERE user_id = $1 FOR UPDATE', [racer.userId]);
+      await blocker.query('SELECT user_id FROM account.users WHERE user_id = $1 FOR UPDATE', [racer.userId]);
       pending = Promise.allSettled([pick(racer.token, 'WARRIOR'), pick(racer.token, 'MAGE')]);
       for (let i = 0; i < 100 && waiting !== 2; i++) {
         const [row] = await db.query(`SELECT count(*)::int AS waiting FROM pg_stat_activity
@@ -166,14 +166,14 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
   await t.test('rolls back the selection when the completion write fails', async () => {
     await db.query(`CREATE FUNCTION app.reject_test_onboarding() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN RAISE EXCEPTION 'test onboarding failure'; END $$`);
-    await db.query(`CREATE TRIGGER reject_test_onboarding BEFORE UPDATE OF onboarding_completed_at ON app.users
+    await db.query(`CREATE TRIGGER reject_test_onboarding BEFORE UPDATE OF onboarding_completed_at ON account.users
       FOR EACH ROW EXECUTE FUNCTION app.reject_test_onboarding()`);
     try {
       assert.equal((await pick(other.token, 'MAGE')).status, 503);
       assert.equal(await selections.countBy({ userId: other.userId }), 0);
       assert.equal((await users.findOneByOrFail({ userId: other.userId })).onboardingCompletedAt, null);
     } finally {
-      await db.query('DROP TRIGGER reject_test_onboarding ON app.users');
+      await db.query('DROP TRIGGER reject_test_onboarding ON account.users');
       await db.query('DROP FUNCTION app.reject_test_onboarding()');
     }
   });

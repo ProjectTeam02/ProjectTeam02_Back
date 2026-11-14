@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_stage_progress)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (learning.user_stage_progress)
 import { Check, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { ProgressStatus } from '../common/enums';
 import { LearningAttempt } from './learning-attempts.entity';
@@ -7,7 +7,7 @@ import { User } from '../account/users.entity';
 
 /** 사용자별 Stage 진행도와 학습 위치. */
 @Check('chk_progress_content_position', `(content_position IS NULL) OR (content_position >= 1)`)
-@Entity({ name: 'user_stage_progress', schema: 'app' })
+@Entity({ name: 'user_stage_progress', schema: 'learning' })
 export class UserStageProgress {
   /** 사용자 */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_stage_progress_pkey' })

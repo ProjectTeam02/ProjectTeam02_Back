@@ -1,10 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.user_wallets)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (reward.user_wallets)
 import { Check, Column, Entity, JoinColumn, OneToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../account/users.entity';
 
 /** 현재 코인 잔액 (users와 1:1). coin_ledger와 같은 트랜잭션에서만 갱신합니다. */
 @Check('chk_wallets_balance', `coin_balance >= 0`)
-@Entity({ name: 'user_wallets', schema: 'app' })
+@Entity({ name: 'user_wallets', schema: 'reward' })
 export class UserWallet {
   /** 사용자 (1:1) */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_wallets_pkey' })

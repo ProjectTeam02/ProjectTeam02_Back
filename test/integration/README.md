@@ -6,7 +6,7 @@
 ./test/integration/run-kakao-postgres.ps1 -ReportPath "$env:TEMP/leren-kakao-pg-results.json"
 ```
 
-실행기는 DB 패키지를 빌드한 뒤 `pgvector/pgvector:pg18` 임시 컨테이너를 만들고 기존 Migration을 적용한다. localhost 개발 DB나 `.env`의 DB 접속값을 테스트 대상으로 사용하지 않는다. 루프백 포트·작업 전용 라벨·tmpfs·새 app.users 부재를 모두 검사한다. 임시 DB에서만 합성 회원/세션을 생성하고, 장애/지연 주입용 트리거를 만들었다가 제거한다. Entity·Migration 파일은 변경하지 않는다. 테스트 종료 시 소유권을 확인한 임시 컨테이너만 제거하고 프로세스 전용 환경 변수를 복구한다. 기존 볼륨은 삭제하지 않는다.
+실행기는 DB 패키지를 빌드한 뒤 `pgvector/pgvector:pg18` 임시 컨테이너를 만들고 기존 Migration을 적용한다. localhost 개발 DB나 `.env`의 DB 접속값을 테스트 대상으로 사용하지 않는다. 루프백 포트·작업 전용 라벨·tmpfs·새 account.users 부재를 모두 검사한다. 임시 DB에서만 합성 회원/세션을 생성하고, 장애/지연 주입용 트리거를 만들었다가 제거한다. Entity·Migration 파일은 변경하지 않는다. 테스트 종료 시 소유권을 확인한 임시 컨테이너만 제거하고 프로세스 전용 환경 변수를 복구한다. 기존 볼륨은 삭제하지 않는다.
 
 카카오 Client의 토큰 발급·프로필 메서드만 Mock으로 대체한다. Auth/모바일 Service, Repository, TypeORM, PostgreSQL, JWT, 인증 미들웨어는 실제 구현이다. 외부 네트워크는 임시 HTTP 서버 외 요청을 테스트에서 차단한다. JSON 증빙에는 JWT·인가 코드·비밀번호를 저장하지 않는다.
 

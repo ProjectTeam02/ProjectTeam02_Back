@@ -1,4 +1,4 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.ai_messages)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (tutor.ai_messages)
 import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { GroundingStatus, MessageInputType, MessageRole, MessageStatus } from '../common/enums';
 import { AiConversation } from './ai-conversations.entity';
@@ -12,7 +12,7 @@ import { Stage } from '../content/stages.entity';
 @Index('ai_messages_conversation_id_sequence_no_idx', ['conversationId', 'sequenceNo'], { unique: true })
 @Index('ai_messages_summary_id_idx', ['summaryId'])
 @Index('uq_ai_messages_one_pending_answer', ['conversationId'], { unique: true, where: `"role" = 'ASSISTANT' AND "status" = 'PENDING'` })
-@Entity({ name: 'ai_messages', schema: 'app' })
+@Entity({ name: 'ai_messages', schema: 'tutor' })
 export class AiMessage {
   /** 메시지 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'message_id', primaryKeyConstraintName: 'ai_messages_pkey' })

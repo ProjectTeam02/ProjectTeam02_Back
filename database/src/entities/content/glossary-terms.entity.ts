@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.8) 기준 (app.glossary_terms)
+// 자동 생성: leren_erd.dbml (rev.8) 기준 (content.glossary_terms)
 import { Check, Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 
 /** 경제 용어 마스터 (rev.8). 약관 테이블 terms와 구분하려고 glossary_terms로 이름 붙였습니다. */
 @Unique('glossary_terms_term_code_key', ['termCode'])
 @Check('chk_glossary_terms_term', `char_length((term)::text) >= 1`)
 @Check('chk_glossary_terms_definition', `char_length((definition)::text) >= 1`)
-@Entity({ name: 'glossary_terms', schema: 'app' })
+@Entity({ name: 'glossary_terms', schema: 'content' })
 export class GlossaryTerm {
   /** 용어 ID. API termId */
   @PrimaryGeneratedColumn('uuid', { name: 'term_id', primaryKeyConstraintName: 'glossary_terms_pkey' })

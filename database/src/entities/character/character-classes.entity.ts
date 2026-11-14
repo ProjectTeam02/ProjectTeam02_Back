@@ -1,10 +1,10 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.character_classes)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (character.character_classes)
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { ClassCode } from '../common/enums';
 
 /** 직업 마스터 (검사·마법사·궁수). "class"는 예약어라 테이블명은 character_classes입니다. */
 @Unique('character_classes_class_code_key', ['classCode'])
-@Entity({ name: 'character_classes', schema: 'app' })
+@Entity({ name: 'character_classes', schema: 'character' })
 export class CharacterClass {
   /** 직업 ID. API classId */
   @PrimaryGeneratedColumn('uuid', { name: 'class_id', primaryKeyConstraintName: 'character_classes_pkey' })

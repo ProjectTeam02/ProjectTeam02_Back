@@ -1,11 +1,11 @@
-// 자동 생성: leren_erd.dbml (rev.5) 기준 (app.users)
+// 자동 생성: leren_erd.dbml (rev.5) 기준 (account.users)
 import { Check, Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { AccountStatus, LoginMethod, UserPlan, UserRole } from '../common/enums';
 
 /** 회원. 탈퇴해도 행은 남고 개인정보만 지웁니다. */
 @Unique('users_email_key', ['email'])
 @Check('chk_users_withdrawn', `(account_status = 'WITHDRAWN'::account_status) = (withdrawn_at IS NOT NULL)`)
-@Entity({ name: 'users', schema: 'app' })
+@Entity({ name: 'users', schema: 'account' })
 export class User {
   /** 사용자 ID */
   @PrimaryGeneratedColumn('uuid', { name: 'user_id', primaryKeyConstraintName: 'users_pkey' })
