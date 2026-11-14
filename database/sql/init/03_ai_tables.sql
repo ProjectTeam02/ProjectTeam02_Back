@@ -5,8 +5,7 @@
 -- 기준: ProjectTeam02_AI app/db/models.py (RAGDocument, RAGChunk, RAGIndexConfiguration)와 컬럼·타입·제약·인덱스 이름 1:1
 --   + 서버 기본값(id, metadata_json)과 CHECK 추가 (AI 코드가 값을 넣으므로 동작은 같음)
 -- 여기서 만들지 않는 것
---   - 벡터 테이블 ai.data_<컬렉션> (기본 ai.data_projectteam02): LlamaIndex PGVectorStore가 처음 적재할 때 직접 만든다
---     (직접 만들면 LlamaIndex 내부 구조와 어긋날 위험). 적재 후 database/sql/ai/vector_indexes.sql로 인덱스 추가
+--   - 벡터 테이블 ai.data_projectteam02: 04_ai_vector_table.sql (LlamaIndex PGVectorStore 구조와 1:1, #96)
 --   - ai_conversations·ai_messages·ai_message_sources·ai_requests·ai_user_memories: app 스키마(Node 소유, TypeORM 마이그레이션)
 -- 이 파일은 여러 번 실행해도 안전하다 (IF NOT EXISTS). AI 서버가 테이블을 먼저 만든 DB(RDS)에서도 실행 가능 → 3-1에서 기본값·CHECK만 보완
 -- 컬럼을 바꿀 때는 이 파일을 고치지 말고 database/sql/ai/에 변경 SQL을 추가한다

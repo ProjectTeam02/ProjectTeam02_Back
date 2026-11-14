@@ -1,6 +1,6 @@
 # 엔티티 목록 (v3 rev.8)
 
-`src/entities` 아래 46개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml`(rev.8) 1~8절(app 스키마)과 같은 DB를 만듭니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`로 만듭니다.
+`src/entities` 아래 46개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml`(rev.8) 1~8절(app 스키마)과 같은 DB를 만듭니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`·`04_ai_vector_table.sql`로 만듭니다.
 
 - 클래스·파일 이름: 테이블 이름의 단수형 PascalCase / kebab-case (`user_costumes` → `UserCostume`, `user-costumes.entity.ts`)
 - 속성 이름: 컬럼 이름의 camelCase = API 필드 이름 (`item_id` → `itemId`, `submission_id` → `submissionId`)

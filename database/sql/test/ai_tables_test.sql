@@ -1,4 +1,4 @@
--- ai 스키마 RAG 메타 테이블 검증 rev.7 (ai_user 계정으로 실행, 03_ai_tables.sql 적용 후)
+-- ai 스키마 RAG 메타·벡터 테이블 검증 (ai_user 계정으로 실행, 03_ai_tables.sql·04_ai_vector_table.sql 적용 후)
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -33,7 +33,24 @@ SELECT pg_temp.expect_err(11, 'content_hash 64자가 아니면 거부 (sha256)',
 INSERT INTO result SELECT 12, 'app_user는 문서 메타 읽기만 (rag_documents SELECT)',
   has_table_privilege('app_user', 'ai.rag_documents', 'SELECT') AND NOT has_table_privilege('app_user', 'ai.rag_documents', 'INSERT')
   AND NOT has_table_privilege('app_user', 'ai.rag_document_chunks', 'SELECT') AND NOT has_table_privilege('app_user', 'ai.rag_index_configurations', 'SELECT'), 'privileges';
+-- 벡터 테이블 (04_ai_vector_table.sql, #96)
+INSERT INTO result SELECT 13, '벡터 테이블이 ai 스키마에 있고 소유자 ai_user', count(*) = 1, coalesce(string_agg(tablename || ':' || tableowner, ', '), '없음')
+  FROM pg_tables WHERE schemaname = 'ai' AND tablename = 'data_projectteam02' AND tableowner = 'ai_user';
+INSERT INTO result SELECT 14, '벡터 테이블 컬럼 5개 (LlamaIndex 구조)',
+  string_agg(column_name || ':' || udt_name || ':' || is_nullable, ',' ORDER BY ordinal_position) = 'id:int8:NO,text:varchar:NO,metadata_:jsonb:YES,node_id:varchar:YES,embedding:vector:YES',
+  string_agg(column_name || ':' || udt_name || ':' || is_nullable, ',' ORDER BY ordinal_position)
+  FROM information_schema.columns WHERE table_schema = 'ai' AND table_name = 'data_projectteam02';
+INSERT INTO result SELECT 15, 'embedding은 vector(1536)', coalesce(bool_and(format_type(atttypid, atttypmod) = 'vector(1536)'), false), coalesce(string_agg(format_type(atttypid, atttypmod), ','), '없음')
+  FROM pg_attribute WHERE attrelid = to_regclass('ai.data_projectteam02') AND attname = 'embedding';
+INSERT INTO result SELECT 16, 'ref_doc_id 인덱스 (projectteam02_idx_1)', count(*) = 1, coalesce(string_agg(indexname, ','), '없음')
+  FROM pg_indexes WHERE schemaname = 'ai' AND tablename = 'data_projectteam02' AND indexname = 'projectteam02_idx_1';
+SELECT pg_temp.expect_ok (17, '1536차원 벡터 저장', $q$INSERT INTO ai.data_projectteam02 (text, metadata_, node_id, embedding) VALUES ('기준금리는 ...', '{"document_id":"zz-test","review_status":"approved"}', 'zz_test', array_fill(0.1, ARRAY[1536])::vector)$q$);
+SELECT pg_temp.expect_err(18, '다른 차원(3) 벡터 거부', $q$INSERT INTO ai.data_projectteam02 (text, node_id, embedding) VALUES ('x', 'zz_test', '[1,2,3]')$q$, '22000');
+SELECT pg_temp.expect_err(19, '본문(text) 없는 행 거부', $q$INSERT INTO ai.data_projectteam02 (node_id) VALUES ('zz_test')$q$, '23502');
+INSERT INTO result SELECT 20, 'app_user는 벡터 테이블 접근 불가',
+  NOT has_table_privilege('app_user', 'ai.data_projectteam02', 'SELECT') AND NOT has_table_privilege('app_user', 'ai.data_projectteam02', 'INSERT'), 'privileges';
 -- 테스트 데이터 정리
+DELETE FROM ai.data_projectteam02 WHERE node_id = 'zz_test';
 DELETE FROM ai.rag_index_configurations WHERE collection_name = 'zz_test';
 DELETE FROM ai.rag_documents WHERE document_id IN ('bok800-154', 'bok800-155', 'bad-hash');
 
