@@ -1,4 +1,4 @@
--- 제약 검증 rev.8 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+-- 제약 검증 rev.8 + #97 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -196,6 +196,17 @@ SELECT pg_temp.expect_err(84, '기간 DAILY 거부 (현재 WEEKLY만)', $q$UPDAT
 SELECT pg_temp.expect_ok (85, '학습 카드 저장 (1페이지 1번)', $q$INSERT INTO concept_sections (concept_id, page_no, sort_order, section_type, body) VALUES ('00000000-0000-0000-0000-0000000000c1',1,1,'EXAMPLE','작년 1,500원이던 빵이 올해 1,700원이 되었어요.')$q$);
 SELECT pg_temp.expect_err(86, '페이지 번호 0 거부', $q$INSERT INTO concept_sections (concept_id, page_no, sort_order, section_type, body) VALUES ('00000000-0000-0000-0000-0000000000c1',0,1,'INTRO','x')$q$, '23514');
 SELECT pg_temp.expect_err(87, '정렬 순서 0 거부', $q$INSERT INTO concept_sections (concept_id, page_no, sort_order, section_type, body) VALUES ('00000000-0000-0000-0000-0000000000c1',1,0,'INTRO','x')$q$, '23514');
+
+-- 88~96 #97 문제·선택지 저장 제약
+SELECT pg_temp.expect_err(88, '같은 문항에 정답 2개 거부', $q$INSERT INTO question_choices (question_id, base_order, choice_text, is_correct) VALUES ('00000000-0000-0000-0000-0000000000d1',2,'증가',true)$q$, '23505');
+SELECT pg_temp.expect_ok (89, '같은 문항에 오답 추가는 허용', $q$INSERT INTO question_choices (question_id, base_order, choice_text, is_correct) VALUES ('00000000-0000-0000-0000-0000000000d1',2,'증가',false)$q$);
+SELECT pg_temp.expect_ok (90, '500자 보기 저장 (AI 보기 최대 길이)', $q$INSERT INTO question_choices (question_id, base_order, choice_text) VALUES ('00000000-0000-0000-0000-0000000000d1',3,repeat('가',500))$q$);
+SELECT pg_temp.expect_err(91, '501자 보기 거부', $q$INSERT INTO question_choices (question_id, base_order, choice_text) VALUES ('00000000-0000-0000-0000-0000000000d1',4,repeat('가',501))$q$, '22001');
+SELECT pg_temp.expect_err(92, '공백뿐인 보기 거부', $q$INSERT INTO question_choices (question_id, base_order, choice_text) VALUES ('00000000-0000-0000-0000-0000000000d1',4,'   ')$q$, '23514');
+SELECT pg_temp.expect_err(93, '빈 해설 거부', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by) VALUES ('Q-97-1','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','  ','MANUAL')$q$, '23514');
+SELECT pg_temp.expect_err(94, '근거 문서 없는 AI 문항 거부 (null·빈 배열)', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, source_document_ids) VALUES ('Q-97-2','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','AI','{}')$q$, '23514');
+SELECT pg_temp.expect_ok (95, 'AI 문항 저장 (근거·분류·학습 목표 포함)', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, source_document_ids, question_category, learning_objective) VALUES ('Q-97-3','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','AI','{bok2026-0504}','SCENARIO','인플레이션의 의미를 설명할 수 있다')$q$);
+SELECT pg_temp.expect_err(96, '정의되지 않은 문제 분류 거부', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, question_category) VALUES ('Q-97-4','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','MANUAL','QUIZ')$q$, '22P02');
 
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');

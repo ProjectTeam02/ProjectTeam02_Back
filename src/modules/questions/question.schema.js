@@ -6,6 +6,9 @@ const AppError = require('../../common/errors/AppError');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DIFFICULTIES = new Set(['BEGINNER', 'INTERMEDIATE', 'ADVANCED']);
+// #97: DB question_category Enum, question_choices.choice_text varchar(500), questions.learning_objective varchar(255)
+const CATEGORIES = new Set(['CONCEPT', 'COMPARISON', 'SCENARIO', 'APPLICATION']);
+const CHOICE_TEXT_MAX = 500;
 
 function requiredText(value, field, maxLength) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > maxLength) {
@@ -39,7 +42,7 @@ function generatedDraft({ body }) {
     }
     return {
       baseOrder: index + 1,
-      choiceText: requiredText(choice.text, `choices[${index}].text`, 255),
+      choiceText: requiredText(choice.text, `choices[${index}].text`, CHOICE_TEXT_MAX),
       isCorrect: choice.isCorrect,
       feedbackText: optionalText(choice.feedbackText, `choices[${index}].feedbackText`, 255),
     };
@@ -63,12 +66,17 @@ function generatedDraft({ body }) {
   if (body.difficulty != null && !DIFFICULTIES.has(body.difficulty)) {
     throw AppError.validation('difficulty는 BEGINNER, INTERMEDIATE, ADVANCED 중 하나여야 합니다.');
   }
+  if (body.questionCategory != null && !CATEGORIES.has(body.questionCategory)) {
+    throw AppError.validation('questionCategory는 CONCEPT, COMPARISON, SCENARIO, APPLICATION 중 하나여야 합니다.');
+  }
   return { body: {
     conceptId: body.conceptId,
     questionText: requiredText(body.questionText, 'questionText', 5000),
     explanation: requiredText(body.explanation, 'explanation', 5000),
     keyPoint: optionalText(body.keyPoint, 'keyPoint', 255),
     difficulty: body.difficulty || null,
+    questionCategory: body.questionCategory || null,
+    learningObjective: optionalText(body.learningObjective, 'learningObjective', 255),
     sourceDocumentIds,
     choices,
   } };

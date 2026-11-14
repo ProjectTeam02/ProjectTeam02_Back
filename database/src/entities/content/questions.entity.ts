@@ -1,6 +1,6 @@
 // 자동 생성: leren_erd.dbml (rev.5) 기준 (app.questions)
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { Difficulty, GeneratedBy, QuestionStatus, QuestionType } from '../common/enums';
+import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Difficulty, GeneratedBy, QuestionCategory, QuestionStatus, QuestionType } from '../common/enums';
 import { AiRequest } from '../ai/ai-requests.entity';
 import { Concept } from './concepts.entity';
 import { User } from '../account/users.entity';
@@ -8,6 +8,9 @@ import { User } from '../account/users.entity';
 /** 퀴즈 문항 (버전 관리). */
 @Index('questions_concept_id_idx', ['conceptId'])
 @Index('questions_question_code_version_idx', ['questionCode', 'version'], { unique: true })
+@Check('chk_questions_question_text', `char_length(btrim(question_text)) >= 1`)
+@Check('chk_questions_explanation', `char_length(btrim(explanation)) >= 1`)
+@Check('chk_questions_ai_sources', `(generated_by <> 'AI'::app.generated_by) OR (COALESCE(cardinality(source_document_ids), 0) >= 1)`)
 @Entity({ name: 'questions', schema: 'app' })
 export class Question {
   /** 문항 ID (버전별). API questionId */
@@ -43,6 +46,14 @@ export class Question {
   /** 문항 유형 */
   @Column({ name: 'question_type', type: 'enum', enum: QuestionType, enumName: 'question_type', default: QuestionType.MultipleChoice })
   questionType!: QuestionType;
+
+  /** AI 생성 분류 (CONCEPT / COMPARISON / SCENARIO / APPLICATION). 수동 문항은 null (#97) */
+  @Column({ name: 'question_category', type: 'enum', enum: QuestionCategory, enumName: 'question_category', nullable: true })
+  questionCategory!: QuestionCategory | null;
+
+  /** 문제가 확인하는 학습 목표 (AI 생성 요청의 learningObjectives 중 하나, #97) */
+  @Column({ name: 'learning_objective', type: 'varchar', length: 255, nullable: true })
+  learningObjective!: string | null;
 
   /** 문제 본문 */
   @Column({ name: 'question_text', type: 'text' })

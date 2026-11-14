@@ -34,7 +34,7 @@ test('rejects incomplete, failed, unapproved, inconsistent and oversized AI resp
     b => { b.topic = '다른 주제'; }, b => { b.difficulty = 'HARD'; }, b => { b.questions = []; },
     b => { b.questions[0].choices.pop(); }, b => { b.questions[0].choices[1] = b.questions[0].choices[0]; },
     b => { b.questions[0].correctAnswerIndex = 4; }, b => { b.questions[0].correctAnswerIndex = '0'; },
-    b => { b.questions[0].choices[0] = '가'.repeat(256); }, b => { b.questions[0].learningObjective = '다른 목표'; },
+    b => { b.questions[0].choices[0] = '가'.repeat(501); }, b => { b.questions[0].learningObjective = '다른 목표'; },
     b => { b.questions[0].questionType = 'MULTIPLE_CHOICE'; }, b => { b.validation = []; },
     b => { b.validation[0].decision = 'REJECT'; }, b => { b.validation[0].independentAnswerIndex = 2; },
     b => { b.validation[0].issues = ['오류']; }, b => { b.validation[0].questionIndex = 3; },
@@ -47,6 +47,15 @@ test('rejects incomplete, failed, unapproved, inconsistent and oversized AI resp
   }
   const duplicate = result(2); duplicate.questions[1] = duplicate.questions[0];
   assert.throws(() => schema.response(duplicate, input(2), () => ['DOC-1']), { code: 'SERVICE_UNAVAILABLE' });
+});
+
+test('#97: 500자 보기와 AI 문제 분류·학습 목표를 저장 입력으로 넘긴다', () => {
+  const body = result();
+  body.questions[0].choices[0] = '가'.repeat(500);
+  const [draft] = schema.response(body, input(), () => ['DOC-1']);
+  assert.equal(draft.choices[0].choiceText.length, 500);
+  assert.equal(draft.questionCategory, body.questions[0].questionType);
+  assert.equal(draft.learningObjective, body.questions[0].learningObjective);
 });
 
 test('final revision verdict is used, not an earlier APPROVE', () => {

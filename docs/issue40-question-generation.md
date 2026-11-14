@@ -56,7 +56,7 @@ conceptId는 백엔드에서 유효한 개념인지 확인하고 유지한다. F
   `AiRequest.knowledgeScope.generationResult`에 보존한다.
 - AI `COMPLETED`, error 없음, 동일 주제/난이도, 요청한 문제 수, 학습 목표 일치,
   보기 4개/중복 없음, 정답 범위, 최종 독립 검증 APPROVE 및 정답 일치가 필요하다.
-- AI 보기 허용 길이(500자)보다 DB choice_text(255자)가 짧다. 넘치는 응답은 거부하고
+- AI 보기 허용 길이와 DB choice_text는 모두 500자다 (#97에서 255 → 500). 넘치는 응답은 거부하고
   임의로 자르지 않는다. 잘못된 AI 응답은 503이며 문제를 일부만 저장하지 않는다.
 
 ## 출처 ID는 문서 ID가 아니다

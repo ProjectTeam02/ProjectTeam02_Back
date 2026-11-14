@@ -61,6 +61,7 @@ function response(body, input, resolveSourceIds) {
       return generatedDraft({ body: {
         conceptId: input.conceptId, questionText: q.question, explanation: q.explanation,
         difficulty: difficulties[input.difficulty], sourceDocumentIds: resolveSourceIds(q.sourceIds),
+        questionCategory: q.questionType, learningObjective: q.learningObjective,
         choices: q.choices.map((choice, i) => ({ text: choice, isCorrect: i === q.correctAnswerIndex })),
       } }).body;
     } catch (error) {
