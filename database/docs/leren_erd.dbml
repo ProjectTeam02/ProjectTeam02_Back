@@ -151,6 +151,12 @@ Enum card_tone {
 Enum question_type {
   MULTIPLE_CHOICE
 }
+Enum question_category {
+  CONCEPT
+  COMPARISON
+  SCENARIO
+  APPLICATION
+}
 Enum difficulty {
   BEGINNER
   INTERMEDIATE
@@ -596,7 +602,7 @@ Table concepts {
   short_definition varchar(255)
   summary varchar(255)
   estimated_minutes smallint
-  source_document_ids text[] [note: '논리 참조: ai.rag_documents.document_id']
+  source_document_ids text[] [note: '논리 참조: ai.rag_documents.document_id. #97 generated_by = AI면 1개 이상']
   status concept_status [not null, default: 'PUBLISHED']
   reviewed_by uuid [ref: > users.user_id]
   reviewed_at timestamptz
@@ -687,8 +693,10 @@ Table questions {
   supersedes_question_id uuid [ref: > questions.question_id]
   concept_id uuid [not null, ref: > concepts.concept_id, note: '1문항 1개념']
   question_type question_type [not null, default: 'MULTIPLE_CHOICE']
-  question_text text [not null]
-  explanation text [not null, note: '정답 해설']
+  question_category question_category [note: '#97 AI 생성 분류. 수동 문항은 null']
+  learning_objective varchar(255) [note: '#97 AI 생성 요청의 학습 목표']
+  question_text text [not null, note: '#97 공백 금지']
+  explanation text [not null, note: '정답 해설. #97 공백 금지']
   key_point varchar(255) [note: '다시 기억해요']
   difficulty difficulty
   generated_by generated_by [not null]
@@ -705,24 +713,31 @@ Table questions {
     (question_code, version) [unique]
     (concept_id) [note: 'rev.4 개념별 문항·통계 조회']
   }
+  checks {
+    `char_length(btrim(question_text)) >= 1` [name: 'chk_questions_question_text']
+    `char_length(btrim(explanation)) >= 1` [name: 'chk_questions_explanation']
+    `generated_by <> 'AI' OR coalesce(cardinality(source_document_ids), 0) >= 1` [name: 'chk_questions_ai_sources']
+  }
 }
 
 Table question_choices {
   choice_id uuid [pk, default: `gen_random_uuid()`, note: 'API choiceId']
   question_id uuid [not null, ref: > questions.question_id]
   base_order smallint [not null, note: '1~4']
-  choice_text varchar(255) [not null]
+  choice_text varchar(500) [not null, note: '#97 255 → 500 (AI 보기 최대 길이), 공백 금지']
   is_correct boolean [not null, default: false, note: '제출 전 응답 노출 금지']
   feedback_text varchar(255) [note: '오답 선택 시 피드백']
   created_at timestamptz [not null, default: `now()`]
   indexes {
     (question_id, base_order) [unique]
     (question_id, choice_id) [unique, note: 'rev.3 답안의 복합 FK 대상']
+    question_id [unique, name: 'uq_question_choices_one_correct', note: '#97 WHERE is_correct (문항당 정답 1개)']
   }
   checks {
     `base_order BETWEEN 1 AND 4` [name: 'chk_choices_base_order']
+    `char_length(btrim(choice_text)) >= 1` [name: 'chk_choices_choice_text']
   }
-  Note: '문항당 4행, 정답 1개(앱 검증)'
+  Note: '문항당 4행(앱 검증), 정답 1개(DB 부분 유니크, #97)'
 }
 
 Table stage_questions {

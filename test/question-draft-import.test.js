@@ -34,10 +34,12 @@ const draft = () => ({
   ],
 });
 
-function fakeDataSource({ hasConcept = true, failChoices = false } = {}) {
+function fakeDataSource({ hasConcept = true, failChoices = false, choiceError = null } = {}) {
   const events = [];
+  const saved = {};
   const dataSource = {
     events,
+    saved,
     async transaction(fn) {
       events.push('BEGIN');
       const manager = {
@@ -45,7 +47,7 @@ function fakeDataSource({ hasConcept = true, failChoices = false } = {}) {
           if (entity === Concept) return { async findOneBy() { return hasConcept ? { conceptId } : null; } };
           if (entity === Question) return {
             create(input) { return input; },
-            async save(input) { events.push('question'); return { ...input, questionId: 'generated-question-uuid' }; },
+            async save(input) { events.push('question'); saved.question = input; return { ...input, questionId: 'generated-question-uuid' }; },
           };
           if (entity === QuestionChoice) return {
             create(input) { return input; },
@@ -54,6 +56,7 @@ function fakeDataSource({ hasConcept = true, failChoices = false } = {}) {
               assert.equal(inputs.length, 4);
               assert.deepEqual(inputs.map((item) => item.baseOrder), [1, 2, 3, 4]);
               if (failChoices) throw Error('simulated database error');
+              if (choiceError) throw choiceError;
               return inputs;
             },
           };
@@ -118,5 +121,28 @@ test('missing concept returns 404 and transaction is rolled back', async () => {
 test('choice write failure rolls back the question transaction', async () => {
   const db = fakeDataSource({ failChoices: true });
   await assert.rejects(questionService(db).createGeneratedDraft(draft()), /simulated database error/);
+  assert.deepEqual(db.events, ['BEGIN', 'question', 'choices', 'ROLLBACK']);
+});
+
+test('#97: 500자 보기·문제 분류·학습 목표를 받아 저장한다', async () => {
+  const body = { ...draft(), questionCategory: 'SCENARIO', learningObjective: '인플레이션의 의미를 설명할 수 있다' };
+  body.choices = body.choices.map((choice, index) => (index === 0 ? { ...choice, text: '가'.repeat(500) } : choice));
+  const db = fakeDataSource();
+  await questionService(db).createGeneratedDraft(body);
+  assert.equal(db.saved.question.questionCategory, 'SCENARIO');
+  assert.equal(db.saved.question.learningObjective, '인플레이션의 의미를 설명할 수 있다');
+});
+
+test('#97: 501자 보기와 정의되지 않은 문제 분류는 거부한다', () => {
+  const longChoice = { ...draft() };
+  longChoice.choices = longChoice.choices.map((choice, index) => (index === 0 ? { ...choice, text: '가'.repeat(501) } : choice));
+  assert.throws(() => schema.generatedDraft({ body: longChoice }), { code: 'VALIDATION_ERROR' });
+  assert.throws(() => schema.generatedDraft({ body: { ...draft(), questionCategory: 'QUIZ' } }), { code: 'VALIDATION_ERROR' });
+});
+
+test('#97: DB 문제 제약 위반은 503이 아니라 검증 오류로 돌려준다', async () => {
+  const violation = Object.assign(new Error('duplicate key'), { driverError: { code: '23505', constraint: 'uq_question_choices_one_correct' } });
+  const db = fakeDataSource({ choiceError: violation });
+  await assert.rejects(questionService(db).createGeneratedDraft(draft()), { code: 'VALIDATION_ERROR' });
   assert.deepEqual(db.events, ['BEGIN', 'question', 'choices', 'ROLLBACK']);
 });

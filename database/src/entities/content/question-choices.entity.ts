@@ -2,10 +2,12 @@
 import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Question } from './questions.entity';
 
-/** 선택지. 문항당 4개, 정답 1개(앱 검증). */
+/** 선택지. 문항당 4개(앱 검증), 정답 1개(DB 부분 유니크, #97). */
 @Index('question_choices_question_id_base_order_idx', ['questionId', 'baseOrder'], { unique: true })
 @Index('question_choices_question_id_choice_id_idx', ['questionId', 'choiceId'], { unique: true })
+@Index('uq_question_choices_one_correct', ['questionId'], { unique: true, where: `"is_correct"` })
 @Check('chk_choices_base_order', `(base_order >= 1) AND (base_order <= 4)`)
+@Check('chk_choices_choice_text', `char_length(btrim((choice_text)::text)) >= 1`)
 @Entity({ name: 'question_choices', schema: 'app' })
 export class QuestionChoice {
   /** 선택지 ID. API choiceId */
@@ -25,8 +27,8 @@ export class QuestionChoice {
   @Column({ name: 'base_order', type: 'smallint' })
   baseOrder!: number;
 
-  /** 선택지 내용 */
-  @Column({ name: 'choice_text', type: 'varchar', length: 255 })
+  /** 선택지 내용 (AI 보기 최대 500자, #97) */
+  @Column({ name: 'choice_text', type: 'varchar', length: 500 })
   choiceText!: string;
 
   /** 정답 여부 (제출 전 응답 노출 금지) */

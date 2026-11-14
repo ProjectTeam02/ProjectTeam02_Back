@@ -10,10 +10,12 @@ module.exports = {
         explanation: { type: 'string', example: '포기한 대안 중 가장 가치가 큰 것을 말합니다.' },
         keyPoint: { type: 'string', nullable: true, maxLength: 255 },
         difficulty: { type: 'string', nullable: true, enum: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] },
+        questionCategory: { type: 'string', nullable: true, enum: ['CONCEPT', 'COMPARISON', 'SCENARIO', 'APPLICATION'] },
+        learningObjective: { type: 'string', nullable: true, maxLength: 255 },
         sourceDocumentIds: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'string' } },
         choices: { type: 'array', minItems: 4, maxItems: 4, items: {
           type: 'object', required: ['text', 'isCorrect'], properties: {
-            text: { type: 'string', maxLength: 255 },
+            text: { type: 'string', maxLength: 500 },
             isCorrect: { type: 'boolean' },
             feedbackText: { type: 'string', nullable: true, maxLength: 255 },
           },

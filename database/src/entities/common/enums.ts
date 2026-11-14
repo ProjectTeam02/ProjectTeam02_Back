@@ -129,6 +129,14 @@ export enum QuestionType {
   MultipleChoice = 'MULTIPLE_CHOICE',
 }
 
+/** AI 생성 문제 분류 (개념·비교·상황·응용) — DB 타입: question_category (#97) */
+export enum QuestionCategory {
+  Concept = 'CONCEPT',
+  Comparison = 'COMPARISON',
+  Scenario = 'SCENARIO',
+  Application = 'APPLICATION',
+}
+
 /** 난이도 — DB 타입: difficulty */
 export enum Difficulty {
   Beginner = 'BEGINNER',

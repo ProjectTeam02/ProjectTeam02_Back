@@ -117,6 +117,9 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 | rev.6 | `AiMessageSourcesContract` | AI 내부 API 계약 반영: `ai_message_sources.document_version` 문자열·null 허용, `chunk_id` 필수, (message_id, document_id, chunk_id) 유니크. ai 스키마·`ai_user` 분리 |
 | rev.7 | `AiMultiturnMemory` + `03_ai_tables.sql` | 멀티턴 메모리: `ai_conversation_summaries`(요약 이력), `ai_messages.summary_id`, `ai_user_memories`(장기 메모리), `ai_conversations` 요약 짝 CHECK, `ai_message_sources` 길이 확장. ai 스키마 `rag_documents`·`rag_document_chunks`·`rag_index_configurations` + app_user 읽기 권한 |
 | rev.8 | `GlossaryBadgeGoal` | 피그마 화면 검토 반영: `glossary_terms`·`concept_terms`(개념별 용어), `badges`·`user_badges`(배지), `user_settings.daily_goal_count` → `goal_count`(값 보존 RENAME) + `goal_period`(WEEKLY), `concept_sections` page_no·sort_order >= 1 |
+| — | `KakaoOAuthEntries`, `ContentDefaultPublished` | 카카오 OAuth 임시 저장소, 토픽·스테이지·개념 기본 상태 PUBLISHED |
+| #96 | `04_ai_vector_table.sql` | ai 벡터 테이블 `ai.data_projectteam02` 정의를 백엔드로 이관 (LlamaIndex 구조와 동일) |
+| #97 | `QuestionConstraints` | `question_choices.choice_text` 255 → 500(값 보존), 문항당 정답 1개(부분 유니크), 문제 본문·해설·선택지 공백 금지, AI 문항 근거 필수 CHECK, `questions.question_category`·`learning_objective` 추가 |
 
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
 
