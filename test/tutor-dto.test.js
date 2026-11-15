@@ -122,6 +122,7 @@ test('AI internal response is checked against DB column lengths before saving', 
   bad({ groundingStatus: 'OK' }, 'groundingStatus');
   bad({ sources: [{ ...aiAnswer(requestId).sources[0], conceptCode: 'x'.repeat(31) }] }, 'sources[0].conceptCode');
   bad({ sources: [{ ...aiAnswer(requestId).sources[0], relevanceScore: 1.5 }] }, 'sources[0].relevanceScore');
+  bad({ sources: [{ ...aiAnswer(requestId).sources[0], rank: 32768 }] }, 'sources[0].rank');
   bad({ usage: { ...aiAnswer(requestId).usage, retrievalStrategy: 'x'.repeat(51) } }, 'usage.retrievalStrategy');
   bad({ usage: undefined }, 'usage');
 });

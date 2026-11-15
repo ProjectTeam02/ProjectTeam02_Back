@@ -38,12 +38,12 @@ function text(value, field, max, { required = false } = {}) {
   return value;
 }
 
-function int(value, field, { min = 0, required = false } = {}) {
+function int(value, field, { min = 0, max = Number.MAX_SAFE_INTEGER, required = false } = {}) {
   if (value === undefined || value === null) {
     if (required) throw invalid(field);
     return null;
   }
-  if (!Number.isSafeInteger(value) || value < min) throw invalid(field);
+  if (!Number.isSafeInteger(value) || value < min || value > max) throw invalid(field);
   return value;
 }
 
@@ -62,7 +62,8 @@ function source(item, index) {
     chunkId: text(item.chunkId, field('chunkId'), SOURCE_LIMITS.chunkId, { required: true }),
     titleSnapshot: text(item.titleSnapshot, field('titleSnapshot'), SOURCE_LIMITS.titleSnapshot),
     conceptCode: text(item.conceptCode, field('conceptCode'), SOURCE_LIMITS.conceptCode),
-    rank: int(item.rank, field('rank'), { min: 1, required: true }),
+    // tutor.ai_message_sources.rank는 smallint (최대 32767)
+    rank: int(item.rank, field('rank'), { min: 1, max: 32767, required: true }),
     relevanceScore: number(item.relevanceScore, field('relevanceScore'), { min: 0, max: 1 }),
   };
 }

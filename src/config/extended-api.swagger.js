@@ -19,6 +19,9 @@ const studyPlanBody = required => ({ required: true, content: { 'application/jso
 const success = (description = '성공') => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/ExtendedSuccess' } } } });
 const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 403: error, 404: error, 409: error, 422: error, 503: error, ...responses } });
 
+// 실제로 나오는 응답 코드만 남긴다 (secure()는 공통 코드를 모두 붙이므로)
+const only = (operation, codes) => ({ ...operation, responses: Object.fromEntries(Object.entries(operation.responses).filter(([code]) => codes.includes(Number(code)))) });
+
 module.exports = {
   schemas: {
     ExtendedSuccess: { type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean', example: true }, data: { type: 'object', additionalProperties: true } } },
@@ -30,26 +33,19 @@ module.exports = {
     '/api/v1/stages/{stageId}/relearn': { post: secure('통과 Stage 재학습', [uuid('stageId')]) },
     '/api/v1/bosses/{bossId}': { get: secure('Boss Stage 상세', [uuid('bossId')]) },
     '/api/v1/bosses/{bossId}/attempts': { post: secure('Boss 응시 시작', [uuid('bossId')], body({ mode: { type: 'string', enum: ['START', 'RETRY'] } }, ['mode'])) },
-    '/api/v1/boss-attempts/{attemptId}': { get: secure('Boss 응시 조회', [uuid('attemptId')], undefined, {
+    '/api/v1/boss-attempts/{attemptId}': { get: only(secure('Boss 응시 조회', [uuid('attemptId')], undefined, {
       200: { description: 'Boss 응시 상태와 현재 문항', content: { 'application/json': { schema: {
         type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAttempt' } },
       } } } },
-    }) },
-    '/api/v1/boss-attempts/{attemptId}/answers': { post: secure('Boss 답안 제출', [uuid('attemptId')], {
+    }), [200, 401, 404, 422, 503]) },
+    '/api/v1/boss-attempts/{attemptId}/answers': { post: only(secure('Boss 답안 제출', [uuid('attemptId')], {
       required: true,
-      content: { 'application/json': { schema: {
-        type: 'object', required: ['questionId', 'choiceId', 'submissionId'], additionalProperties: false,
-        properties: {
-          questionId: { type: 'string', format: 'uuid' },
-          choiceId: { type: 'string', format: 'uuid' },
-          submissionId: { type: 'string', format: 'uuid', description: '앱이 생성하는 제출 멱등성 식별자' },
-        },
-      } } },
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/NormalStageAnswerRequest' } } },
     }, {
       201: { description: 'Boss 답안 채점 결과', content: { 'application/json': { schema: {
         type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAnswer' } },
       } } } },
-    }) },
+    }), [201, 401, 404, 409, 422, 503]) },
     '/api/v1/attempts/{attemptId}/current-question': { get: secure('현재 문항', [uuid('attemptId')]) },
     '/api/v1/attempts/{attemptId}/answers': { post: secure('일반 Stage 답안 제출', [uuid('attemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid' } })) },
     '/api/v1/attempts/{attemptId}': { get: secure('응시 결과 상세', [uuid('attemptId')]) },
@@ -58,7 +54,7 @@ module.exports = {
     '/api/v1/reviews/missions/{missionId}': { get: secure('복습 임무 상세', [uuid('missionId')]) },
     '/api/v1/reviews/missions/{missionId}/attempts': { post: secure('복습 임무 응시 시작', [uuid('missionId')]) },
     '/api/v1/review-attempts/{reviewAttemptId}': { get: secure('복습 응시 상세', [uuid('reviewAttemptId')]) },
-    '/api/v1/review-attempts/{reviewAttemptId}/answers': { post: secure('복습 답안 제출', [uuid('reviewAttemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid' } })) },
+    '/api/v1/review-attempts/{reviewAttemptId}/answers': { post: { ...secure('복습 답안 제출', [uuid('reviewAttemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid', description: '복습 응시 시작·조회 응답의 문항별 submissionId를 그대로 보냄 (앱이 새로 만들지 않음)' } })), description: '퀴즈 답안 제출과 달리 submissionId는 서버가 복습 시작 때 문항마다 미리 만든 값입니다. 같은 submissionId·같은 선택지 재요청은 duplicate=true로 처리합니다.' } },
     '/api/v1/questions/{questionId}/bookmark': { put: secure('문항 북마크 등록', [uuid('questionId')]), delete: secure('문항 북마크 해제', [uuid('questionId')]) },
     '/api/v1/statistics/overall': { get: secure('전체 학습 통계', [query('from', { type: 'string', format: 'date' }), query('to', { type: 'string', format: 'date' })]) },
     '/api/v1/statistics/concepts': { get: secure('개념별 학습 통계', [query('sort', { type: 'string', enum: ['title', 'accuracy', 'attempts'] }), query('limit', { type: 'integer', minimum: 1, maximum: 100 }), query('topicId', { type: 'string', format: 'uuid' })]) },
@@ -71,7 +67,7 @@ module.exports = {
     '/api/v1/users/me': { patch: secure('사용자 프로필 변경', [], body({ nickname: { type: 'string', minLength: 1, maxLength: 30 } })) },
     '/api/v1/learning/progress/active': { get: secure('활성 학습 진행') },
     '/api/v1/learning/progress/{stageId}': { put: secure('학습 진행 위치 저장', [uuid('stageId')], body({ contentPosition: { type: 'integer', minimum: 1 } })) },
-    '/api/v1/learning/history/{historyId}': { get: secure('학습 이력 상세', [uuid('historyId')]) },
+    '/api/v1/learning/history/{historyId}': { get: { ...only(secure('학습 이력 상세 (호환 경로)', [uuid('historyId')], undefined, { 200: { description: '응시 요약과 실제 답안', content: { 'application/json': { schema: { $ref: '#/components/schemas/LearningHistoryDetailResponse' } } } } }), [200, 401, 404, 422, 503]), deprecated: true, description: '앱은 /api/v1/learning/history/LEARNING/{recordId}를 사용합니다. 응답은 같습니다.' } },
     '/api/v1/inventory': { get: secure('인벤토리 조회') },
     '/api/v1/inventory/{itemId}/equip': { put: secure('코스튬 장착', [uuid('itemId')]) },
     '/api/v1/shop/costumes': { get: secure('코스튬 상점', [query('category', { type: 'string', enum: ['TOP', 'BOTTOM'] }), query('page', { type: 'integer', minimum: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100 }), query('limit', { type: 'integer', minimum: 1, maximum: 100 })]) },
