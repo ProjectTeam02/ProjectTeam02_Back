@@ -6,6 +6,7 @@
 const AppError = require('../../../common/errors/AppError');
 const f = require('../../../common/dto/fields');
 const authFields = require('../../auth/dto/authFields');
+const { ClassCode } = require('@leren/database');
 
 function noQuery(query, name = 'query') {
   if (Object.keys(f.object(query, name)).length) throw AppError.validation('지원하지 않는 조회 조건입니다.');
@@ -79,10 +80,11 @@ function notificationUpdate({ params, query, body }) {
   return { params, body: result };
 }
 
+// 직업은 classCode(WARRIOR/MAGE/ARCHER)로 지정한다. 직업 최초 선택 API(PATCH /users/me/character-class)와 같은 기준
 function classUpdate({ params, query, body }) {
   noQuery(query);
-  const value = f.onlyKeys(f.object(body, 'body'), ['classId'], 'body');
-  return { params, body: { classId: f.uuid(value.classId, 'classId') } };
+  const value = f.onlyKeys(f.object(body, 'body'), ['classCode'], 'body');
+  return { params, body: { classCode: f.oneOf(value.classCode, Object.values(ClassCode), 'classCode') } };
 }
 
 function shopList({ query }) {

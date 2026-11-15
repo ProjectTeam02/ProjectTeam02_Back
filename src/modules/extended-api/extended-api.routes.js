@@ -36,6 +36,8 @@ const quizSchema = require('../quizzes/quiz.schema');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
 const quizContractService = require('../quizzes/quiz.service')(AppDataSource);
 const learningService = require('../learning/learning.service')(AppDataSource);
+const characterService = require('../characters/character.service')(AppDataSource);
+const userSchema = require('../users/user.schema');
 
 const router = express.Router();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -344,8 +346,9 @@ function routes() {
     let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub }); if (!setting) setting = repo(manager, UserSetting).create({ userId: req.user.sub });
     setting.reminderEnabled = body.reminderEnabled; if (body.reminderTime !== undefined) setting.reminderTime = body.reminderTime; if (body.timezone !== undefined) setting.timezone = string(body.timezone, 'timezone', 50); await repo(manager, UserSetting).save(setting); return notificationSetting.response(setting);
   }))));
-  router.put('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classId)), 200)));
-  router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classId)), 200)));
+  // 호환 경로: 직업 최초 선택(PATCH /users/me/character-class)과 같은 동작. 정리 이슈에서 삭제 예정
+  router.put('/users/me/character/class', auth, validate(userSchema.characterClass), asyncHandler(async (req, res) => data(res, await characterService.select(req.user.sub, req.body.classCode))));
+  router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classCode)))));
   router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const owned = await repo(manager, UserCostume).find({ where: { userId: req.user.sub }, relations: { costume: true } }); const equipped = await repo(manager, UserEquippedCostume).findBy({ userId: req.user.sub });
     return { items: owned.map(row => serializeCostume(row.costume, true, equipped.some(item => item.itemId === row.itemId))), equipped: equipped.map(row => ({ category: row.category, itemId: row.itemId })) };
@@ -398,11 +401,19 @@ function routes() {
   return router;
 }
 
-async function changeClass(userId, classId) {
+// 직업 변경: 활성 직업만, 직업을 처음 선택한 뒤에만 가능 (최초 선택은 온보딩 완료 처리가 있는 PATCH /users/me/character-class)
+async function changeClass(userId, classCode) {
   return AppDataSource.transaction(async manager => {
-    const classRow = await repo(manager, CharacterClass).findOneBy({ classId: id(classId, 'classId') }); if (!classRow) throw AppError.notFound('직업을 찾을 수 없습니다.');
-    let character = await repo(manager, UserCharacter).findOneBy({ userId }); if (!character) character = repo(manager, UserCharacter).create({ userId, classId: classRow.classId, firstSelectedAt: new Date() }); else { character.classId = classRow.classId; character.classChangedAt = new Date(); }
-    await repo(manager, UserCharacter).save(character); return { userId, classId: classRow.classId, classCode: classRow.classCode };
+    const classRow = await repo(manager, CharacterClass).findOneBy({ classCode, isActive: true });
+    if (!classRow) throw AppError.notFound('선택할 수 있는 직업을 찾을 수 없습니다.');
+    const character = await repo(manager, UserCharacter).findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
+    if (!character) throw AppError.conflict('직업을 아직 선택하지 않았습니다. 직업 선택(PATCH /api/v1/users/me/character-class)을 먼저 진행하세요.');
+    if (character.classId !== classRow.classId) {
+      character.classId = classRow.classId;
+      character.classChangedAt = new Date();
+      await repo(manager, UserCharacter).save(character);
+    }
+    return { userId, classId: classRow.classId, classCode: classRow.classCode };
   });
 }
 
