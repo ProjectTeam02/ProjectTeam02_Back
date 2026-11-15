@@ -3,6 +3,19 @@ const error = { description: '오류 응답', content: { 'application/json': { s
 const uuid = name => ({ name, in: 'path', required: true, schema: { type: 'string', format: 'uuid' } });
 const query = (name, schema = { type: 'string' }) => ({ name, in: 'query', schema });
 const body = (properties, required = Object.keys(properties)) => ({ required: true, content: { 'application/json': { schema: { type: 'object', required, additionalProperties: false, properties } } } });
+// /study-plans 요청: /calendar/plans와 같은 규칙이고 목표 필드 이름만 title (goal과 함께 보내면 422)
+const studyPlanBody = required => ({ required: true, content: { 'application/json': { schema: {
+  type: 'object', additionalProperties: false, required, ...(required.length ? {} : { minProperties: 1 }),
+  properties: {
+    scheduledDate: { type: 'string', format: 'date' },
+    title: { type: 'string', minLength: 1, maxLength: 30, description: '일정 목표 (StudyPlan.title). /calendar/plans의 goal과 같음' },
+    stageId: { type: 'string', format: 'uuid', nullable: true },
+    conceptId: { type: 'string', format: 'uuid', nullable: true },
+    topicId: { type: 'string', format: 'uuid', description: '선택. 보내면 Stage/Concept의 주제와 일치해야 함' },
+    planType: { type: 'string', enum: ['NEW_LEARNING', 'REVIEW'], default: 'NEW_LEARNING' },
+  },
+  description: required.length ? 'Stage 또는 Concept 중 하나 이상 필요' : '보내지 않은 필드는 유지. 최종적으로 Stage 또는 Concept 하나 이상 남아야 함',
+} } } });
 const success = (description = '성공') => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/ExtendedSuccess' } } } });
 const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 403: error, 404: error, 409: error, 422: error, 503: error, ...responses } });
 
@@ -64,8 +77,11 @@ module.exports = {
     '/api/v1/shop/costumes': { get: secure('코스튬 상점', [query('category', { type: 'string', enum: ['TOP', 'BOTTOM'] }), query('page', { type: 'integer', minimum: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100 }), query('limit', { type: 'integer', minimum: 1, maximum: 100 })]) },
     '/api/v1/shop/costumes/{itemId}': { get: secure('코스튬 상세', [uuid('itemId')]) },
     '/api/v1/shop/purchases': { post: secure('코스튬 구매', [], body({ itemId: { type: 'string', format: 'uuid' }, requestId: { type: 'string', minLength: 1, maxLength: 100 } })) },
-    '/api/v1/study-plans': { post: secure('학습 일정 생성', [], body({ scheduledDate: { type: 'string', format: 'date' }, stageId: { type: 'string', format: 'uuid' }, conceptId: { type: 'string', format: 'uuid' }, title: { type: 'string' } }, ['scheduledDate', 'title'])) },
-    '/api/v1/study-plans/{planId}': { patch: secure('학습 일정 변경', [uuid('planId')]), delete: secure('학습 일정 삭제', [uuid('planId')]) },
+    '/api/v1/study-plans': { post: { ...secure('학습 일정 생성 (호환 경로)', [], studyPlanBody(['scheduledDate', 'title'])), deprecated: true, description: '앱은 /api/v1/calendar/plans를 사용합니다. 이 경로는 목표를 title로 받아 같은 규칙으로 저장하며, 응답 필드는 goal입니다.' } },
+    '/api/v1/study-plans/{planId}': {
+      patch: { ...secure('학습 일정 변경 (호환 경로)', [uuid('planId')], studyPlanBody([])), deprecated: true, description: '앱은 /api/v1/calendar/plans/{planId}를 사용합니다. 보내지 않은 필드는 유지합니다.' },
+      delete: { ...secure('학습 일정 삭제 (호환 경로)', [uuid('planId')]), deprecated: true },
+    },
     '/api/v1/auth/password-reset/request': { post: { tags: ['Auth'], summary: '비밀번호 재설정 요청', requestBody: body({ email: { type: 'string', format: 'email' } }), responses: { 200: { description: '접수됨' }, 422: error } } },
     '/api/v1/auth/password-reset/confirm': { post: { tags: ['Auth'], summary: '비밀번호 재설정 확정', requestBody: body({ resetToken: { type: 'string', minLength: 1, maxLength: 4096 }, newPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 } }), responses: { 200: { description: '변경됨' }, 401: error, 422: error } } },
     '/api/v1/auth/refresh': { post: { tags: ['Auth'], summary: 'Cookie 또는 Body Refresh Token 재발급', parameters: [{ name: 'refreshToken', in: 'cookie', schema: { type: 'string' } }], responses: { 200: { description: '재발급 성공' }, 401: error } } },

@@ -87,44 +87,21 @@ function publicWallet(wallet, userId) {
   return responseDto.wallet(wallet, userId);
 }
 
-function parseScheduleBody(body, partial = false) {
-  const result = { ...(body || {}) };
-  if (result.title !== undefined && result.goal === undefined) result.goal = result.title;
-  if (!partial && result.planType === undefined) result.planType = 'NEW_LEARNING';
-  if (!partial && result.topicId === undefined && (result.stageId || result.conceptId)) {
-    // The calendar service accepts topicId as an assertion. It is resolved below.
-    result.topicId = undefined;
-  }
-  return result;
-}
-
-async function topicForTarget(manager, input) {
-  if (input.topicId) return input.topicId;
-  const targetId = input.stageId || input.conceptId;
-  if (!targetId) return undefined;
-  const entity = input.stageId ? Stage : Concept;
-  const row = await repo(manager, entity).findOneBy(input.stageId ? { stageId: targetId } : { conceptId: targetId });
-  return row?.topicId;
-}
-
-function mapPlanInput(input, topicId) {
-  const mapped = parseScheduleBody(input);
-  if (topicId) mapped.topicId = topicId;
-  if (mapped.title !== undefined && mapped.goal === undefined) mapped.goal = mapped.title;
-  return mapped;
+// /study-plans는 앱이 쓰는 /calendar/plans의 호환 경로다. 이 경로만 목표를 title로 안내하므로 goal로 바꿔 같은 DTO·서비스에 넘긴다.
+// 주제(topicId)·planType 기본값·Stage/Concept 필수 규칙은 달력 DTO와 서비스가 처리한다.
+function studyPlanBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.prototype.hasOwnProperty.call(body, 'title')) return body;
+  if (Object.prototype.hasOwnProperty.call(body, 'goal')) throw AppError.validation('title과 goal은 함께 보낼 수 없습니다.');
+  const { title, ...rest } = body;
+  return { ...rest, goal: title };
 }
 
 async function planCreate(userId, body) {
-  const input = parseScheduleBody(body);
-  const topicId = await AppDataSource.transaction(manager => topicForTarget(manager, input));
-  return calendarService.create(userId, mapPlanInput(input, topicId));
+  return calendarService.create(userId, studyPlanBody(body));
 }
 
 async function planUpdate(userId, planId, body) {
-  const input = parseScheduleBody(body, true);
-  let topicId;
-  if (input.stageId || input.conceptId) topicId = await AppDataSource.transaction(manager => topicForTarget(manager, input));
-  return calendarService.update(userId, id(planId, 'planId'), { ...input, ...(topicId ? { topicId } : {}) });
+  return calendarService.update(userId, id(planId, 'planId'), studyPlanBody(body));
 }
 
 function serializeCostume(row, owned = false, equipped = false) {
