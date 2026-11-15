@@ -115,6 +115,9 @@ Object.assign(module.exports.definition.paths, calendarRead.paths);
 // Figma 19-01 response schema. Existing endpoint/path/security remain unchanged.
 const myPage = require('./mypage.swagger');
 Object.assign(module.exports.definition.components.schemas, myPage.schemas);
+const devices = require('./devices.swagger');
+Object.assign(module.exports.definition.components.schemas, devices.schemas);
+Object.assign(module.exports.definition.paths, devices.paths);
 const characterOnboarding = require('./character-onboarding.swagger');
 Object.assign(module.exports.definition.components.schemas, characterOnboarding.schemas);
 Object.assign(module.exports.definition.paths, characterOnboarding.paths);

@@ -18,6 +18,7 @@
 // #98 (2026-11-14): app 스키마를 영역별 스키마 7개로 분리 (테이블·컬럼·제약 이름은 그대로)
 //                     account(계정·인증·약관) character(캐릭터·상점) content(학습 콘텐츠) learning(진행도·퀴즈)
 //                     reward(보상·성장) review(오답·복습·일정) tutor(AI 튜터 대화). app 스키마에는 TypeORM 관리용만 남음
+// E-1 (2026-11-15): 푸시 알림 기반 — account.notification_logs(알림 발송 기록, 사용자·종류·날짜 UNIQUE), Enum notification_type·notification_status
 // 변경 요약
 //   1) 용어를 API 명세에 맞춤: region→topic, step→stage, job→class,
 //      concept_auto_review→review_mission, review_session→review_attempt,
@@ -92,6 +93,14 @@ Enum account.token_type {
 Enum account.device_platform {
   IOS
   ANDROID
+}
+Enum account.notification_type {
+  LEARNING_REMINDER [note: 'E-1 학습 알림 (매일 설정 시각)']
+}
+Enum account.notification_status {
+  PENDING [note: '발송 전 먼저 기록 (중복 발송 방지)']
+  SENT
+  FAILED
 }
 Enum account.session_revoke_reason {
   LOGOUT
@@ -460,6 +469,26 @@ Table account.user_settings {
 // =====================================================================
 // 2. 캐릭터·상점  (API: /users/me/character/class, /inventory, /shop/*)
 // =====================================================================
+Table account.notification_logs {
+  notification_log_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null, ref: > account.users.user_id]
+  notification_type account.notification_type [not null]
+  target_date date [not null, note: '사용자 시간대(user_settings.timezone) 기준 발송 날짜']
+  status account.notification_status [not null, default: 'PENDING']
+  device_count smallint [not null, default: 0, note: '보낸 기기 수']
+  success_count smallint [not null, default: 0, note: '성공한 기기 수']
+  error_code varchar(50) [note: '실패 사유 (Expo 오류 코드 등)']
+  created_at timestamptz [not null, default: `now()`]
+  sent_at timestamptz
+  indexes {
+    (user_id, notification_type, target_date) [unique, name: 'uq_notification_logs_user_type_date', note: '같은 사용자·종류·날짜 1회 발송']
+  }
+  checks {
+    `(device_count >= 0) AND (success_count >= 0) AND (success_count <= device_count)` [name: 'chk_notification_logs_counts']
+  }
+  Note: 'E-1 알림 발송 기록. 발송 모듈은 PENDING으로 먼저 INSERT하고 충돌하면 보내지 않음'
+}
+
 Table character.character_classes {
   class_id uuid [pk, default: `gen_random_uuid()`, note: 'v2 jobs.job_id → API classId']
   class_code character.class_code [not null, unique]

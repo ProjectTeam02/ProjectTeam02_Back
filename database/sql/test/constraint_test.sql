@@ -1,4 +1,4 @@
--- 제약 검증 rev.8 + #97 + #98 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+-- 제약 검증 rev.8 + #97 + #98 + E-1 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -209,13 +209,21 @@ SELECT pg_temp.expect_ok (95, 'AI 문항 저장 (근거·분류·학습 목표 �
 SELECT pg_temp.expect_err(96, '정의되지 않은 문제 분류 거부', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, question_category) VALUES ('Q-97-4','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','MANUAL','QUIZ')$q$, '22P02');
 
 -- 97~98 #98 영역별 스키마
-INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 (account 9, character 5, content 12, learning 3, reward 7, review 5, tutor 6)',
-  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:9,character:5,content:12,learning:3,review:5,reward:7,tutor:6',
+INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 (account 10, character 5, content 12, learning 3, reward 7, review 5, tutor 6)',
+  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:10,character:5,content:12,learning:3,review:5,reward:7,tutor:6',
   string_agg(schemaname || ':' || n, ',' ORDER BY schemaname)
   FROM (SELECT schemaname, count(*) n FROM pg_tables WHERE schemaname IN ('account','character','content','learning','reward','review','tutor') GROUP BY 1) x;
 INSERT INTO result SELECT 98, 'app 스키마에는 TypeORM 관리 테이블만 (migrations, typeorm_metadata)',
   coalesce(string_agg(tablename, ',' ORDER BY tablename), '') = 'migrations,typeorm_metadata', coalesce(string_agg(tablename, ',' ORDER BY tablename), '없음')
   FROM pg_tables WHERE schemaname = 'app';
+
+-- 99~104 E-1 알림 발송 기록 (같은 사용자·종류·날짜 1회)
+SELECT pg_temp.expect_ok (99, '학습 알림 발송 기록 저장 (PENDING 기본값)', $q$INSERT INTO notification_logs (user_id, notification_type, target_date) VALUES ('00000000-0000-0000-0000-000000000001','LEARNING_REMINDER','2026-11-15')$q$);
+SELECT pg_temp.expect_err(100, '같은 사용자·종류·날짜 두 번째 기록 거부 (중복 발송 방지)', $q$INSERT INTO notification_logs (user_id, notification_type, target_date) VALUES ('00000000-0000-0000-0000-000000000001','LEARNING_REMINDER','2026-11-15')$q$, '23505');
+SELECT pg_temp.expect_ok (101, '다음 날 기록은 허용', $q$INSERT INTO notification_logs (user_id, notification_type, target_date, status, device_count, success_count, sent_at) VALUES ('00000000-0000-0000-0000-000000000001','LEARNING_REMINDER','2026-11-16','SENT',2,2,now())$q$);
+SELECT pg_temp.expect_err(102, '정의되지 않은 알림 종류 거부', $q$INSERT INTO notification_logs (user_id, notification_type, target_date) VALUES ('00000000-0000-0000-0000-000000000001','MARKETING','2026-11-17')$q$, '22P02');
+SELECT pg_temp.expect_err(103, '성공 수가 기기 수보다 많으면 거부', $q$INSERT INTO notification_logs (user_id, notification_type, target_date, device_count, success_count) VALUES ('00000000-0000-0000-0000-000000000001','LEARNING_REMINDER','2026-11-18',1,2)$q$, '23514');
+SELECT pg_temp.expect_err(104, '없는 사용자 기록 거부 (FK)', $q$INSERT INTO notification_logs (user_id, notification_type, target_date) VALUES ('00000000-0000-0000-0000-0000000000ff','LEARNING_REMINDER','2026-11-15')$q$, '23503');
 
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');

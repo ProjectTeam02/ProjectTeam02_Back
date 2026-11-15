@@ -18,11 +18,13 @@ const stageRoutes = require('../modules/stages/stage.routes');
 const conceptRoutes = require('../modules/concepts/concept.routes');
 const characterRoutes = require('../modules/characters/character.routes');
 const extendedApiRoutes = require('../modules/extended-api/extended-api.routes');
+const deviceRoutes = require('../modules/devices/device.routes');
 
 const router = express.Router();
 
 router.use(normalStageRoutes);
 router.use('/auth', authRoutes);
+router.use('/users/me/devices', deviceRoutes);
 router.use('/users', userRoutes);
 router.use('/tutor', tutorRoutes);
 router.use('/quizzes', quizRoutes);

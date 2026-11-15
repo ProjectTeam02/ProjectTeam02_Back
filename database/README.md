@@ -122,6 +122,7 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 | #96 | `04_ai_vector_table.sql` | ai 벡터 테이블 `ai.data_projectteam02` 정의를 백엔드로 이관 (LlamaIndex 구조와 동일) |
 | #97 | `QuestionConstraints` | `question_choices.choice_text` 255 → 500(값 보존), 문항당 정답 1개(부분 유니크), 문제 본문·해설·선택지 공백 금지, AI 문항 근거 필수 CHECK, `questions.question_category`·`learning_objective` 추가 |
 | #98 | `SplitAppSchema` + `01_app_schema.sql` | app 스키마를 영역별 스키마 7개로 분리 (`ALTER TABLE/TYPE ... SET SCHEMA`, 데이터·권한 보존). 테이블·컬럼·제약 이름은 그대로. 적용 전 `01_app_schema.sql`을 다시 실행해 스키마를 먼저 만듦 |
+| E-1 | `NotificationLogs` | 알림 발송 기록 `account.notification_logs` 추가 (사용자·종류·날짜 UNIQUE로 하루 1회 발송, Enum `notification_type`·`notification_status`). 새 테이블만 추가 |
 | — | `03_ai_tables.sql` + `sql/ai/drop_chunk_embedding.sql` | ai 스키마 `rag_document_chunks.embedding`(항상 null) 제거. 벡터는 `data_projectteam02`에만 저장 |
 
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
