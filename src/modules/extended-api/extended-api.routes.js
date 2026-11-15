@@ -35,6 +35,7 @@ const classChangeResponseDto = require('../characters/dto/classChangeResponse.dt
 const quizSchema = require('../quizzes/quiz.schema');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
 const quizContractService = require('../quizzes/quiz.service')(AppDataSource);
+const learningService = require('../learning/learning.service')(AppDataSource);
 
 const router = express.Router();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -106,15 +107,6 @@ async function planUpdate(userId, planId, body) {
 
 function serializeCostume(row, owned = false, equipped = false) {
   return responseDto.costume(row, owned, equipped);
-}
-
-async function ownedAttempt(manager, userId, attemptId, lock = false) {
-  const attempt = await repo(manager, LearningAttempt).findOne({
-    where: { attemptId: id(attemptId, 'attemptId'), userId },
-    ...(lock ? { lock: { mode: 'pessimistic_write' } } : {}),
-  });
-  if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
-  return attempt;
 }
 
 async function reviewItemResponse(manager, item) {
@@ -289,7 +281,7 @@ function routes() {
     const result = await quizContractService.bossStart(req.user.sub, req.params.bossId, req.body.mode);
     return data(res, result, result.resumed ? 200 : 201);
   }));
-  router.get('/boss-attempts/:attemptId', auth, asyncHandler(async (req, res) => data(res, await quizContractService.bossGet(req.user.sub, id(req.params.attemptId, 'attemptId')))));
+  router.get('/boss-attempts/:attemptId', auth, validate(quizSchema.attempt), asyncHandler(async (req, res) => data(res, await quizContractService.bossGet(req.user.sub, req.params.attemptId))));
   router.post('/boss-attempts/:attemptId/answers', auth, validate(quizSchema.newAnswer), asyncHandler(async (req, res) => data(res, await quizContractService.bossSubmit(req.user.sub, req.body.questionId, { ...req.body, attemptId: req.params.attemptId }), 201)));
 
   // Study plan aliases for the public API contract.
@@ -312,11 +304,8 @@ function routes() {
     await repo(manager, UserStageProgress).save(progress);
     return progressResponseDto.updated(progress);
   }))));
-  router.get('/learning/history/:historyId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const attempt = await ownedAttempt(manager, req.user.sub, req.params.historyId);
-    const submissions = await repo(manager, QuestionSubmission).find({ where: { attemptId: attempt.attemptId }, relations: { question: true, choice: true }, order: { sequenceNo: 'ASC' } });
-    return { historyId: attempt.attemptId, attempt, answers: submissions.map(row => ({ questionId: row.questionId, choiceId: row.choiceId, isCorrect: row.isCorrect, explanation: row.question?.explanation })) };
-  }))));
+  // 앱이 쓰는 /learning/history/LEARNING/{recordId}와 같은 응답 (이력 DTO). 이 확장 경로는 정리 이슈에서 삭제 예정
+  router.get('/learning/history/:historyId', auth, validate(requestDto.pathOnly('historyId')), asyncHandler(async (req, res) => data(res, await learningService.historyDetail(req.user.sub, 'LEARNING', req.params.historyId))));
 
   // Review list, mission and answer APIs.
   router.get('/reviews/items', auth, validate(requestDto.reviewItems), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {

@@ -271,6 +271,24 @@ test('unknown and other-user attempts have identical 404 and never load their an
   assert.equal(db.queries.filter(query => query.entity === QuestionSubmission).length, 0);
 });
 
+test('compatibility path /learning/history/{historyId} returns the same history DTO without internal fields', async () => {
+  const row = attempt({ idempotencyKey: 'internal-key' });
+  submit(row, true);
+  const official = await detail(row);
+  const alias = await get(`/${row.attemptId}`);
+  assert.equal(alias.status, 200, JSON.stringify(alias.body));
+  assert.deepEqual(alias.body, official.body);
+  assert.equal(alias.body.data.recordId, row.attemptId);
+  assert.equal(alias.body.data.submissions.length, 1);
+  const text = JSON.stringify(alias.body);
+  assert.equal(text.includes('internal-key'), false);
+  assert.equal('userId' in alias.body.data, false);
+  const other = attempt({ userId: ids.other });
+  assert.equal((await get(`/${other.attemptId}`)).status, 404);
+  assert.equal((await get(`/${row.attemptId}?type=STAGE`)).status, 422);
+  assert.equal((await get('/not-uuid')).status, 422);
+});
+
 test('JWT and active session are mandatory for both GET endpoints', async () => {
   const row = attempt();
   for (const accessToken of ['', 'invalid-token']) {
