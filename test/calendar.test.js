@@ -222,6 +222,46 @@ test('nonexistent subjects and mismatched topic/content links are rejected', asy
   assert.equal(db.rows(StudyPlan).length, 0);
 });
 
+test('topicId and planType are optional: topic comes from Stage/Concept and planType defaults to NEW_LEARNING', async () => {
+  const fromStage = await create({ topicId: undefined, planType: undefined });
+  assert.deepEqual(fromStage.topic, { topicId: ids.topic, title: '경제 기초' });
+  assert.equal(fromStage.planType, 'NEW_LEARNING');
+  const fromConcept = await create({ topicId: undefined, stageId: undefined, conceptId: ids.concept2 });
+  assert.deepEqual(fromConcept.topic, { topicId: ids.topic2, title: '금융' });
+  const none = await request('POST', '', input({ topicId: undefined, stageId: undefined }));
+  assert.equal(none.status, 422);
+  assert.equal(none.body.details.reason, 'TOPIC_ONLY_NOT_SUPPORTED');
+  assert.equal(db.rows(StudyPlan).length, 2);
+});
+
+async function studyPlans(method, path = '', body) {
+  const response = await fetch(`${base}/api/v1/study-plans${path}`, {
+    method, headers: { 'content-type': 'application/json', authorization: `Bearer ${ownerToken}` },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  return { status: response.status, body: await response.json() };
+}
+
+test('/study-plans compatibility path accepts title as the goal and follows the same rules', async () => {
+  const created = await studyPlans('POST', '', { scheduledDate: '2026-11-20', title: '  물가 복습  ', stageId: ids.stage });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.data.goal, '물가 복습');
+  assert.equal(created.body.data.planType, 'NEW_LEARNING');
+  assert.deepEqual(created.body.data.topic, { topicId: ids.topic, title: '경제 기초' });
+  assert.equal(db.rows(StudyPlan)[0].title, '물가 복습');
+  const updated = await studyPlans('PATCH', `/${created.body.data.planId}`, { title: '수정 목표' });
+  assert.equal(updated.status, 200, JSON.stringify(updated.body));
+  assert.equal(updated.body.data.goal, '수정 목표');
+  for (const body of [
+    { scheduledDate: '2026-11-20', title: '목표', goal: '목표', stageId: ids.stage },
+    { scheduledDate: '2026-11-20', title: '목표' },
+    { scheduledDate: '2026-11-20', title: '가'.repeat(31), stageId: ids.stage },
+    { scheduledDate: '2026-11-20', title: '목표', stageId: ids.stage, extra: true },
+  ]) assert.equal((await studyPlans('POST', '', body)).status, 422, JSON.stringify(body));
+  assert.equal((await studyPlans('PATCH', `/${created.body.data.planId}`, { title: 'a', goal: 'b' })).status, 422);
+  assert.equal(db.rows(StudyPlan).length, 1);
+});
+
 test('Topic-only storage is explicitly rejected instead of losing the subject', async () => {
   const result = await request('POST', '', input({ stageId: null, conceptId: null }));
   assert.equal(result.status, 422);
@@ -282,7 +322,7 @@ test('Swagger contains only the three new mutations and matches goal/topic respo
   assert.ok(item.patch.responses[200]);
   assert.ok(item.delete.responses[200]);
   assert.equal(spec.components.schemas.ScheduleCreateRequest.additionalProperties, false);
-  assert.deepEqual(spec.components.schemas.ScheduleCreateRequest.required, ['scheduledDate', 'topicId', 'planType', 'goal']);
+  assert.deepEqual(spec.components.schemas.ScheduleCreateRequest.required, ['scheduledDate', 'goal']);
   const plan = await create();
   for (const field of spec.components.schemas.Schedule.required) assert.ok(field in plan, field);
   assert.equal((await fetch(`${base}/api/v1/calendar/plans`, { headers: { authorization: `Bearer ${ownerToken}` } })).status, 404);

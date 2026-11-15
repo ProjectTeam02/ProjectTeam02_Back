@@ -2,10 +2,10 @@ const uuid = { type: 'string', format: 'uuid' };
 const date = { type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Asia/Seoul 기준 달력 날짜. 시각 없이 YYYY-MM-DD, 실제 존재하는 날짜' };
 const inputFields = {
   scheduledDate: date,
-  topicId: { ...uuid, description: '선택한 Stage/Concept의 소속 Topic. 목표와 별도로 검증' },
+  topicId: { ...uuid, description: '선택. 주제는 Stage/Concept에서 정해지며, 보내면 그 소속 Topic과 일치해야 함' },
   stageId: { ...uuid, nullable: true },
   conceptId: { ...uuid, nullable: true },
-  planType: { type: 'string', enum: ['NEW_LEARNING', 'REVIEW'] },
+  planType: { type: 'string', enum: ['NEW_LEARNING', 'REVIEW'], default: 'NEW_LEARNING', description: '생성 때 생략하면 NEW_LEARNING' },
   goal: { type: 'string', minLength: 1, maxLength: 30, description: '나의 목표. 앞뒤 공백 제거 후 1~30 Unicode 문자. StudyPlan.title에 저장' },
 };
 const error = description => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } });
@@ -17,13 +17,13 @@ const commonErrors = { 401: error('JWT가 없거나 유효한 세션이 아님')
 module.exports = {
   schemas: {
     ScheduleCreateRequest: {
-      type: 'object', additionalProperties: false, required: ['scheduledDate', 'topicId', 'planType', 'goal'],
+      type: 'object', additionalProperties: false, required: ['scheduledDate', 'goal'],
       properties: inputFields,
       anyOf: [
         { required: ['stageId'], properties: { stageId: { ...uuid, nullable: false } } },
         { required: ['conceptId'], properties: { conceptId: { ...uuid, nullable: false } } },
       ],
-      description: 'Stage 또는 Concept 하나 이상이 필요합니다. 둘 다 있으면 StageConcept 연결도 검사합니다. Topic만 받는 일정은 현 DB로 보존할 수 없어 422입니다.',
+      description: 'Stage 또는 Concept 하나 이상이 필요합니다(없으면 422, details.reason=TOPIC_ONLY_NOT_SUPPORTED). 둘 다 있으면 StageConcept 연결도 검사합니다. topicId·planType은 선택입니다.',
     },
     SchedulePatchRequest: {
       type: 'object', additionalProperties: false, minProperties: 1, properties: inputFields,
