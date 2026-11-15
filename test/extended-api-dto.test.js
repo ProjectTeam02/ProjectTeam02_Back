@@ -39,6 +39,14 @@ test('PATCH DTOs distinguish omitted optional fields from explicit null', () => 
   const nulled = requestDto.notificationUpdate({ params: {}, query: {}, body: { reminderEnabled: true, reminderTime: null } });
   assert.deepEqual(omitted.body, { reminderEnabled: true });
   assert.deepEqual(nulled.body, { reminderEnabled: true, reminderTime: null });
+  // reminderEnabled 없이 시각·시간대만 바꿀 수 있고, HH:MM은 HH:MM:SS로 맞춘다
+  assert.deepEqual(requestDto.notificationUpdate({ params: {}, query: {}, body: { reminderTime: '20:30' } }).body, { reminderTime: '20:30:00' });
+  assert.deepEqual(requestDto.notificationUpdate({ params: {}, query: {}, body: { timezone: 'Asia/Seoul' } }).body, { timezone: 'Asia/Seoul' });
+  rejects(() => requestDto.notificationUpdate({ params: {}, query: {}, body: {} }));
+  rejects(() => requestDto.notificationUpdate({ params: {}, query: {}, body: { reminderEnabled: 'true' } }));
+  rejects(() => requestDto.notificationUpdate({ params: {}, query: {}, body: { reminderTime: '24:00' } }));
+  rejects(() => requestDto.notificationUpdate({ params: {}, query: {}, body: { timezone: 'Mars/Base' } }));
+  rejects(() => requestDto.notificationUpdate({ params: {}, query: { a: '1' }, body: { reminderEnabled: true } }));
   rejects(() => requestDto.notificationUpdate({ params: {}, query: {}, body: { reminderEnabled: true, unknown: 1 } }));
    rejects(() => userUpdateDto.parse({ params: {}, query: {}, body: {} }));
   rejects(() => userUpdateDto.parse({ params: {}, query: {}, body: { nickname: null } }));
