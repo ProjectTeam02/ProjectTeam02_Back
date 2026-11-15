@@ -13,7 +13,7 @@
 
 | 영역 | 폴더 → 스키마 | 주요 테이블 | 쓰는 모듈 |
 |---|---|---|---|
-| 계정·인증·약관 | `account/` → `account` | users, terms, user_terms_agreements, social_accounts, account_tokens, user_devices, user_sessions, user_settings, kakao_oauth_entries | auth, users, notifications |
+| 계정·인증·약관·알림 | `account/` → `account` | users, terms, user_terms_agreements, social_accounts, account_tokens, user_devices, user_sessions, user_settings, kakao_oauth_entries, notification_logs | auth, users, notifications |
 | 캐릭터·상점 | `character/` → `character` | character_classes, costumes, user_characters, user_costumes, user_equipped_costumes | characters, costumes |
 | 학습 콘텐츠 | `content/` → `content` | topics, stages, concepts, concept_sections, questions, question_choices 외 | topics, stages, concepts, questions |
 | 진행도·퀴즈 | `progress/` → `learning` | user_stage_progress, learning_attempts, question_submissions | learning, quizzes |
@@ -26,7 +26,7 @@
 
 1. DB 변경이 필요하면 DB 담당에게 요청 (이슈 또는 PR 코멘트)
 2. 엔티티 수정 + 새 마이그레이션 + 문서 갱신을 한 PR로
-3. CI `db-check`(컴파일·마이그레이션·차이 없음·연동 21개·SQL 제약 97개·ai 스키마 8개·ai 테이블 21개) 통과 후 병합
+3. CI `db-check`(컴파일·마이그레이션·차이 없음·연동 21개·SQL 제약 103개·ai 스키마 8개·ai 테이블 21개) 통과 후 병합
 4. 병합된 마이그레이션은 수정하지 않고, 바꿀 게 있으면 새 마이그레이션 추가
 
 자세한 사용법은 `database/README.md`, 엔티티 목록은 `database/docs/ENTITIES.md`를 봅니다.

@@ -1,8 +1,8 @@
 const crypto = require('node:crypto');
-const { User, SocialAccount, UserGrowth, UserSetting, UserSession } = require('@leren/database');
+const { User, SocialAccount, UserGrowth, UserSetting, UserSession, UserDevice } = require('@leren/database');
 
 function database() {
-  let tables = new Map([User, SocialAccount, UserGrowth, UserSetting, UserSession].map(entity => [entity, []]));
+  let tables = new Map([User, SocialAccount, UserGrowth, UserSetting, UserSession, UserDevice].map(entity => [entity, []]));
   let collide = false;
   let transactions = 0;
   const repository = entity => ({
