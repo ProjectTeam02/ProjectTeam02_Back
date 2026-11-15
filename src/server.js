@@ -12,6 +12,7 @@ require('dotenv').config();
 
 const app = require('./app');
 const { connectDatabase } = require('./config/database');
+const { startReminderScheduler } = require('./modules/notifications/reminder.scheduler');
 
 const port = process.env.PORT || 3000;
 
@@ -19,6 +20,8 @@ connectDatabase()
   .then(() => {
     app.listen(port, () => {
       console.log(`Server listening on port ${port}`);
+      // 학습 알림 스케줄러: PUSH_SCHEDULER_ENABLED=true일 때만 시작 (기본 꺼짐)
+      startReminderScheduler();
     });
   })
   .catch((err) => {
