@@ -24,7 +24,7 @@ function service(dataSource = AppDataSource) {
       let setting = await repo.findOneBy({ userId });
       if (!setting) setting = repo.create({ userId });
       setting.reminderEnabled = learningOn;
-      return notificationSetting.response(await repo.save(setting));
+      return notificationSetting.legacyResponse(await repo.save(setting));
     },
   };
 }

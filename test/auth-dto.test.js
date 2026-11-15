@@ -77,8 +77,11 @@ test('notification DTO validates learningOn and returns fixed fields only', () =
   assert.deepEqual(notificationSetting.parse({ learningOn: false }), { learningOn: false });
   assert.throws(() => notificationSetting.parse({ learningOn: 'true' }), isValidation);
   assert.throws(() => notificationSetting.parse(undefined), isValidation);
-  const data = notificationSetting.response({ userId: 'u1', reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', goalCount: 3, createdAt: 'c', updatedAt: 'u', futureColumn: 'x' });
-  assert.deepEqual(data, { userId: 'u1', learningOn: true, reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', dailyGoalCount: 3, createdAt: 'c', updatedAt: 'u' });
+  const row = { userId: 'u1', reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', goalCount: 3, createdAt: 'c', updatedAt: 'u', futureColumn: 'x' };
+  // 공식 응답: 알림 설정 필드만 (목표 goalCount·내부 userId 없음)
+  assert.deepEqual(notificationSetting.response(row), { reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', updatedAt: 'u' });
+  // 호환 응답: 앱이 읽는 learningOn 유지, dailyGoalCount 제거
+  assert.deepEqual(notificationSetting.legacyResponse(row), { userId: 'u1', learningOn: true, reminderEnabled: true, reminderTime: null, timezone: 'Asia/Seoul', updatedAt: 'u', createdAt: 'c' });
 });
 
 test.describe('auth HTTP responses use the DTO shape', () => {

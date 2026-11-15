@@ -338,13 +338,18 @@ function routes() {
     const user = await repo(manager, User).findOneBy({ userId: req.user.sub }); if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
     user.nickname = req.body.nickname; user.nicknameUpdatedAt = new Date(); await repo(manager, User).save(user); return userUpdateDto.response(user);
   }))));
+  // 알림 설정 (공식): 행이 없으면 기본값으로 만든다
   router.get('/users/me/notification-settings', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub }); if (!setting) setting = await repo(manager, UserSetting).save(repo(manager, UserSetting).create({ userId: req.user.sub })); return notificationSetting.response(setting);
+    let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub });
+    if (!setting) setting = await repo(manager, UserSetting).save(repo(manager, UserSetting).create({ userId: req.user.sub }));
+    return notificationSetting.response(setting);
   }))));
+  // 보낸 필드만 바꾸고 나머지는 유지한다
   router.patch('/users/me/notification-settings', auth, validate(requestDto.notificationUpdate), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const body = req.body;
-    let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub }); if (!setting) setting = repo(manager, UserSetting).create({ userId: req.user.sub });
-    setting.reminderEnabled = body.reminderEnabled; if (body.reminderTime !== undefined) setting.reminderTime = body.reminderTime; if (body.timezone !== undefined) setting.timezone = string(body.timezone, 'timezone', 50); await repo(manager, UserSetting).save(setting); return notificationSetting.response(setting);
+    let setting = await repo(manager, UserSetting).findOne({ where: { userId: req.user.sub }, lock: { mode: 'pessimistic_write' } });
+    if (!setting) setting = repo(manager, UserSetting).create({ userId: req.user.sub });
+    for (const key of notificationSetting.UPDATE_FIELDS) if (req.body[key] !== undefined) setting[key] = req.body[key];
+    return notificationSetting.response(await repo(manager, UserSetting).save(setting));
   }))));
   // 호환 경로: 직업 최초 선택(PATCH /users/me/character-class)과 같은 동작. 정리 이슈에서 삭제 예정
   router.put('/users/me/character/class', auth, validate(userSchema.characterClass), asyncHandler(async (req, res) => data(res, await characterService.select(req.user.sub, req.body.classCode))));
