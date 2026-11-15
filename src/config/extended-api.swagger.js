@@ -19,6 +19,7 @@ const studyPlanBody = required => ({ required: true, content: { 'application/jso
 const success = (description = '성공') => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/ExtendedSuccess' } } } });
 const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 403: error, 404: error, 409: error, 422: error, 503: error, ...responses } });
 
+const classCodeField = { type: 'string', enum: ['WARRIOR', 'MAGE', 'ARCHER'], description: '직업 코드 (GET /api/v1/character-classes의 classCode)' };
 // 실제로 나오는 응답 코드만 남긴다 (secure()는 공통 코드를 모두 붙이므로)
 const only = (operation, codes) => ({ ...operation, responses: Object.fromEntries(Object.entries(operation.responses).filter(([code]) => codes.includes(Number(code)))) });
 
@@ -62,7 +63,10 @@ module.exports = {
     '/api/v1/mypage/summary': { get: secure('마이페이지 요약') },
     '/api/v1/growth/me': { get: secure('성장 정보') },
     '/api/v1/users/me/reward-ledger': { get: secure('보상 원장', [query('page'), query('size')]) },
-    '/api/v1/users/me/character/class': { put: secure('직업 최초 선택', [], body({ classId: { type: 'string', format: 'uuid' } })), patch: secure('직업 변경', [], body({ classId: { type: 'string', format: 'uuid' } })) },
+    '/api/v1/users/me/character/class': {
+      put: { ...only(secure('직업 최초 선택 (호환 경로)', [], body({ classCode: classCodeField })), [200, 401, 404, 409, 422, 503]), deprecated: true, description: '공식 경로는 PATCH /api/v1/users/me/character-class이며 동작과 응답이 같습니다.' },
+      patch: { ...only(secure('직업 변경', [], body({ classCode: classCodeField })), [200, 401, 404, 409, 422, 503]), description: '직업을 처음 선택한 뒤에만 변경할 수 있습니다(아니면 409). 활성 직업만 선택할 수 있고(아니면 404), 같은 직업이면 변경 없이 현재 값을 반환합니다. 응답: userId, classId, classCode' },
+    },
     '/api/v1/users/me/notification-settings': { get: secure('알림 설정 조회'), patch: secure('알림 설정 변경', [], body({ reminderEnabled: { type: 'boolean' }, reminderTime: { type: 'string', nullable: true, pattern: '^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$' }, timezone: { type: 'string', minLength: 1, maxLength: 50 } }, ['reminderEnabled'])) },
     '/api/v1/users/me': { patch: secure('사용자 프로필 변경', [], body({ nickname: { type: 'string', minLength: 1, maxLength: 30 } })) },
     '/api/v1/learning/progress/active': { get: secure('활성 학습 진행') },
