@@ -7,3 +7,4 @@ dist/
 # Local environment variants and backups; keep the blank example tracked.
 .env.*
 !.env.example
+tmp-*.js
