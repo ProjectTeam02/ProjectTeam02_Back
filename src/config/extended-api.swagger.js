@@ -4,7 +4,7 @@ const uuid = name => ({ name, in: 'path', required: true, schema: { type: 'strin
 const query = (name, schema = { type: 'string' }) => ({ name, in: 'query', schema });
 const body = (properties, required = Object.keys(properties)) => ({ required: true, content: { 'application/json': { schema: { type: 'object', required, additionalProperties: false, properties } } } });
 const success = (description = '성공') => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/ExtendedSuccess' } } } });
-const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 404: error, 409: error, 422: error, ...responses } });
+const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 403: error, 404: error, 409: error, 422: error, 503: error, ...responses } });
 
 module.exports = {
   schemas: {
@@ -17,6 +17,26 @@ module.exports = {
     '/api/v1/stages/{stageId}/relearn': { post: secure('통과 Stage 재학습', [uuid('stageId')]) },
     '/api/v1/bosses/{bossId}': { get: secure('Boss Stage 상세', [uuid('bossId')]) },
     '/api/v1/bosses/{bossId}/attempts': { post: secure('Boss 응시 시작', [uuid('bossId')], body({ mode: { type: 'string', enum: ['START', 'RETRY'] } }, ['mode'])) },
+    '/api/v1/boss-attempts/{attemptId}': { get: secure('Boss 응시 조회', [uuid('attemptId')], undefined, {
+      200: { description: 'Boss 응시 상태와 현재 문항', content: { 'application/json': { schema: {
+        type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAttempt' } },
+      } } } },
+    }) },
+    '/api/v1/boss-attempts/{attemptId}/answers': { post: secure('Boss 답안 제출', [uuid('attemptId')], {
+      required: true,
+      content: { 'application/json': { schema: {
+        type: 'object', required: ['questionId', 'choiceId', 'submissionId'], additionalProperties: false,
+        properties: {
+          questionId: { type: 'string', format: 'uuid' },
+          choiceId: { type: 'string', format: 'uuid' },
+          submissionId: { type: 'string', format: 'uuid', description: '앱이 생성하는 제출 멱등성 식별자' },
+        },
+      } } },
+    }, {
+      201: { description: 'Boss 답안 채점 결과', content: { 'application/json': { schema: {
+        type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAnswer' } },
+      } } } },
+    }) },
     '/api/v1/attempts/{attemptId}/current-question': { get: secure('현재 문항', [uuid('attemptId')]) },
     '/api/v1/attempts/{attemptId}/answers': { post: secure('일반 Stage 답안 제출', [uuid('attemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid' } })) },
     '/api/v1/attempts/{attemptId}': { get: secure('응시 결과 상세', [uuid('attemptId')]) },
@@ -43,7 +63,7 @@ module.exports = {
     '/api/v1/inventory/{itemId}/equip': { put: secure('코스튬 장착', [uuid('itemId')]) },
     '/api/v1/shop/costumes': { get: secure('코스튬 상점', [query('category', { type: 'string', enum: ['TOP', 'BOTTOM'] }), query('page', { type: 'integer', minimum: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100 }), query('limit', { type: 'integer', minimum: 1, maximum: 100 })]) },
     '/api/v1/shop/costumes/{itemId}': { get: secure('코스튬 상세', [uuid('itemId')]) },
-    '/api/v1/shop/purchases': { post: secure('코스튬 구매', [], body({ itemId: { type: 'string', format: 'uuid' }, requestId: { type: 'string' } })) },
+    '/api/v1/shop/purchases': { post: secure('코스튬 구매', [], body({ itemId: { type: 'string', format: 'uuid' }, requestId: { type: 'string', minLength: 1, maxLength: 100 } })) },
     '/api/v1/study-plans': { post: secure('학습 일정 생성', [], body({ scheduledDate: { type: 'string', format: 'date' }, stageId: { type: 'string', format: 'uuid' }, conceptId: { type: 'string', format: 'uuid' }, title: { type: 'string' } }, ['scheduledDate', 'title'])) },
     '/api/v1/study-plans/{planId}': { patch: secure('학습 일정 변경', [uuid('planId')]), delete: secure('학습 일정 삭제', [uuid('planId')]) },
     '/api/v1/auth/password-reset/request': { post: { tags: ['Auth'], summary: '비밀번호 재설정 요청', requestBody: body({ email: { type: 'string', format: 'email' } }), responses: { 200: { description: '접수됨' }, 422: error } } },
