@@ -17,10 +17,10 @@ const attempt = {
   type: 'object', required: ['attemptId', 'stageId', 'status', 'mode', 'attemptNo', 'maxQuestionCount', 'submittedCount', 'correctCount', 'hp', 'currentQuestion'],
   properties: {
     attemptId: uuid, stageId: uuid,
-    status: { type: 'string', enum: ['IN_PROGRESS', 'PASSED', 'FAILED'] },
+    status: { type: 'string', enum: ['IN_PROGRESS', 'PASSED', 'FAILED', 'ABANDONED'] },
     mode: { type: 'string', enum: ['START', 'RETRY'] },
     attemptNo: count, maxQuestionCount: count, submittedCount: count, correctCount: count, hp: count,
-    endReason: { type: 'string', nullable: true, enum: ['MONSTER_DEFEATED', 'QUESTIONS_EXHAUSTED', null] },
+    endReason: { type: 'string', nullable: true, enum: ['MONSTER_DEFEATED', 'QUESTIONS_EXHAUSTED', 'ABANDONED', null] },
     endedAt: { type: 'string', format: 'date-time', nullable: true }, rewardGranted: { type: 'boolean' },
     currentQuestion: { ...question, nullable: true },
     resumed: { type: 'boolean', description: '응시 시작 응답에서만 제공' },
@@ -28,7 +28,19 @@ const attempt = {
 };
 const result = {
   type: 'object', required: ['attemptId', 'stageId', 'status', 'submittedCount', 'correctCount', 'hp', 'endReason', 'endedAt', 'rewardGranted'],
-  properties: { ...attempt.properties },
+  properties: {
+    ...attempt.properties,
+    status: { type: 'string', enum: ['PASSED', 'FAILED'] },
+    endReason: { type: 'string', nullable: true, enum: ['MONSTER_DEFEATED', 'QUESTIONS_EXHAUSTED', null] },
+  },
+};
+const abandoned = {
+  type: 'object', required: ['attemptId', 'status', 'endReason', 'endedAt'], properties: {
+    attemptId: uuid,
+    status: { type: 'string', enum: ['ABANDONED'] },
+    endReason: { type: 'string', enum: ['ABANDONED', null], nullable: true },
+    endedAt: { type: 'string', format: 'date-time', nullable: true },
+  },
 };
 const answerRequest = {
   type: 'object', required: ['questionId', 'choiceId', 'submissionId'], additionalProperties: false,
@@ -51,7 +63,7 @@ const attemptDetails = {
   ...result,
   required: [...result.required, 'passed', 'answers', 'wrongQuestionIds', 'passHistory', 'reward'],
   properties: {
-    ...result.properties,
+    ...result.properties, status: attempt.properties.status, endReason: attempt.properties.endReason,
     passed: { type: 'boolean' },
     answers: { type: 'array', items: { type: 'object' } },
     wrongQuestionIds: { type: 'array', items: uuid },
@@ -96,6 +108,7 @@ module.exports = {
     NormalStageAnswerRequest: answerRequest,
     NormalStageAnswer: answer,
     NormalStageAttemptDetails: attemptDetails,
+    AbandonedLearningAttempt: abandoned,
   },
   paths: {
     '/api/v1/stages/{stageId}/attempts': { post: {
@@ -121,9 +134,15 @@ module.exports = {
       requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NormalStageAnswerRequest' } } } },
       responses: { 201: response({ $ref: '#/components/schemas/NormalStageAnswer' }), 401: error, 404: error, 409: error, 422: error, 503: error },
     } },
+    '/api/v1/attempts/{attemptId}/abandon': { post: {
+      tags: ['Quizzes'], security: bearer, summary: '일반 Stage 또는 Boss 응시 명시적 포기',
+      description: '사용자가 포기를 확정했을 때만 호출합니다. 본인의 진행 중 응시를 종료하고 답안·학습 진행도·보상을 보존합니다. 포기한 응시를 다시 요청하면 같은 종료 정보를 200으로 반환하며, 통과·실패한 응시는 409입니다. 본문과 조회 조건은 보내지 않습니다.',
+      parameters: [attemptId],
+      responses: { 200: response({ $ref: '#/components/schemas/AbandonedLearningAttempt' }), 401: error, 404: error, 409: error, 422: error, 503: error },
+    } },
     '/api/v1/attempts/{attemptId}': { get: {
       tags: ['Quizzes'], security: bearer, summary: '일반 Stage 응시 결과·답안 이력 조회',
-      description: '본인 응시의 PASS/FAIL, 종료 원인, 답안, 오답 문항 ID, 최초 통과·보상 이력을 반환합니다.',
+      description: '본인 응시의 상태, 종료 원인, 답안, 오답 문항 ID, 최초 통과·보상 이력을 반환합니다.',
       parameters: [attemptId], responses: { 200: response({ $ref: '#/components/schemas/NormalStageAttemptDetails' }), 401: error, 404: error, 422: error, 503: error },
     } },
     '/api/v1/quizzes/stages/{stageId}/attempts': { post: {
@@ -140,7 +159,7 @@ module.exports = {
     } },
     '/api/v1/quizzes/attempts/{attemptId}/result': { get: {
       tags: ['Quizzes'], security: bearer, summary: '완료된 일반 Stage 응시 결과',
-      description: 'PASSED 또는 FAILED 상태에서만 결과를 제공합니다. 진행 중이면 409입니다.',
+      description: 'PASSED 또는 FAILED 상태에서만 결과를 제공합니다. 진행 중이거나 포기한 응시는 409입니다.',
       parameters: [attemptId], responses: { 200: response({ $ref: '#/components/schemas/NormalStageResult' }), 401: error, 404: error, 409: error, 422: error },
     } },
   },
