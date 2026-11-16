@@ -28,7 +28,7 @@ function endReasonFor(status) {
 
 function submitted({
   attemptId, questionId, choiceId, isCorrect, explanation, hpBefore, hpAfter,
-  submittedCount, correctCount, status, endReason, rewardGranted, duplicate = false, currentQuestion,
+  submittedCount, correctCount, status, endReason, rewardGranted, duplicate = false, currentQuestion, bossCombat,
 }) {
   return {
     attemptId,
@@ -46,6 +46,7 @@ function submitted({
     rewardGranted: Boolean(rewardGranted),
     ...(duplicate ? { duplicate: true } : {}),
     ...(currentQuestion !== undefined ? { nextQuestion: currentQuestion } : {}),
+    ...(bossCombat !== undefined ? { bossCombat } : {}),
   };
 }
 

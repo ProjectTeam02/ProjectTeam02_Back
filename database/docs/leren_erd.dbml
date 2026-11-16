@@ -825,6 +825,7 @@ Table learning.learning_attempts {
   final_hp smallint
   submitted_count smallint [not null, default: 0]
   correct_count smallint [not null, default: 0]
+  boss_combat_state jsonb [note: '신규 Boss의 연속 정답, 크리티컬 사용, 격파 문항 번호, 보너스 대상 문항 수와 정답 수. 기존 응시와 일반 Stage는 null']
   is_first_pass boolean [not null, default: false]
   reward_granted boolean [not null, default: false]
   started_at timestamptz [not null, default: `now()`]

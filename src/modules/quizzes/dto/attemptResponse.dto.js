@@ -62,6 +62,7 @@ function summary(attempt) {
     endReason: attempt.endReason ?? null,
     endedAt: iso(attempt.endedAt),
     rewardGranted: Boolean(attempt.rewardGranted),
+    ...(attempt.bossCombatState ? { bossCombat: attempt.bossCombatState } : {}),
   };
 }
 
