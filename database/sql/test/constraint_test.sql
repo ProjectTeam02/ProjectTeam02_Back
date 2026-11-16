@@ -209,8 +209,9 @@ SELECT pg_temp.expect_ok (95, 'AI 문항 저장 (근거·분류·학습 목표 �
 SELECT pg_temp.expect_err(96, '정의되지 않은 문제 분류 거부', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, question_category) VALUES ('Q-97-4','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','MANUAL','QUIZ')$q$, '22P02');
 
 -- 97~98 #98 영역별 스키마
-INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 (account 10, character 5, content 12, learning 3, reward 7, review 5, tutor 6)',
-  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:10,character:5,content:12,learning:3,review:5,reward:7,tutor:6',
+INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 (account 10, character 5, content 12, learning 4, reward 7, review 5, tutor 6)',
+  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:10,character:5,content:12,learning:4,review:5,reward:7,tutor:6'
+    AND to_regclass('learning.boss_attempt_questions') IS NOT NULL,
   string_agg(schemaname || ':' || n, ',' ORDER BY schemaname)
   FROM (SELECT schemaname, count(*) n FROM pg_tables WHERE schemaname IN ('account','character','content','learning','reward','review','tutor') GROUP BY 1) x;
 INSERT INTO result SELECT 98, 'app 스키마에는 TypeORM 관리 테이블만 (migrations, typeorm_metadata)',

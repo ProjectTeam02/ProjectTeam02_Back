@@ -1,6 +1,6 @@
 # 엔티티 목록 (v3 rev.8 + #97·#98 + E-1)
 
-`src/entities` 아래 48개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml` 1~8절과 같은 DB를 만듭니다. #98부터 엔티티 폴더 = 영역 = DB 스키마입니다 (`progress/` → `learning`, `ai/` → `tutor`, 나머지는 폴더 이름과 같음). app 스키마에는 TypeORM 관리용(migrations, typeorm_metadata)만 남습니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`·`04_ai_vector_table.sql`로 만듭니다.
+`src/entities` 아래 49개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml` 1~8절과 같은 DB를 만듭니다. #98부터 엔티티 폴더 = 영역 = DB 스키마입니다 (`progress/` → `learning`, `ai/` → `tutor`, 나머지는 폴더 이름과 같음). app 스키마에는 TypeORM 관리용(migrations, typeorm_metadata)만 남습니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`·`04_ai_vector_table.sql`로 만듭니다.
 
 - 클래스·파일 이름: 테이블 이름의 단수형 PascalCase / kebab-case (`user_costumes` → `UserCostume`, `user-costumes.entity.ts`)
 - 속성 이름: 컬럼 이름의 camelCase = API 필드 이름 (`item_id` → `itemId`, `submission_id` → `submissionId`)
@@ -54,6 +54,7 @@
 | --- | --- | --- |
 | `user_stage_progress` | `UserStageProgress` | `user` → User<br>`stage` → Stage<br>`firstPassAttempt` → LearningAttempt |
 | `learning_attempts` | `LearningAttempt` | `user` → User<br>`stage` → Stage |
+| `boss_attempt_questions` | `BossAttemptQuestion` | `attempt` → LearningAttempt (응시 삭제 시 함께 삭제)<br>`question` → Question (선정 문항 ID 보호) |
 | `question_submissions` | `QuestionSubmission` | `attempt` → LearningAttempt<br>`question` → Question<br>`choice` → QuestionChoice (복합 FK) |
 
 ## 보상·성장 (`reward/` → 스키마 `reward`)

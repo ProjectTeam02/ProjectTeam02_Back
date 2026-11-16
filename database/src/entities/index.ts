@@ -28,6 +28,7 @@ import { GlossaryTerm } from './content/glossary-terms.entity';
 import { ConceptTerm } from './content/concept-terms.entity';
 import { UserStageProgress } from './progress/user-stage-progress.entity';
 import { LearningAttempt } from './progress/learning-attempts.entity';
+import { BossAttemptQuestion } from './progress/boss-attempt-questions.entity';
 import { QuestionSubmission } from './progress/question-submissions.entity';
 import { UserGrowth } from './reward/user-growth.entity';
 import { UserWallet } from './reward/user-wallets.entity';
@@ -78,6 +79,7 @@ export const entities = [
   ConceptTerm,
   UserStageProgress,
   LearningAttempt,
+  BossAttemptQuestion,
   QuestionSubmission,
   UserGrowth,
   UserWallet,
@@ -129,6 +131,7 @@ export {
   ConceptTerm,
   UserStageProgress,
   LearningAttempt,
+  BossAttemptQuestion,
   QuestionSubmission,
   UserGrowth,
   UserWallet,

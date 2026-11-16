@@ -10,6 +10,7 @@ const attemptDto = require('./dto/attemptResponse.dto');
 const resultDto = require('./dto/quizResultResponse.dto');
 const submitDto = require('./dto/submitAnswerResponse.dto');
 const historyDto = require('../learning/dto/historyResponse.dto');
+const bossQuestions = require('./boss-question.repository');
 
 const normalRules = { questions: 3, correct: 2, hp: 2 };
 const repository = (manager, entity) => manager.getRepository(entity);
@@ -37,12 +38,19 @@ function transition(attempt, isCorrect) {
   };
 }
 
-async function currentQuestion(manager, attempt) {
-  if (attempt.status !== 'IN_PROGRESS') return null;
-  const order = attempt.submittedCount + 1;
-  const mapping = await repository(manager, StageQuestion).findOne({
-    where: { stageId: attempt.stageId, questionOrder: order }, relations: { question: true },
+async function questionAt(manager, attempt, questionOrder, expectedType) {
+  if (expectedType === 'BOSS') {
+    const snapshot = await bossQuestions.findForAttempt(manager, attempt.attemptId, questionOrder);
+    if (snapshot !== undefined) return snapshot;
+  }
+  return repository(manager, StageQuestion).findOne({
+    where: { stageId: attempt.stageId, questionOrder }, relations: { question: true },
   });
+}
+
+async function currentQuestion(manager, attempt, expectedType) {
+  if (attempt.status !== 'IN_PROGRESS') return null;
+  const mapping = await questionAt(manager, attempt, attempt.submittedCount + 1, expectedType);
   if (!mapping || mapping.question?.status !== 'PUBLISHED') {
     throw AppError.unavailable('진행 중인 응시의 문항 구성이 올바르지 않습니다.');
   }
@@ -51,10 +59,6 @@ async function currentQuestion(manager, attempt) {
   });
   if (choices.length !== 4) throw AppError.unavailable('문항 선택지 구성이 올바르지 않습니다.');
   return attemptDto.question(mapping.question, choices);
-}
-
-async function view(manager, attempt) {
-  return attemptDto.view(attempt, await currentQuestion(manager, attempt));
 }
 
 async function requireStage(manager, stageId, expectedType = 'NORMAL') {
@@ -176,10 +180,10 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         const stage = await requireStage(manager, stageId, expectedType);
         const attemptRepo = repository(manager, LearningAttempt);
         const active = await attemptRepo.findOneBy({ userId, stageId, status: 'IN_PROGRESS' });
-        if (active) return attemptDto.started(active, await currentQuestion(manager, active), true);
+        if (active) return attemptDto.started(active, await currentQuestion(manager, active, expectedType), true);
         const progress = await requireUnlocked(manager, userId, stage);
         if (attemptType === 'RELEARN' && progress?.progressStatus !== 'PASSED') throw AppError.conflict('통과한 Stage만 재학습할 수 있습니다.');
-        await requireQuestionPool(manager, stageId, stage.maxQuestionCount);
+        if (expectedType === 'NORMAL') await requireQuestionPool(manager, stageId, stage.maxQuestionCount);
         const previous = await attemptRepo.findOne({ where: { userId, stageId }, order: { attemptNo: 'DESC' } });
         if (requestedMode === 'START' && previous) {
           throw AppError.conflict('이미 시작한 Stage는 RETRY 모드로 다시 응시해야 합니다.');
@@ -187,18 +191,26 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         if (requestedMode === 'RETRY' && !previous) {
           throw AppError.validation('처음 응시하는 Stage는 START 모드로 시작해야 합니다.');
         }
+        let bossQuestionIds;
+        if (expectedType === 'BOSS') {
+          if (stage.requiredCorrectCount > bossQuestions.questionCount || stage.initialMonsterHp > bossQuestions.questionCount) {
+            throw AppError.unavailable('Boss Stage Quiz 설정이 올바르지 않습니다.');
+          }
+          bossQuestionIds = await bossQuestions.draw(manager, stage.topicId);
+        }
         const attempt = await attemptRepo.save(attemptRepo.create({
           userId, stageId, attemptNo: (previous?.attemptNo || 0) + 1,
           attemptType, mode: requestedMode || (previous ? 'RETRY' : 'START'), status: 'IN_PROGRESS',
-          maxQuestionCount: stage.maxQuestionCount,
+          maxQuestionCount: bossQuestionIds?.length ?? stage.maxQuestionCount,
           requiredCorrectCount: stage.requiredCorrectCount,
           initialHp: stage.initialMonsterHp,
           finalHp: null, submittedCount: 0, correctCount: 0,
         }));
+        if (bossQuestionIds) await bossQuestions.save(manager, attempt.attemptId, bossQuestionIds);
         if (!progress) await repository(manager, UserStageProgress).save({
           userId, stageId, progressStatus: 'IN_PROGRESS', startedAt: new Date(),
         });
-        return attemptDto.started(attempt, await currentQuestion(manager, attempt), false);
+        return attemptDto.started(attempt, await currentQuestion(manager, attempt, expectedType), false);
       });
     },
     async get(userId, attemptId, expectedType = 'NORMAL') {
@@ -206,7 +218,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
         const attempt = await repository(manager, LearningAttempt).findOneBy({ attemptId, userId });
         if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
         await requireNormalAttempt(manager, attempt, expectedType);
-        return view(manager, attempt);
+        return attemptDto.view(attempt, await currentQuestion(manager, attempt, expectedType));
       });
     },
     async result(userId, attemptId, expectedType = 'NORMAL') {
@@ -266,7 +278,12 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
               const correctCount = earlier.filter(row => row.isCorrect).length;
               const status = priorKey.hpAfter === 0 || correctCount >= attempt.requiredCorrectCount
                 ? 'PASSED' : priorKey.sequenceNo === attempt.maxQuestionCount ? 'FAILED' : 'IN_PROGRESS';
-              const question = await repository(manager, StageQuestion).findOne({
+              let question;
+              if (expectedType === 'BOSS') {
+                await requireNormalAttempt(manager, attempt, expectedType);
+                question = await bossQuestions.findForAttempt(manager, attemptId, priorKey.sequenceNo);
+              }
+              if (question === undefined) question = await repository(manager, StageQuestion).findOne({
                 where: { stageId: attempt.stageId, questionId }, relations: { question: true },
               });
               return submitDto.submitted({
@@ -276,7 +293,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
                 submittedCount: priorKey.sequenceNo, correctCount, status,
                 rewardGranted: status === 'PASSED' && (expectedType === 'NORMAL' ? attempt.rewardGranted : attempt.isFirstPass),
                 duplicate: true,
-                currentQuestion: status === 'IN_PROGRESS' ? await currentQuestion(manager, attempt) : null,
+                currentQuestion: status === 'IN_PROGRESS' ? await currentQuestion(manager, attempt, expectedType) : null,
               });
             }
           }
@@ -284,9 +301,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
           const stage = await requireNormalAttempt(manager, attempt, expectedType);
           const order = attempt.submittedCount + 1;
           if (order > attempt.maxQuestionCount) throw AppError.conflict('제출 가능한 문항 수를 초과했습니다.');
-          const mapping = await repository(manager, StageQuestion).findOne({
-            where: { stageId: attempt.stageId, questionOrder: order }, relations: { question: true },
-          });
+          const mapping = await questionAt(manager, attempt, order, expectedType);
           if (!mapping || mapping.question?.status !== 'PUBLISHED') throw AppError.unavailable('현재 문항을 찾을 수 없습니다.');
           if (mapping.questionId !== questionId) throw AppError.conflict('현재 제출 가능한 문항이 아닙니다.');
           const previous = await submissionRepo.findOneBy({ attemptId, questionId });
@@ -336,7 +351,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
             attemptId, questionId, choiceId, isCorrect, explanation: mapping.question.explanation,
             hpBefore, hpAfter, submittedCount, correctCount, status,
             endReason: attempt.endReason, rewardGranted: attempt.rewardGranted,
-            currentQuestion: status === 'IN_PROGRESS' ? await currentQuestion(manager, attempt) : null,
+            currentQuestion: status === 'IN_PROGRESS' ? await currentQuestion(manager, attempt, expectedType) : null,
           });
         });
       } catch (error) {

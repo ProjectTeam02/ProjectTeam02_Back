@@ -41,8 +41,14 @@ module.exports = {
     '/api/v1/topics/{topicId}': { get: secure('주제 상세', [uuid('topicId')]) },
     '/api/v1/concepts/{conceptId}': { get: secure('개념 상세', [uuid('conceptId')]) },
     '/api/v1/stages/{stageId}/relearn': { post: secure('통과 Stage 재학습', [uuid('stageId')]) },
-    '/api/v1/bosses/{bossId}': { get: secure('Boss Stage 상세', [uuid('bossId')]) },
-    '/api/v1/bosses/{bossId}/attempts': { post: secure('Boss 응시 시작', [uuid('bossId')], body({ mode: { type: 'string', enum: ['START', 'RETRY'] } }, ['mode'])) },
+    '/api/v1/bosses/{bossId}': { get: { ...secure('Boss Stage 상세', [uuid('bossId')]),
+      description: 'maxQuestionCount는 신규 Boss 응시의 최대 문항 수(7)입니다. 이전 응시는 각 응시의 기존 문항 수를 유지합니다.',
+    } },
+    '/api/v1/bosses/{bossId}/attempts': { post: { ...secure('Boss 응시 시작', [uuid('bossId')], body({ mode: { type: 'string', enum: ['START', 'RETRY'] } }, ['mode']), {
+      200: success('진행 중 응시 복구'), 201: success('랜덤 7문항을 저장한 신규 응시'),
+      503: { ...error, description: '적격 공개 문항 부족 또는 Boss 설정/서비스 사용 불가. 새 응시는 저장되지 않습니다.' },
+    }), description: '동일 주제의 공개 문항 중 일반 Stage에 배정된 문항을 제외하고 7개를 선정합니다. 진행 중인 응시는 기존 구성과 답안을 유지합니다. 전투의 통과 조건은 기존 규칙을 사용합니다.',
+    } },
     '/api/v1/boss-attempts/{attemptId}': { get: only(secure('Boss 응시 조회', [uuid('attemptId')], undefined, {
       200: { description: 'Boss 응시 상태와 현재 문항', content: { 'application/json': { schema: {
         type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAttempt' } },
