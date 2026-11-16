@@ -34,7 +34,6 @@ const only = (operation, codes) => ({ ...operation, responses: Object.fromEntrie
 
 module.exports = {
   schemas: {
-    ExtendedSuccess: { type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean', example: true }, data: { type: 'object', additionalProperties: true } } },
     ConceptStatisticsResponse: {
       type: 'object', required: ['success', 'data'], properties: {
         success: { type: 'boolean', example: true },
@@ -49,6 +48,7 @@ module.exports = {
         } },
       },
     },
+    ExtendedSuccess: { type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean', example: true }, data: { type: 'object', additionalProperties: true } } },
   },
   paths: {
     '/api/v1/topics/tree': { get: secure('공개 주제 트리') },
