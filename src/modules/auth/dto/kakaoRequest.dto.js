@@ -5,7 +5,7 @@
  * 백엔드 작업: 외부 데이터와 내부 모델의 변환 규칙을 관리
  * 주의: 기존 필드명·오류 메시지 유지. 허용되지 않은 필드는 거절한다(OAuth 값 오염 방지).
  *
- * start Body     codeChallenge string 43자 base64url (PKCE S256), codeChallengeMethod 'S256'
+ * start Body     codeChallenge string 43자 base64url (PKCE S256), codeChallengeMethod 'S256', client? 'web' | 'mobile'
  * exchange Body  loginCode string 43자 base64url, codeVerifier string 43~128자, loginAttemptId uuid
  * kakao Body     authorizationCode string 4096자 이하, redirectUri 허용 목록과 정확히 일치하는 HTTP(S) URL
  */
@@ -20,12 +20,16 @@ const isObject = value => value && typeof value === 'object' && !Array.isArray(v
 const onlyKeys = (value, allowed) => Object.keys(value).every(key => allowed.includes(key));
 
 function parseStart(input) {
-  if (!isObject(input) || !onlyKeys(input, ['codeChallenge', 'codeChallengeMethod'])
+  if (!isObject(input) || !onlyKeys(input, ['codeChallenge', 'codeChallengeMethod', 'client'])
     || typeof input.codeChallenge !== 'string' || !OAUTH_TOKEN.test(input.codeChallenge)
     || input.codeChallengeMethod !== 'S256') {
     throw AppError.validation('S256 codeChallenge가 필요합니다.');
   }
-  return { codeChallenge: input.codeChallenge, codeChallengeMethod: 'S256' };
+  const hasClient = Object.hasOwn(input, 'client');
+  if (hasClient && !['web', 'mobile'].includes(input.client)) {
+    throw AppError.validation('client는 web 또는 mobile이어야 합니다.');
+  }
+  return { codeChallenge: input.codeChallenge, codeChallengeMethod: 'S256', ...(hasClient ? { client: input.client } : {}) };
 }
 
 function isOAuthState(value) {

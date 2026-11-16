@@ -103,9 +103,9 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     const code = 'it-code-' + crypto.randomUUID(); profiles.set(code, { id, ...extra });
     return { id, code, input: { authorizationCode: code, redirectUri: env.kakaoOauthCallbackUrl } };
   }
-  async function begin(who = identity()) {
+  async function begin(who = identity(), client) {
     const verifier = crypto.randomBytes(32).toString('base64url');
-    const s = await request('auth/kakao/start', { codeChallenge: crypto.createHash('sha256').update(verifier).digest('base64url'), codeChallengeMethod: 'S256' });
+    const s = await request('auth/kakao/start', { codeChallenge: crypto.createHash('sha256').update(verifier).digest('base64url'), codeChallengeMethod: 'S256', ...(client ? { client } : {}) });
     assert.equal(s.status, 200);
     return { who, verifier, start: s.body.data, state: new URL(s.body.data.authorizationUrl).searchParams.get('state') };
   }
@@ -511,6 +511,36 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     assert.equal((await request('auth/kakao/exchange', body)).status, 200);
     assert.equal(await entries.existsBy(exchangeKey), false);
     assert.equal((await request('auth/kakao/exchange', body)).status, 401);
+  });
+
+  await check('web callback creates a Kakao session in PostgreSQL and refresh rotates it', async () => {
+    const previous = env.kakaoWebReturnUrl;
+    const returnUrl = 'https://web.test/auth/callback';
+    env.kakaoWebReturnUrl = returnUrl;
+    try {
+      const flow = await begin(identity(), 'web');
+      const state = await entries.findOneByOrFail({ kind: 'state', tokenHash: digest(flow.state) });
+      assert.equal(state.payload.client, 'web');
+      const cb = await callback(flow);
+      assert.equal(cb.status, 302);
+      assert.equal(cb.location.origin + cb.location.pathname, returnUrl);
+      const exchange = await request('auth/kakao/exchange', exchangeBody(flow, cb));
+      assert.equal(exchange.status, 200);
+      const original = exchange.body.data;
+      const claims = tokenUtil.verifyRefreshToken(original.refreshToken);
+      const before = await d.getRepository(E.UserSession).findOneByOrFail({ sessionId: claims.sid });
+      assert.equal(before.loginMethod, 'KAKAO');
+      assert.equal(before.userId, original.user.userId);
+      const rotated = await request('auth/refresh', { refreshToken: original.refreshToken });
+      assert.equal(rotated.status, 200);
+      const replacement = tokenUtil.verifyRefreshToken(rotated.body.data.refreshToken);
+      assert.notEqual(replacement.sid, claims.sid);
+      assert.equal(replacement.sub, claims.sub);
+      const after = await d.getRepository(E.UserSession).findOneByOrFail({ sessionId: claims.sid });
+      assert.equal(after.revokeReason, 'ROTATED');
+    } finally {
+      env.kakaoWebReturnUrl = previous;
+    }
   });
 
   await check('expired database state and exchange codes fail closed and are pruned', async () => {

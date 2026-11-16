@@ -13,6 +13,8 @@ const { AppDataSource } = require('../../config/database');
 const KakaoClient = require('../../clients/kakao.client');
 const mobileService = require('./kakao-mobile.service');
 const mobileController = require('./kakao-mobile.controller');
+const env = require('../../config/env');
+const { webLoginCors } = require('./kakao-web-return');
 const { PostgresOAuthStore } = require('./kakao-postgres-oauth.store');
 const asyncHandler = require('../../common/utils/asyncHandler');
 
@@ -24,6 +26,7 @@ function privateResponse(_req, res, next) {
   res.set('Cache-Control', 'no-store').set('Pragma', 'no-cache').set('Referrer-Policy', 'no-referrer');
   next();
 }
+router.use(['/kakao/start', '/kakao/exchange'], webLoginCors(env));
 router.post('/kakao/start', privateResponse, mobile.start);
 router.get('/kakao/callback', privateResponse, mobile.callback);
 router.post('/kakao/exchange', privateResponse, mobile.exchange);

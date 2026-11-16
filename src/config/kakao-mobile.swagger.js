@@ -8,6 +8,7 @@ module.exports = {
     KakaoStartRequest: { type: 'object', additionalProperties: false, required: ['codeChallenge', 'codeChallengeMethod'], properties: {
       codeChallenge: { ...scalar, description: '앱에 보관한 verifier의 SHA-256을 base64url(패딩 없음) 인코딩. 카카오 PKCE 파라미터가 아님' },
       codeChallengeMethod: { type: 'string', enum: ['S256'] },
+      client: { type: 'string', enum: ['web', 'mobile'], default: 'mobile', description: '선택값. 서버 설정의 웹 복귀 주소 또는 앱 딥링크를 선택합니다. 요청에서 복귀 URL을 받지 않습니다.' },
     } },
     KakaoStartResponse: { type: 'object', required: ['success', 'data'], properties: {
       success: { type: 'boolean', example: true },
@@ -23,8 +24,8 @@ module.exports = {
   },
   paths: {
     '/api/v1/auth/kakao/start': { post: {
-      tags: ['Auth'], security: [], summary: '모바일 카카오 로그인 시작 (제안 계약)',
-      description: 'Bearer 인증 불필요. 서버 설정의 콜백/앱 복귀 주소만 사용합니다. state와 앱 challenge를 결합하며 카카오에는 challenge를 전달하지 않습니다. 개발/테스트에서는 memory 또는 postgres, 운영에서는 마이그레이션이 적용된 postgres를 설정해야 합니다.',
+      tags: ['Auth'], security: [], summary: '웹·모바일 카카오 로그인 시작',
+      description: 'Bearer 인증 불필요. 서버 설정의 카카오 콜백과 클라이언트별 복귀 주소만 사용합니다. client=web은 KAKAO_WEB_RETURN_URL이 필요합니다. state에 클라이언트와 앱 challenge를 결합하며 카카오에는 이 두 값을 전달하지 않습니다. 개발/테스트에서는 memory 또는 postgres, 운영에서는 마이그레이션이 적용된 postgres를 설정해야 합니다.',
       requestBody: request('KakaoStartRequest'), responses: {
         200: { description: '앱이 열 카카오 인증 URL과 로그인 시도 ID', content: { 'application/json': { schema: { $ref: '#/components/schemas/KakaoStartResponse' } } } },
         422: error('입력 또는 허용 목록 검증 실패'), 503: error('OAuth 설정/안전한 저장소 미준비 또는 요청 수용 한도 초과'),
@@ -33,10 +34,10 @@ module.exports = {
     } },
     '/api/v1/auth/kakao/callback': { get: {
       tags: ['Auth'], security: [], summary: '카카오 인증 서버 콜백',
-      description: '브라우저용 GET. state를 검증·소비하고 회원을 준비하지만 JWT/세션은 발급하지 않습니다. 성공은 loginCode와 loginAttemptId, 실패는 고정 error와 loginAttemptId만 서버 설정 앱 주소에 전달합니다. state가 없거나 위조/만료/재사용된 경우 앱으로 리다이렉트하지 않습니다.',
+      description: '브라우저용 GET. state를 검증·소비하고 회원을 준비하지만 JWT/세션은 발급하지 않습니다. 성공은 loginCode와 loginAttemptId, 실패는 고정 error와 loginAttemptId만 state에 저장한 서버 설정 웹/앱 주소에 전달합니다. state가 없거나 위조/만료/재사용된 경우 앱으로 리다이렉트하지 않습니다.',
       parameters: ['code', 'state', 'error', 'error_description'].map(name => ({ name, in: 'query', required: name === 'state', schema: { type: 'string' } })),
       responses: {
-        302: { description: '등록한 앱 복귀 주소로 이동. error=login_cancelled 또는 login_failed 가능. JWT는 URL에 없음', headers: { Location: { schema: { type: 'string', format: 'uri' }, description: '서버에서 허용한 주소' } } },
+        302: { description: 'state에 등록한 웹/앱 복귀 주소로 이동. error=login_cancelled 또는 login_failed 가능. JWT는 URL에 없음', headers: { Location: { schema: { type: 'string', format: 'uri' }, description: '서버에서 허용한 주소' } } },
         422: error('state/인가 코드 누락, 위조, 만료, 재사용'), 503: error('저장소 또는 콜백 설정 미준비'),
         500: error('설정/입력 검증 등에서 발생한 예상하지 못한 내부 오류. 회원 준비 중 오류는 302 login_failed로 처리'),
       },

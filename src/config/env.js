@@ -27,6 +27,7 @@ module.exports = {
     .split(',').map((uri) => uri.trim()).filter(Boolean),
   kakaoOauthCallbackUrl: process.env.KAKAO_OAUTH_CALLBACK_URL,
   kakaoAppDeepLink: process.env.KAKAO_APP_DEEP_LINK,
+  kakaoWebReturnUrl: process.env.KAKAO_WEB_RETURN_URL,
   kakaoAllowedAppDeepLinks: (process.env.KAKAO_ALLOWED_APP_DEEP_LINKS || '')
     .split(',').map((uri) => uri.trim()).filter(Boolean),
   kakaoOauthStoreMode: process.env.KAKAO_OAUTH_STORE_MODE,
