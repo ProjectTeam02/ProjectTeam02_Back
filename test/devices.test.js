@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const crypto = require('node:crypto');
-const { UserSession, UserDevice } = require('@leren/database');
+const { User, UserSession, UserDevice } = require('@leren/database');
 const app = require('../src/app');
 const env = require('../src/config/env');
 const { AppDataSource } = require('../src/config/database');
@@ -53,11 +53,12 @@ function repository(entity) {
 test.beforeEach(async () => {
   env.jwtAccessSecret = 'devices-test-secret';
   tables = new Map([
+    [User, [{ userId: ids.user }, { userId: ids.other }]],
     [UserSession, [ids.user, ids.other].map((userId, index) => ({ userId, sessionId: index ? ids.otherSession : ids.session, revokedAt: null, expiresAt: new Date(Date.now() + 60000) }))],
     [UserDevice, []],
   ]);
   const getRepository = entity => {
-    assert.ok(tables.has(entity), 'device APIs must touch only user_devices (and sessions for auth)');
+    assert.ok(tables.has(entity), 'device and logout APIs use the device, user, and session fixtures');
     return repository(entity);
   };
   test.mock.method(AppDataSource.manager, 'getRepository', getRepository);

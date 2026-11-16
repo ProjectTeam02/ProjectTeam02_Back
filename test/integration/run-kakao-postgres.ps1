@@ -32,7 +32,6 @@ try {
   & node --test test/integration/kakao-postgres.test.js
   $result = $LASTEXITCODE
   Write-Output ('Sanitized test evidence: ' + $ReportPath)
-  Write-Output 'A passing refresh-race diagnostic means the known concurrency defect WAS reproduced, not fixed.'
 } finally {
   $env:LEREN_KAKAO_PG_TEST_CONFIG = $originalConfig
   $env:LEREN_KAKAO_PG_REPORT = $originalReport
