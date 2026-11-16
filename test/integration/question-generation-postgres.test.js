@@ -46,6 +46,7 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
   await db.query(schemaSql);
   await db.runMigrations();
   assert.equal(await db.showMigrations(), false, 'The isolated test database has pending migrations');
+  assert.deepEqual(await db.runMigrations(), [], 'Reapplying migrations must be a no-op');
   const topic = await db.getRepository(E.Topic).save({ topicCode: 'IT_TOPIC', topicNo: 1, title: '인플레이션' });
   const concept = await db.getRepository(E.Concept).save({ topicId: topic.topicId, conceptCode: 'IT_CONCEPT', title: '인플레이션' });
   const corpusPath = path.join(dir, 'approved.jsonl');
