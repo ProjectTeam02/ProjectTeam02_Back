@@ -6,6 +6,8 @@
 const AppError = require('../../../common/errors/AppError');
 const f = require('../../../common/dto/fields');
 const authFields = require('../../auth/dto/authFields');
+const { ClassCode } = require('@leren/database');
+const notificationSetting = require('../../notifications/dto/notificationSetting.dto');
 
 function noQuery(query, name = 'query') {
   if (Object.keys(f.object(query, name)).length) throw AppError.validation('지원하지 않는 조회 조건입니다.');
@@ -65,24 +67,17 @@ function rewardLedger({ query }) { return { query: paging(query) }; }
 
 
 
+// 알림 설정 변경: 규칙은 notifications DTO(parseUpdate)에 있음
 function notificationUpdate({ params, query, body }) {
   noQuery(query);
-  const value = f.onlyKeys(f.object(body, 'body'), ['reminderEnabled', 'reminderTime', 'timezone'], 'body');
-  if (typeof value.reminderEnabled !== 'boolean') throw AppError.validation('reminderEnabled는 boolean이어야 합니다.');
-  const result = { reminderEnabled: value.reminderEnabled };
-  if (value.reminderTime !== undefined && value.reminderTime !== null) result.reminderTime = f.time(value.reminderTime, 'reminderTime');
-  else if (value.reminderTime === null) result.reminderTime = null;
-  if (value.timezone !== undefined) {
-    result.timezone = f.string(value.timezone, 'timezone', 50);
-    try { new Intl.DateTimeFormat('en-US', { timeZone: result.timezone }).format(); } catch { throw AppError.validation('timezone은 IANA 시간대여야 합니다.'); }
-  }
-  return { params, body: result };
+  return { params, body: notificationSetting.parseUpdate(body) };
 }
 
+// 직업은 classCode(WARRIOR/MAGE/ARCHER)로 지정한다. 직업 최초 선택 API(PATCH /users/me/character-class)와 같은 기준
 function classUpdate({ params, query, body }) {
   noQuery(query);
-  const value = f.onlyKeys(f.object(body, 'body'), ['classId'], 'body');
-  return { params, body: { classId: f.uuid(value.classId, 'classId') } };
+  const value = f.onlyKeys(f.object(body, 'body'), ['classCode'], 'body');
+  return { params, body: { classCode: f.oneOf(value.classCode, Object.values(ClassCode), 'classCode') } };
 }
 
 function shopList({ query }) {

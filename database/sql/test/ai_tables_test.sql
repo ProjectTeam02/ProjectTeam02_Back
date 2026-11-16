@@ -49,6 +49,8 @@ SELECT pg_temp.expect_err(18, '다른 차원(3) 벡터 거부', $q$INSERT INTO a
 SELECT pg_temp.expect_err(19, '본문(text) 없는 행 거부', $q$INSERT INTO ai.data_projectteam02 (node_id) VALUES ('zz_test')$q$, '23502');
 INSERT INTO result SELECT 20, 'app_user는 벡터 테이블 접근 불가',
   NOT has_table_privilege('app_user', 'ai.data_projectteam02', 'SELECT') AND NOT has_table_privilege('app_user', 'ai.data_projectteam02', 'INSERT'), 'privileges';
+INSERT INTO result SELECT 21, '청크 기록에 벡터 컬럼 없음 (벡터는 data_projectteam02에만)', count(*) = 0, coalesce(string_agg(column_name, ','), '없음')
+  FROM information_schema.columns WHERE table_schema = 'ai' AND table_name = 'rag_document_chunks' AND column_name = 'embedding';
 -- 테스트 데이터 정리
 DELETE FROM ai.data_projectteam02 WHERE node_id = 'zz_test';
 DELETE FROM ai.rag_index_configurations WHERE collection_name = 'zz_test';

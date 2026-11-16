@@ -33,4 +33,10 @@ module.exports = {
   kakaoOauthStateTtlSeconds: Number(process.env.KAKAO_OAUTH_STATE_TTL_SECONDS || 300),
   kakaoOauthExchangeTtlSeconds: Number(process.env.KAKAO_OAUTH_EXCHANGE_TTL_SECONDS || 60),
   kakaoLegacyDirectLoginEnabled: process.env.KAKAO_LEGACY_DIRECT_LOGIN_ENABLED === 'true',
+  // 학습 알림 스케줄러: 'true'일 때만 1분마다 발송 (기본 꺼짐, Android 연동 E-3 완료 후 켬)
+  pushSchedulerEnabled: process.env.PUSH_SCHEDULER_ENABLED === 'true',
+  // Expo 푸시: Access Token은 선택 (Expo 계정에서 푸시 보안 설정을 켠 경우 필요)
+  expoAccessToken: process.env.EXPO_ACCESS_TOKEN || null,
+  expoPushUrl: process.env.EXPO_PUSH_URL || 'https://exp.host/--/api/v2/push/send',
+  expoPushTimeoutMs: Number(process.env.EXPO_PUSH_TIMEOUT_MS || 10000),
 };

@@ -1,11 +1,11 @@
-# 엔티티 목록 (v3 rev.8 + #97·#98)
+# 엔티티 목록 (v3 rev.8 + #97·#98 + E-1)
 
-`src/entities` 아래 47개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml` 1~8절과 같은 DB를 만듭니다. #98부터 엔티티 폴더 = 영역 = DB 스키마입니다 (`progress/` → `learning`, `ai/` → `tutor`, 나머지는 폴더 이름과 같음). app 스키마에는 TypeORM 관리용(migrations, typeorm_metadata)만 남습니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`·`04_ai_vector_table.sql`로 만듭니다.
+`src/entities` 아래 48개 엔티티와 테이블·관계 대응표입니다. 모두 `leren_erd.dbml` 1~8절과 같은 DB를 만듭니다. #98부터 엔티티 폴더 = 영역 = DB 스키마입니다 (`progress/` → `learning`, `ai/` → `tutor`, 나머지는 폴더 이름과 같음). app 스키마에는 TypeORM 관리용(migrations, typeorm_metadata)만 남습니다. ai 스키마(9절)는 엔티티 없이 `sql/init/03_ai_tables.sql`·`04_ai_vector_table.sql`로 만듭니다.
 
 - 클래스·파일 이름: 테이블 이름의 단수형 PascalCase / kebab-case (`user_costumes` → `UserCostume`, `user-costumes.entity.ts`)
 - 속성 이름: 컬럼 이름의 camelCase = API 필드 이름 (`item_id` → `itemId`, `submission_id` → `submissionId`)
 - FK마다 `xxxId` 컬럼 속성과 `xxx` 관계 속성을 함께 둡니다. 관계는 소유 쪽(ManyToOne·OneToOne)만 정의했습니다.
-- Enum은 `common/enums.ts` 한 파일 (52개 TS enum = DB 타입 54개, 값이 같은 2쌍은 공유). DB 타입은 그 Enum을 쓰는 테이블과 같은 스키마에 있습니다
+- Enum은 `common/enums.ts` 한 파일 (54개 TS enum = DB 타입 56개, 값이 같은 2쌍은 공유). DB 타입은 그 Enum을 쓰는 테이블과 같은 스키마에 있습니다
 
 ## 계정·인증·약관 (`account/` → 스키마 `account`)
 
@@ -19,6 +19,7 @@
 | `user_devices` | `UserDevice` | `user` → User |
 | `user_sessions` | `UserSession` | `user` → User<br>`device` → UserDevice |
 | `user_settings` | `UserSetting` | `user` → User (1:1) |
+| `notification_logs` | `NotificationLog` | `user` → User (E-1 알림 발송 기록, 사용자·종류·날짜 UNIQUE) |
 
 ## 캐릭터·상점 (`character/` → 스키마 `character`)
 

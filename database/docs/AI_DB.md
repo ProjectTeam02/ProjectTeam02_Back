@@ -62,7 +62,7 @@ AI 서버는 상태를 갖지 않습니다. 대화 기록·요약·장기 메모
 |---|---|---|---|
 | 1 | 문서 ↔ 학습 개념 매핑 | BOK 문서는 `concept_code` 없이 `knowledge_scope=global`로만 적재. Node가 `knowledgeScope.conceptCodes`를 채우면 검색 0건. **당분간 빈 배열로 보내기** | AI 파트 결정 → 필요하면 DB 담당이 `ai.document_concepts` 추가 |
 | 2 | 출처 링크 표시 | 앱에 원문 링크를 보여줄지 미정 | 기획. 보여주면 `ai_message_sources.source_url_snapshot` 추가 |
-| 3 | `rag_document_chunks.embedding` | AI 코드가 항상 null로 저장 (벡터는 LlamaIndex 테이블) | AI 모델에서 빼면 DB에서도 삭제 |
+| 3 | ~~`rag_document_chunks.embedding`~~ | **제거**: AI 모델에서 빠진 뒤 `sql/ai/drop_chunk_embedding.sql`로 삭제 (벡터는 `data_projectteam02`에만) | 완료 |
 | 4 | ~~회원 탈퇴 시 AI 대화~~ | **결정(2026-11-03): 행은 남기고 본문만 비움** (5.3절 SQL). FK 삭제 동작은 바꾸지 않음 | 완료 |
 | 5 | 메모리·요약 계약 | 5.4절 제안 (요청 `memories[]`, 응답 `summaryUpdate`·`memoryUpdates[]`) | AI 파트 + Node 합의 |
 | 6 | AI 레포 레거시 정리 | `app/db/models.py`의 `AIConversation`·`AIMessage`·`AIMessageSource`·`AIUserMemory`, `migrations/001~005`, `/api/memory` 라우터. `create_tables()`가 `AIUserMemory`를 ai 스키마에 만듦 (RDS의 빈 테이블은 11-14 삭제). `vector_store.py` `perform_setup=False` | AI 파트: `create_tables` 목록에서 `AIUserMemory` 제거, `/memory` 라우터는 Node 계약으로 대체 |

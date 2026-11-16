@@ -11,6 +11,12 @@ const response = require('./dto/scheduleResponse.dto');
 const repository = require('./schedule.repository');
 
 async function resolveTopic(manager, values) {
+  // study_plans에는 topic_id가 없으므로 Stage 또는 Concept가 있어야 주제를 보존할 수 있다.
+  if (!values.stageId && !values.conceptId) {
+    throw AppError.validation('Stage 또는 Concept 중 하나 이상을 선택해야 합니다. 주제만으로는 일정을 저장할 수 없습니다.', {
+      reason: 'TOPIC_ONLY_NOT_SUPPORTED',
+    });
+  }
   const find = (entity, where) => manager.getRepository(entity).findOne({ where, lock: { mode: 'pessimistic_read' } });
   const stage = values.stageId ? await find(Stage, { stageId: values.stageId }) : null;
   const concept = values.conceptId ? await find(Concept, { conceptId: values.conceptId }) : null;
@@ -19,11 +25,6 @@ async function resolveTopic(manager, values) {
   const topicId = values.topicId || stage?.topicId || concept?.topicId;
   const topic = topicId ? await find(Topic, { topicId }) : null;
   if (!topic) throw AppError.validation('존재하지 않는 학습 주제입니다.');
-  if (!stage && !concept) {
-    throw AppError.validation('현재 DB는 Topic 단독 일정을 저장할 수 없습니다. Stage 또는 Concept 선택이나 DB 보완이 필요합니다.', {
-      reason: 'TOPIC_ONLY_NOT_SUPPORTED',
-    });
-  }
   if ((stage && stage.topicId !== topic.topicId) || (concept && concept.topicId !== topic.topicId)) {
     throw AppError.validation('선택한 Stage·Concept과 학습 주제가 일치하지 않습니다.');
   }

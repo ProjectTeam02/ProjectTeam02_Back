@@ -13,6 +13,7 @@ const { hashToken, issueAccessToken, issueRefreshToken, verifyRefreshToken } = r
 const sessionRepository = require('./repositories/session.repository');
 const authSchema = require('./auth.schema');
 const loginResponse = require('./dto/loginResponse.dto');
+const { deactivateAll: deactivateAllDevices } = require('../devices/device.service');
 
 const publicUser = (user, growth = null) => loginResponse.user(user, growth);
 
@@ -79,7 +80,14 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
         return loginResponse.session({ user, growth: await growthFor(user.userId, manager), issued: await issueTokens(user, session.loginMethod || 'EMAIL', manager) });
       });
     },
-    async logout(userId) { await sessions.revokeAll(userId); return { loggedOut: true }; },
+    // 로그아웃은 모든 기기 세션을 폐기하므로, 같은 트랜잭션에서 그 사용자 기기도 모두 비활성화해 알림이 가지 않게 한다
+    async logout(userId) {
+      await transaction(async manager => {
+        await sessions.revokeAll(userId, manager);
+        await deactivateAllDevices(userId, manager);
+      });
+      return { loggedOut: true };
+    },
     async logoutByRefreshToken(refreshToken) {
       let payload;
       try { payload = verifyRefreshToken(refreshToken); } catch (_error) { throw AppError.unauthorized('유효하지 않은 Refresh Token입니다.'); }

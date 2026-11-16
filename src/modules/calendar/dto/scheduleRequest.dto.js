@@ -36,7 +36,8 @@ function parse(body, partial = false) {
   }
   if (partial && !Object.keys(body).length) throw AppError.validation('수정할 필드가 필요합니다.');
   if (!partial) {
-    for (const key of ['scheduledDate', 'topicId', 'planType', 'goal']) {
+    // topicId는 선택값이다. 주제는 Stage/Concept에서 알 수 있고, 보내면 그 주제와 일치하는지만 서비스에서 확인한다.
+    for (const key of ['scheduledDate', 'goal']) {
       if (!has(body, key)) throw AppError.validation(`${key}이(가) 필요합니다.`);
     }
   }
@@ -49,6 +50,9 @@ function parse(body, partial = false) {
   if (has(body, 'planType')) {
     if (!['NEW_LEARNING', 'REVIEW'].includes(body.planType)) throw AppError.validation('planType이 올바르지 않습니다.');
     result.planType = body.planType;
+  } else if (!partial) {
+    // DB 기본값(plan_type DEFAULT 'NEW_LEARNING')과 같은 값을 명시해 저장한다.
+    result.planType = 'NEW_LEARNING';
   }
   if (has(body, 'goal')) {
     if (typeof body.goal !== 'string' || !body.goal.trim() || [...body.goal.trim()].length > 30) {

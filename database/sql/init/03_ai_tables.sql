@@ -46,7 +46,6 @@ CREATE TABLE IF NOT EXISTS ai.rag_document_chunks (
   document_id    varchar(255)  NOT NULL,
   chunk_id       varchar(255)  NOT NULL,
   content        text          NOT NULL,
-  embedding      vector(1536),
   metadata_json  jsonb         NOT NULL DEFAULT '{}'::jsonb,
   CONSTRAINT rag_document_chunks_pkey PRIMARY KEY (id),
   CONSTRAINT uq_rag_document_chunk UNIQUE (document_id, chunk_id),
@@ -91,8 +90,7 @@ END $$;
 COMMENT ON TABLE  ai.rag_documents IS 'RAG 원문 문서 메타. tutor.ai_message_sources.document_id가 논리 참조';
 COMMENT ON COLUMN ai.rag_documents.review_status IS '검수 상태. AI 설정 approved_review_status(기본 approved)인 문서만 검색';
 COMMENT ON COLUMN ai.rag_documents.concept_id IS '연결된 학습 개념 (현재 BOK 문서는 null, knowledge_scope=global)';
-COMMENT ON TABLE  ai.rag_document_chunks IS '청크 메타·본문 기록. 벡터는 LlamaIndex 테이블 ai.data_<컬렉션>에 저장';
-COMMENT ON COLUMN ai.rag_document_chunks.embedding IS 'AI 코드가 항상 null로 저장 (벡터는 LlamaIndex 테이블). AI 모델에서 제거되면 함께 삭제 예정';
+COMMENT ON TABLE  ai.rag_document_chunks IS '청크 메타·본문 기록. 벡터는 ai.data_projectteam02에만 저장 (항상 비어 있던 embedding 컬럼은 2026-11 제거, sql/ai/drop_chunk_embedding.sql)';
 COMMENT ON COLUMN ai.rag_document_chunks.chunk_id IS '{documentId}:{hash12}:{순번}. tutor.ai_message_sources.chunk_id가 논리 참조';
 COMMENT ON TABLE  ai.rag_index_configurations IS '벡터 컬렉션별 임베딩 provider·모델·차원 (불일치 시 적재 거부)';
 

@@ -357,3 +357,15 @@ export enum AiMemoryStatus {
 export enum GoalPeriod {
   Weekly = 'WEEKLY',
 }
+
+/** 알림 종류 (E-1) — DB 타입: notification_type. 복습 알림 등은 값 추가로 확장 */
+export enum NotificationType {
+  LearningReminder = 'LEARNING_REMINDER',
+}
+
+/** 알림 발송 상태 (E-1) — DB 타입: notification_status. 발송 전 PENDING으로 먼저 기록해 중복 발송을 막는다 */
+export enum NotificationStatus {
+  Pending = 'PENDING',
+  Sent = 'SENT',
+  Failed = 'FAILED',
+}

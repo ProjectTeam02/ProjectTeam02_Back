@@ -3,8 +3,34 @@ const error = { description: '오류 응답', content: { 'application/json': { s
 const uuid = name => ({ name, in: 'path', required: true, schema: { type: 'string', format: 'uuid' } });
 const query = (name, schema = { type: 'string' }) => ({ name, in: 'query', schema });
 const body = (properties, required = Object.keys(properties)) => ({ required: true, content: { 'application/json': { schema: { type: 'object', required, additionalProperties: false, properties } } } });
+// /study-plans 요청: /calendar/plans와 같은 규칙이고 목표 필드 이름만 title (goal과 함께 보내면 422)
+const studyPlanBody = required => ({ required: true, content: { 'application/json': { schema: {
+  type: 'object', additionalProperties: false, required, ...(required.length ? {} : { minProperties: 1 }),
+  properties: {
+    scheduledDate: { type: 'string', format: 'date' },
+    title: { type: 'string', minLength: 1, maxLength: 30, description: '일정 목표 (StudyPlan.title). /calendar/plans의 goal과 같음' },
+    stageId: { type: 'string', format: 'uuid', nullable: true },
+    conceptId: { type: 'string', format: 'uuid', nullable: true },
+    topicId: { type: 'string', format: 'uuid', description: '선택. 보내면 Stage/Concept의 주제와 일치해야 함' },
+    planType: { type: 'string', enum: ['NEW_LEARNING', 'REVIEW'], default: 'NEW_LEARNING' },
+  },
+  description: required.length ? 'Stage 또는 Concept 중 하나 이상 필요' : '보내지 않은 필드는 유지. 최종적으로 Stage 또는 Concept 하나 이상 남아야 함',
+} } } });
 const success = (description = '성공') => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/ExtendedSuccess' } } } });
-const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 404: error, 409: error, 422: error, ...responses } });
+const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 403: error, 404: error, 409: error, 422: error, 503: error, ...responses } });
+
+const classCodeField = { type: 'string', enum: ['WARRIOR', 'MAGE', 'ARCHER'], description: '직업 코드 (GET /api/v1/character-classes의 classCode)' };
+const notificationSettingsResponse = { description: '알림 설정', content: { 'application/json': { schema: { type: 'object', required: ['success', 'data'], properties: {
+  success: { type: 'boolean' },
+  data: { type: 'object', required: ['reminderEnabled', 'reminderTime', 'timezone', 'updatedAt'], properties: {
+    reminderEnabled: { type: 'boolean' },
+    reminderTime: { type: 'string', nullable: true, example: '20:00:00' },
+    timezone: { type: 'string', example: 'Asia/Seoul' },
+    updatedAt: { type: 'string', format: 'date-time', nullable: true },
+  } },
+} } } } };
+// 실제로 나오는 응답 코드만 남긴다 (secure()는 공통 코드를 모두 붙이므로)
+const only = (operation, codes) => ({ ...operation, responses: Object.fromEntries(Object.entries(operation.responses).filter(([code]) => codes.includes(Number(code)))) });
 
 module.exports = {
   schemas: {
@@ -17,6 +43,19 @@ module.exports = {
     '/api/v1/stages/{stageId}/relearn': { post: secure('통과 Stage 재학습', [uuid('stageId')]) },
     '/api/v1/bosses/{bossId}': { get: secure('Boss Stage 상세', [uuid('bossId')]) },
     '/api/v1/bosses/{bossId}/attempts': { post: secure('Boss 응시 시작', [uuid('bossId')], body({ mode: { type: 'string', enum: ['START', 'RETRY'] } }, ['mode'])) },
+    '/api/v1/boss-attempts/{attemptId}': { get: only(secure('Boss 응시 조회', [uuid('attemptId')], undefined, {
+      200: { description: 'Boss 응시 상태와 현재 문항', content: { 'application/json': { schema: {
+        type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAttempt' } },
+      } } } },
+    }), [200, 401, 404, 422, 503]) },
+    '/api/v1/boss-attempts/{attemptId}/answers': { post: only(secure('Boss 답안 제출', [uuid('attemptId')], {
+      required: true,
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/NormalStageAnswerRequest' } } },
+    }, {
+      201: { description: 'Boss 답안 채점 결과', content: { 'application/json': { schema: {
+        type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAnswer' } },
+      } } } },
+    }), [201, 401, 404, 409, 422, 503]) },
     '/api/v1/attempts/{attemptId}/current-question': { get: secure('현재 문항', [uuid('attemptId')]) },
     '/api/v1/attempts/{attemptId}/answers': { post: secure('일반 Stage 답안 제출', [uuid('attemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid' } })) },
     '/api/v1/attempts/{attemptId}': { get: secure('응시 결과 상세', [uuid('attemptId')]) },
@@ -25,7 +64,7 @@ module.exports = {
     '/api/v1/reviews/missions/{missionId}': { get: secure('복습 임무 상세', [uuid('missionId')]) },
     '/api/v1/reviews/missions/{missionId}/attempts': { post: secure('복습 임무 응시 시작', [uuid('missionId')]) },
     '/api/v1/review-attempts/{reviewAttemptId}': { get: secure('복습 응시 상세', [uuid('reviewAttemptId')]) },
-    '/api/v1/review-attempts/{reviewAttemptId}/answers': { post: secure('복습 답안 제출', [uuid('reviewAttemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid' } })) },
+    '/api/v1/review-attempts/{reviewAttemptId}/answers': { post: { ...secure('복습 답안 제출', [uuid('reviewAttemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid', description: '복습 응시 시작·조회 응답의 문항별 submissionId를 그대로 보냄 (앱이 새로 만들지 않음)' } })), description: '퀴즈 답안 제출과 달리 submissionId는 서버가 복습 시작 때 문항마다 미리 만든 값입니다. 같은 submissionId·같은 선택지 재요청은 duplicate=true로 처리합니다.' } },
     '/api/v1/questions/{questionId}/bookmark': { put: secure('문항 북마크 등록', [uuid('questionId')]), delete: secure('문항 북마크 해제', [uuid('questionId')]) },
     '/api/v1/statistics/overall': { get: secure('전체 학습 통계', [query('from', { type: 'string', format: 'date' }), query('to', { type: 'string', format: 'date' })]) },
     '/api/v1/statistics/concepts': { get: secure('개념별 학습 통계', [query('sort', { type: 'string', enum: ['title', 'accuracy', 'attempts'] }), query('limit', { type: 'integer', minimum: 1, maximum: 100 }), query('topicId', { type: 'string', format: 'uuid' })]) },
@@ -33,19 +72,35 @@ module.exports = {
     '/api/v1/mypage/summary': { get: secure('마이페이지 요약') },
     '/api/v1/growth/me': { get: secure('성장 정보') },
     '/api/v1/users/me/reward-ledger': { get: secure('보상 원장', [query('page'), query('size')]) },
-    '/api/v1/users/me/character/class': { put: secure('직업 최초 선택', [], body({ classId: { type: 'string', format: 'uuid' } })), patch: secure('직업 변경', [], body({ classId: { type: 'string', format: 'uuid' } })) },
-    '/api/v1/users/me/notification-settings': { get: secure('알림 설정 조회'), patch: secure('알림 설정 변경', [], body({ reminderEnabled: { type: 'boolean' }, reminderTime: { type: 'string', nullable: true, pattern: '^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$' }, timezone: { type: 'string', minLength: 1, maxLength: 50 } }, ['reminderEnabled'])) },
+    '/api/v1/users/me/character/class': {
+      put: { ...only(secure('직업 최초 선택 (호환 경로)', [], body({ classCode: classCodeField })), [200, 401, 404, 409, 422, 503]), deprecated: true, description: '공식 경로는 PATCH /api/v1/users/me/character-class이며 동작과 응답이 같습니다.' },
+      patch: { ...only(secure('직업 변경', [], body({ classCode: classCodeField })), [200, 401, 404, 409, 422, 503]), description: '직업을 처음 선택한 뒤에만 변경할 수 있습니다(아니면 409). 활성 직업만 선택할 수 있고(아니면 404), 같은 직업이면 변경 없이 현재 값을 반환합니다. 응답: userId, classId, classCode' },
+    },
+    '/api/v1/users/me/notification-settings': {
+      get: only(secure('알림 설정 조회', [], undefined, { 200: notificationSettingsResponse }), [200, 401, 422, 503]),
+      patch: { ...only(secure('알림 설정 변경', [], { required: true, content: { 'application/json': { schema: {
+        type: 'object', additionalProperties: false, minProperties: 1,
+        properties: {
+          reminderEnabled: { type: 'boolean' },
+          reminderTime: { type: 'string', nullable: true, pattern: '^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$', description: 'HH:MM 또는 HH:MM:SS (사용자 시간대 기준). null이면 알림 시각 해제' },
+          timezone: { type: 'string', minLength: 1, maxLength: 50, description: 'IANA 시간대 (예: Asia/Seoul)' },
+        },
+      } } } }, { 200: notificationSettingsResponse }), [200, 401, 422, 503]), description: '보낸 필드만 바꾸고 나머지는 유지합니다. 최소 1개 필드가 필요합니다.' },
+    },
     '/api/v1/users/me': { patch: secure('사용자 프로필 변경', [], body({ nickname: { type: 'string', minLength: 1, maxLength: 30 } })) },
     '/api/v1/learning/progress/active': { get: secure('활성 학습 진행') },
     '/api/v1/learning/progress/{stageId}': { put: secure('학습 진행 위치 저장', [uuid('stageId')], body({ contentPosition: { type: 'integer', minimum: 1 } })) },
-    '/api/v1/learning/history/{historyId}': { get: secure('학습 이력 상세', [uuid('historyId')]) },
+    '/api/v1/learning/history/{historyId}': { get: { ...only(secure('학습 이력 상세 (호환 경로)', [uuid('historyId')], undefined, { 200: { description: '응시 요약과 실제 답안', content: { 'application/json': { schema: { $ref: '#/components/schemas/LearningHistoryDetailResponse' } } } } }), [200, 401, 404, 422, 503]), deprecated: true, description: '앱은 /api/v1/learning/history/LEARNING/{recordId}를 사용합니다. 응답은 같습니다.' } },
     '/api/v1/inventory': { get: secure('인벤토리 조회') },
     '/api/v1/inventory/{itemId}/equip': { put: secure('코스튬 장착', [uuid('itemId')]) },
     '/api/v1/shop/costumes': { get: secure('코스튬 상점', [query('category', { type: 'string', enum: ['TOP', 'BOTTOM'] }), query('page', { type: 'integer', minimum: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100 }), query('limit', { type: 'integer', minimum: 1, maximum: 100 })]) },
     '/api/v1/shop/costumes/{itemId}': { get: secure('코스튬 상세', [uuid('itemId')]) },
-    '/api/v1/shop/purchases': { post: secure('코스튬 구매', [], body({ itemId: { type: 'string', format: 'uuid' }, requestId: { type: 'string' } })) },
-    '/api/v1/study-plans': { post: secure('학습 일정 생성', [], body({ scheduledDate: { type: 'string', format: 'date' }, stageId: { type: 'string', format: 'uuid' }, conceptId: { type: 'string', format: 'uuid' }, title: { type: 'string' } }, ['scheduledDate', 'title'])) },
-    '/api/v1/study-plans/{planId}': { patch: secure('학습 일정 변경', [uuid('planId')]), delete: secure('학습 일정 삭제', [uuid('planId')]) },
+    '/api/v1/shop/purchases': { post: secure('코스튬 구매', [], body({ itemId: { type: 'string', format: 'uuid' }, requestId: { type: 'string', minLength: 1, maxLength: 100 } })) },
+    '/api/v1/study-plans': { post: { ...secure('학습 일정 생성 (호환 경로)', [], studyPlanBody(['scheduledDate', 'title'])), deprecated: true, description: '앱은 /api/v1/calendar/plans를 사용합니다. 이 경로는 목표를 title로 받아 같은 규칙으로 저장하며, 응답 필드는 goal입니다.' } },
+    '/api/v1/study-plans/{planId}': {
+      patch: { ...secure('학습 일정 변경 (호환 경로)', [uuid('planId')], studyPlanBody([])), deprecated: true, description: '앱은 /api/v1/calendar/plans/{planId}를 사용합니다. 보내지 않은 필드는 유지합니다.' },
+      delete: { ...secure('학습 일정 삭제 (호환 경로)', [uuid('planId')]), deprecated: true },
+    },
     '/api/v1/auth/password-reset/request': { post: { tags: ['Auth'], summary: '비밀번호 재설정 요청', requestBody: body({ email: { type: 'string', format: 'email' } }), responses: { 200: { description: '접수됨' }, 422: error } } },
     '/api/v1/auth/password-reset/confirm': { post: { tags: ['Auth'], summary: '비밀번호 재설정 확정', requestBody: body({ resetToken: { type: 'string', minLength: 1, maxLength: 4096 }, newPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 } }), responses: { 200: { description: '변경됨' }, 401: error, 422: error } } },
     '/api/v1/auth/refresh': { post: { tags: ['Auth'], summary: 'Cookie 또는 Body Refresh Token 재발급', parameters: [{ name: 'refreshToken', in: 'cookie', schema: { type: 'string' } }], responses: { 200: { description: '재발급 성공' }, 401: error } } },

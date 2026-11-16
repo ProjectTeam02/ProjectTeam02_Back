@@ -8,6 +8,7 @@ import { AccountToken } from './account/account-tokens.entity';
 import { UserDevice } from './account/user-devices.entity';
 import { UserSession } from './account/user-sessions.entity';
 import { UserSetting } from './account/user-settings.entity';
+import { NotificationLog } from './account/notification-logs.entity';
 import { CharacterClass } from './character/character-classes.entity';
 import { Costume } from './character/costumes.entity';
 import { UserCharacter } from './character/user-characters.entity';
@@ -57,6 +58,7 @@ export const entities = [
   UserDevice,
   UserSession,
   UserSetting,
+  NotificationLog,
   CharacterClass,
   Costume,
   UserCharacter,
@@ -107,6 +109,7 @@ export {
   UserDevice,
   UserSession,
   UserSetting,
+  NotificationLog,
   CharacterClass,
   Costume,
   UserCharacter,

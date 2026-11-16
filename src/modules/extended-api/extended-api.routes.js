@@ -32,8 +32,12 @@ const bookmarkResponseDto = require('../reviews/dto/bookmarkResponse.dto');
 const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
 const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
 const classChangeResponseDto = require('../characters/dto/classChangeResponse.dto');
+const quizSchema = require('../quizzes/quiz.schema');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
 const quizContractService = require('../quizzes/quiz.service')(AppDataSource);
+const learningService = require('../learning/learning.service')(AppDataSource);
+const characterService = require('../characters/character.service')(AppDataSource);
+const userSchema = require('../users/user.schema');
 
 const router = express.Router();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -86,57 +90,25 @@ function publicWallet(wallet, userId) {
   return responseDto.wallet(wallet, userId);
 }
 
-function parseScheduleBody(body, partial = false) {
-  const result = { ...(body || {}) };
-  if (result.title !== undefined && result.goal === undefined) result.goal = result.title;
-  if (!partial && result.planType === undefined) result.planType = 'NEW_LEARNING';
-  if (!partial && result.topicId === undefined && (result.stageId || result.conceptId)) {
-    // The calendar service accepts topicId as an assertion. It is resolved below.
-    result.topicId = undefined;
-  }
-  return result;
-}
-
-async function topicForTarget(manager, input) {
-  if (input.topicId) return input.topicId;
-  const targetId = input.stageId || input.conceptId;
-  if (!targetId) return undefined;
-  const entity = input.stageId ? Stage : Concept;
-  const row = await repo(manager, entity).findOneBy(input.stageId ? { stageId: targetId } : { conceptId: targetId });
-  return row?.topicId;
-}
-
-function mapPlanInput(input, topicId) {
-  const mapped = parseScheduleBody(input);
-  if (topicId) mapped.topicId = topicId;
-  if (mapped.title !== undefined && mapped.goal === undefined) mapped.goal = mapped.title;
-  return mapped;
+// /study-plans는 앱이 쓰는 /calendar/plans의 호환 경로다. 이 경로만 목표를 title로 안내하므로 goal로 바꿔 같은 DTO·서비스에 넘긴다.
+// 주제(topicId)·planType 기본값·Stage/Concept 필수 규칙은 달력 DTO와 서비스가 처리한다.
+function studyPlanBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.prototype.hasOwnProperty.call(body, 'title')) return body;
+  if (Object.prototype.hasOwnProperty.call(body, 'goal')) throw AppError.validation('title과 goal은 함께 보낼 수 없습니다.');
+  const { title, ...rest } = body;
+  return { ...rest, goal: title };
 }
 
 async function planCreate(userId, body) {
-  const input = parseScheduleBody(body);
-  const topicId = await AppDataSource.transaction(manager => topicForTarget(manager, input));
-  return calendarService.create(userId, mapPlanInput(input, topicId));
+  return calendarService.create(userId, studyPlanBody(body));
 }
 
 async function planUpdate(userId, planId, body) {
-  const input = parseScheduleBody(body, true);
-  let topicId;
-  if (input.stageId || input.conceptId) topicId = await AppDataSource.transaction(manager => topicForTarget(manager, input));
-  return calendarService.update(userId, id(planId, 'planId'), { ...input, ...(topicId ? { topicId } : {}) });
+  return calendarService.update(userId, id(planId, 'planId'), studyPlanBody(body));
 }
 
 function serializeCostume(row, owned = false, equipped = false) {
   return responseDto.costume(row, owned, equipped);
-}
-
-async function ownedAttempt(manager, userId, attemptId, lock = false) {
-  const attempt = await repo(manager, LearningAttempt).findOne({
-    where: { attemptId: id(attemptId, 'attemptId'), userId },
-    ...(lock ? { lock: { mode: 'pessimistic_write' } } : {}),
-  });
-  if (!attempt) throw AppError.notFound('응시를 찾을 수 없습니다.');
-  return attempt;
 }
 
 async function reviewItemResponse(manager, item) {
@@ -311,8 +283,8 @@ function routes() {
     const result = await quizContractService.bossStart(req.user.sub, req.params.bossId, req.body.mode);
     return data(res, result, result.resumed ? 200 : 201);
   }));
-  router.get('/boss-attempts/:attemptId', auth, asyncHandler(async (req, res) => data(res, await quizContractService.bossGet(req.user.sub, id(req.params.attemptId, 'attemptId')))));
-  router.post('/boss-attempts/:attemptId/answers', auth, asyncHandler(async (req, res) => data(res, await quizContractService.bossSubmit(req.user.sub, id(req.body?.questionId, 'questionId'), { ...req.body, attemptId: id(req.params.attemptId, 'attemptId') }), 201)));
+  router.get('/boss-attempts/:attemptId', auth, validate(quizSchema.attempt), asyncHandler(async (req, res) => data(res, await quizContractService.bossGet(req.user.sub, req.params.attemptId))));
+  router.post('/boss-attempts/:attemptId/answers', auth, validate(quizSchema.newAnswer), asyncHandler(async (req, res) => data(res, await quizContractService.bossSubmit(req.user.sub, req.body.questionId, { ...req.body, attemptId: req.params.attemptId }), 201)));
 
   // Study plan aliases for the public API contract.
   router.post('/study-plans', auth, asyncHandler(async (req, res) => data(res, await planCreate(req.user.sub, req.body), 201)));
@@ -334,11 +306,8 @@ function routes() {
     await repo(manager, UserStageProgress).save(progress);
     return progressResponseDto.updated(progress);
   }))));
-  router.get('/learning/history/:historyId', auth, asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const attempt = await ownedAttempt(manager, req.user.sub, req.params.historyId);
-    const submissions = await repo(manager, QuestionSubmission).find({ where: { attemptId: attempt.attemptId }, relations: { question: true, choice: true }, order: { sequenceNo: 'ASC' } });
-    return { historyId: attempt.attemptId, attempt, answers: submissions.map(row => ({ questionId: row.questionId, choiceId: row.choiceId, isCorrect: row.isCorrect, explanation: row.question?.explanation })) };
-  }))));
+  // 앱이 쓰는 /learning/history/LEARNING/{recordId}와 같은 응답 (이력 DTO). 이 확장 경로는 정리 이슈에서 삭제 예정
+  router.get('/learning/history/:historyId', auth, validate(requestDto.pathOnly('historyId')), asyncHandler(async (req, res) => data(res, await learningService.historyDetail(req.user.sub, 'LEARNING', req.params.historyId))));
 
   // Review list, mission and answer APIs.
   router.get('/reviews/items', auth, validate(requestDto.reviewItems), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
@@ -369,16 +338,22 @@ function routes() {
     const user = await repo(manager, User).findOneBy({ userId: req.user.sub }); if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
     user.nickname = req.body.nickname; user.nicknameUpdatedAt = new Date(); await repo(manager, User).save(user); return userUpdateDto.response(user);
   }))));
+  // 알림 설정 (공식): 행이 없으면 기본값으로 만든다
   router.get('/users/me/notification-settings', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub }); if (!setting) setting = await repo(manager, UserSetting).save(repo(manager, UserSetting).create({ userId: req.user.sub })); return notificationSetting.response(setting);
+    let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub });
+    if (!setting) setting = await repo(manager, UserSetting).save(repo(manager, UserSetting).create({ userId: req.user.sub }));
+    return notificationSetting.response(setting);
   }))));
+  // 보낸 필드만 바꾸고 나머지는 유지한다
   router.patch('/users/me/notification-settings', auth, validate(requestDto.notificationUpdate), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const body = req.body;
-    let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub }); if (!setting) setting = repo(manager, UserSetting).create({ userId: req.user.sub });
-    setting.reminderEnabled = body.reminderEnabled; if (body.reminderTime !== undefined) setting.reminderTime = body.reminderTime; if (body.timezone !== undefined) setting.timezone = string(body.timezone, 'timezone', 50); await repo(manager, UserSetting).save(setting); return notificationSetting.response(setting);
+    let setting = await repo(manager, UserSetting).findOne({ where: { userId: req.user.sub }, lock: { mode: 'pessimistic_write' } });
+    if (!setting) setting = repo(manager, UserSetting).create({ userId: req.user.sub });
+    for (const key of notificationSetting.UPDATE_FIELDS) if (req.body[key] !== undefined) setting[key] = req.body[key];
+    return notificationSetting.response(await repo(manager, UserSetting).save(setting));
   }))));
-  router.put('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classId)), 200)));
-  router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classId)), 200)));
+  // 호환 경로: 직업 최초 선택(PATCH /users/me/character-class)과 같은 동작. 정리 이슈에서 삭제 예정
+  router.put('/users/me/character/class', auth, validate(userSchema.characterClass), asyncHandler(async (req, res) => data(res, await characterService.select(req.user.sub, req.body.classCode))));
+  router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classCode)))));
   router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const owned = await repo(manager, UserCostume).find({ where: { userId: req.user.sub }, relations: { costume: true } }); const equipped = await repo(manager, UserEquippedCostume).findBy({ userId: req.user.sub });
     return { items: owned.map(row => serializeCostume(row.costume, true, equipped.some(item => item.itemId === row.itemId))), equipped: equipped.map(row => ({ category: row.category, itemId: row.itemId })) };
@@ -431,11 +406,19 @@ function routes() {
   return router;
 }
 
-async function changeClass(userId, classId) {
+// 직업 변경: 활성 직업만, 직업을 처음 선택한 뒤에만 가능 (최초 선택은 온보딩 완료 처리가 있는 PATCH /users/me/character-class)
+async function changeClass(userId, classCode) {
   return AppDataSource.transaction(async manager => {
-    const classRow = await repo(manager, CharacterClass).findOneBy({ classId: id(classId, 'classId') }); if (!classRow) throw AppError.notFound('직업을 찾을 수 없습니다.');
-    let character = await repo(manager, UserCharacter).findOneBy({ userId }); if (!character) character = repo(manager, UserCharacter).create({ userId, classId: classRow.classId, firstSelectedAt: new Date() }); else { character.classId = classRow.classId; character.classChangedAt = new Date(); }
-    await repo(manager, UserCharacter).save(character); return { userId, classId: classRow.classId, classCode: classRow.classCode };
+    const classRow = await repo(manager, CharacterClass).findOneBy({ classCode, isActive: true });
+    if (!classRow) throw AppError.notFound('선택할 수 있는 직업을 찾을 수 없습니다.');
+    const character = await repo(manager, UserCharacter).findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
+    if (!character) throw AppError.conflict('직업을 아직 선택하지 않았습니다. 직업 선택(PATCH /api/v1/users/me/character-class)을 먼저 진행하세요.');
+    if (character.classId !== classRow.classId) {
+      character.classId = classRow.classId;
+      character.classChangedAt = new Date();
+      await repo(manager, UserCharacter).save(character);
+    }
+    return { userId, classId: classRow.classId, classCode: classRow.classCode };
   });
 }
 
