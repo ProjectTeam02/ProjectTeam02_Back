@@ -49,6 +49,10 @@ jobs:
         run: npm run db:check
       - name: 5. 엔티티 연동 테스트 21개 (app_user)
         run: npm run db:test
+      - name: 상점 구매·재화·장착 정합성 (실제 PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/shop-inventory-postgres.test.js
       - name: 5-1. 일반 Stage Quiz HTTP 계약 (실제 Express·PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
