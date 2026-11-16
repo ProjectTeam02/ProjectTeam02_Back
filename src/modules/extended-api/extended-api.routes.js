@@ -372,7 +372,7 @@ function routes() {
   // 호환 경로: 직업 최초 선택(PATCH /users/me/character-class)과 같은 동작. 정리 이슈에서 삭제 예정
   router.put('/users/me/character/class', auth, validate(userSchema.characterClass), asyncHandler(async (req, res) => data(res, await characterService.select(req.user.sub, req.body.classCode))));
   router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classCode)))));
-  router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
     const owned = await repo(manager, UserCostume).find({ where: { userId: req.user.sub }, relations: { costume: true } }); const equipped = await repo(manager, UserEquippedCostume).findBy({ userId: req.user.sub });
     return { items: owned.map(row => serializeCostume(row.costume, true, equipped.some(item => item.itemId === row.itemId))), equipped: equipped.map(row => ({ category: row.category, itemId: row.itemId })) };
   }))));
@@ -380,12 +380,23 @@ function routes() {
     const itemId = req.params.itemId; const owned = await repo(manager, UserCostume).findOne({ where: { userId: req.user.sub, itemId }, relations: { costume: true } }); if (!owned?.costume) throw AppError.forbidden('보유하지 않은 코스튬입니다.');
     await repo(manager, UserEquippedCostume).upsert({ userId: req.user.sub, category: owned.costume.category, itemId, equippedAt: new Date() }, ['userId', 'category']); return { category: owned.costume.category, itemId };
   }))));
-  router.get('/shop/costumes', auth, validate(requestDto.shopList), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const p = page(req.query); const all = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } }); const rows = req.query.category ? all.filter(row => row.category === req.query.category) : all; const owned = await repo(manager, UserCostume).findBy({ userId: req.user.sub });
-    return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.some(item => item.itemId === row.itemId))), page: p.page, size: p.size, total: rows.length };
+  router.get('/shop/costumes', auth, validate(requestDto.shopList), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
+    const p = page(req.query);
+    const userId = req.user.sub;
+    const all = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } });
+    const rows = req.query.category ? all.filter(row => row.category === req.query.category) : all;
+    const owned = new Set((await repo(manager, UserCostume).findBy({ userId })).map(row => row.itemId));
+    const equipped = new Set((await repo(manager, UserEquippedCostume).findBy({ userId })).map(row => row.itemId));
+    return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.has(row.itemId), equipped.has(row.itemId))),
+      page: p.page, size: p.size, total: rows.length };
   }))));
-  router.get('/shop/costumes/:itemId', auth, validate(requestDto.item), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const row = await repo(manager, Costume).findOneBy({ itemId: req.params.itemId, isOnSale: true }); if (!row) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.'); const owned = await repo(manager, UserCostume).findOneBy({ userId: req.user.sub, itemId: row.itemId }); return serializeCostume(row, Boolean(owned));
+  router.get('/shop/costumes/:itemId', auth, validate(requestDto.item), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
+    const row = await repo(manager, Costume).findOneBy({ itemId: req.params.itemId, isOnSale: true });
+    if (!row) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.');
+    const userId = req.user.sub;
+    const owned = await repo(manager, UserCostume).findOneBy({ userId, itemId: row.itemId });
+    const equipped = await repo(manager, UserEquippedCostume).findOneBy({ userId, category: row.category, itemId: row.itemId });
+    return serializeCostume(row, Boolean(owned), Boolean(equipped));
   }))));
   router.post('/shop/purchases', auth, validate(costumeRequestDto.parse), asyncHandler(async (req, res) => data(res, await purchase(req.user.sub, req.body), 201)));
 
