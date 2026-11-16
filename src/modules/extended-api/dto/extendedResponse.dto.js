@@ -176,7 +176,8 @@ function conceptStatistics(concepts, submissions, query = {}) {
     return { conceptId: concept.conceptId, title: concept.title, attempts: mine.length, correct,
       accuracy: mine.length ? correct / mine.length : 0 };
   });
-  if (query.sort === 'accuracy') rows.sort((a, b) => b.accuracy - a.accuracy);
+  // Preserve the numeric accuracy field: attempts distinguishes absent data from a real zero.
+  if (query.sort === 'accuracy') rows.sort((a, b) => Number(b.attempts > 0) - Number(a.attempts > 0) || b.accuracy - a.accuracy);
   else if (query.sort === 'attempts') rows.sort((a, b) => b.attempts - a.attempts);
   const limit = query.limit === undefined ? rows.length : query.limit;
   return { items: rows.slice(0, limit), sort: query.sort || 'title' };

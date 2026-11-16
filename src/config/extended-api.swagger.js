@@ -35,6 +35,20 @@ const only = (operation, codes) => ({ ...operation, responses: Object.fromEntrie
 module.exports = {
   schemas: {
     ExtendedSuccess: { type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean', example: true }, data: { type: 'object', additionalProperties: true } } },
+    ConceptStatisticsResponse: {
+      type: 'object', required: ['success', 'data'], properties: {
+        success: { type: 'boolean', example: true },
+        data: { type: 'object', required: ['items', 'sort'], properties: {
+          items: { type: 'array', items: { type: 'object', required: ['conceptId', 'title', 'attempts', 'correct', 'accuracy'], properties: {
+            conceptId: { type: 'string', format: 'uuid' }, title: { type: 'string' },
+            attempts: { type: 'integer', minimum: 0, description: '실제 제출 문항 수. 0이면 미응시' },
+            correct: { type: 'integer', minimum: 0 },
+            accuracy: { type: 'number', minimum: 0, maximum: 1, description: '정답/제출 수. 미응시의 숫자 0은 호환용 값' },
+          } } },
+          sort: { type: 'string', enum: ['title', 'accuracy', 'attempts'] },
+        } },
+      },
+    },
   },
   paths: {
     '/api/v1/topics/tree': { get: secure('공개 주제 트리') },
@@ -67,7 +81,11 @@ module.exports = {
     '/api/v1/review-attempts/{reviewAttemptId}/answers': { post: { ...secure('복습 답안 제출', [uuid('reviewAttemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid', description: '복습 응시 시작·조회 응답의 문항별 submissionId를 그대로 보냄 (앱이 새로 만들지 않음)' } })), description: '퀴즈 답안 제출과 달리 submissionId는 서버가 복습 시작 때 문항마다 미리 만든 값입니다. 같은 submissionId·같은 선택지 재요청은 duplicate=true로 처리합니다.' } },
     '/api/v1/questions/{questionId}/bookmark': { put: secure('문항 북마크 등록', [uuid('questionId')]), delete: secure('문항 북마크 해제', [uuid('questionId')]) },
     '/api/v1/statistics/overall': { get: secure('전체 학습 통계', [query('from', { type: 'string', format: 'date' }), query('to', { type: 'string', format: 'date' })]) },
-    '/api/v1/statistics/concepts': { get: secure('개념별 학습 통계', [query('sort', { type: 'string', enum: ['title', 'accuracy', 'attempts'] }), query('limit', { type: 'integer', minimum: 1, maximum: 100 }), query('topicId', { type: 'string', format: 'uuid' })]) },
+    '/api/v1/statistics/concepts': { get: {
+      ...secure('개념별 학습 통계', [query('sort', { type: 'string', enum: ['title', 'accuracy', 'attempts'] }), query('limit', { type: 'integer', minimum: 1, maximum: 100 }), query('topicId', { type: 'string', format: 'uuid' })],
+        undefined, { 200: { description: '본인 개념별 통계', content: { 'application/json': { schema: { $ref: '#/components/schemas/ConceptStatisticsResponse' } } } } }),
+      description: 'attempts는 본인이 실제로 제출한 문항 수이고 correct는 정답 제출 수입니다. attempts가 0이면 미응시로 표시하세요(accuracy는 호환을 위해 숫자 0). attempts가 1 이상이고 accuracy가 0이면 실제 정답률 0%입니다. sort=accuracy에서는 미응시 개념을 응시한 개념 뒤에 둡니다.',
+    } },
     '/api/v1/home/summary': { get: secure('홈 요약') },
     '/api/v1/mypage/summary': { get: secure('마이페이지 요약') },
     '/api/v1/growth/me': { get: secure('성장 정보') },
