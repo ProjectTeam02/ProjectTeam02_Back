@@ -14,6 +14,7 @@ const database = require('./helpers/auth-db');
 
 const CALLBACK = 'https://backend.test/api/v1/auth/kakao/callback';
 const APP = 'leren://auth/callback';
+const WEB = 'https://web.test/auth/callback';
 const verifier = () => crypto.randomBytes(32).toString('base64url');
 const challenge = value => crypto.createHash('sha256').update(value).digest('base64url');
 const originalEnv = { ...env };
@@ -26,6 +27,7 @@ test.beforeEach(async () => {
   Object.assign(env, {
     nodeEnv: 'test', kakaoOauthStoreMode: 'memory', kakaoOauthCallbackUrl: CALLBACK,
     kakaoAppDeepLink: APP, kakaoAllowedAppDeepLinks: [APP], kakaoAllowedRedirectUris: [CALLBACK],
+    kakaoWebReturnUrl: WEB,
     kakaoOauthStateTtlSeconds: 300, kakaoOauthExchangeTtlSeconds: 60,
     kakaoRestApiKey: 'mock-key', kakaoClientSecret: 'mock-secret',
     jwtAccessSecret: 'mock-access-secret', jwtRefreshSecret: 'mock-refresh-secret',
@@ -58,8 +60,8 @@ async function post(path, body) {
   });
   return { status: response.status, body: await response.json(), headers: response.headers };
 }
-async function start(codeVerifier = verifier()) {
-  const result = await post('kakao/start', { codeChallenge: challenge(codeVerifier), codeChallengeMethod: 'S256' });
+async function start(codeVerifier = verifier(), client) {
+  const result = await post('kakao/start', { codeChallenge: challenge(codeVerifier), codeChallengeMethod: 'S256', ...(client ? { client } : {}) });
   assert.equal(result.status, 200);
   return { ...result.body.data, codeVerifier, state: new URL(result.body.data.authorizationUrl).searchParams.get('state') };
 }
@@ -107,6 +109,92 @@ test('full callback/exchange flow creates member but issues no session until pro
   assert.equal(result.headers.get('cache-control'), 'no-store');
   assert.deepEqual(calls, [['token', 'mock-authorization-code', CALLBACK], ['profile', 'mock-kakao-access']]);
   assert.equal(JSON.stringify(result.body).includes('mock-kakao'), false);
+});
+
+test('web start returns to the configured browser; mobile and old state still use the app', async () => {
+  const web = await start(verifier(), 'web');
+  const mobile = await start(verifier(), 'mobile');
+  const legacy = await start();
+  const url = new URL(web.authorizationUrl);
+  assert.equal(url.searchParams.get('redirect_uri'), CALLBACK);
+  assert.equal(url.searchParams.has('client'), false);
+
+  // Return-channel selection is stored with state, not taken from the callback query.
+  const response = await callback(web, { code: 'mock-code', client: 'mobile' });
+  assert.equal(response.status, 302);
+  const returned = new URL(response.headers.get('Location'));
+  assert.equal(returned.origin + returned.pathname, WEB);
+  assert.deepEqual([...returned.searchParams.keys()].sort(), ['loginAttemptId', 'loginCode']);
+  assert.equal(db.rows(UserSession).length, 0);
+  const input = exchangeBody(web, returned);
+  assert.equal((await post('kakao/exchange', { ...input, codeVerifier: mobile.codeVerifier })).status, 401);
+  const login = await post('kakao/exchange', input);
+  assert.equal(login.status, 200);
+  assert.equal(verifyAccessToken(login.body.data.accessToken).sub, login.body.data.user.userId);
+  assert.equal(verifyRefreshToken(login.body.data.refreshToken).sub, login.body.data.user.userId);
+  assert.equal((await post('kakao/exchange', input)).status, 401);
+  assert.equal((await callback(web)).status, 422);
+
+  for (const app of [legacy, mobile]) {
+    const cancel = await callback(app, { error: 'access_denied', client: 'web' });
+    assert.equal(cancel.status, 302);
+    const location = new URL(cancel.headers.get('location'));
+    assert.equal(location.protocol + '//' + location.host + location.pathname, APP);
+    assert.equal(location.searchParams.get('error'), 'login_cancelled');
+  }
+});
+
+test('web configuration is exact and failure does not disable mobile', async () => {
+  const payload = { codeChallenge: challenge(verifier()), codeChallengeMethod: 'S256', client: 'web' };
+  assert.equal((await post('kakao/start', { ...payload, client: 'desktop' })).status, 422);
+  assert.equal((await post('kakao/start', { ...payload, returnUrl: WEB })).status, 422);
+  for (const value of [undefined, 'http://web.test/auth/callback', 'https://user@web.test/auth/callback',
+    'https://web.test/auth/callback?return=/auth/callback', 'https://web.test/auth/callback#/auth/callback',
+    'https://web.test/other', 'leren://auth/callback']) {
+    env.kakaoWebReturnUrl = value;
+    assert.equal((await post('kakao/start', payload)).status, 503);
+  }
+  await start();
+  env.kakaoWebReturnUrl = 'http://localhost:3001/auth/callback';
+  const local = await start(verifier(), 'web');
+  const cancelled = await callback(local, { error: 'access_denied' });
+  assert.equal(cancelled.status, 302);
+  assert.match(cancelled.headers.get('location'), /^http:\/\/localhost:3001\/auth\/callback\?/);
+
+  const attempt = await start(verifier(), 'web');
+  env.kakaoWebReturnUrl = WEB;
+  assert.equal((await callback(attempt)).status, 422);
+  assert.equal(calls.length, 0);
+});
+
+test('in-flight mobile state issued before client was added remains usable', async () => {
+  const store = new MemoryOAuthStore();
+  const id = crypto.randomUUID();
+  const state = store.put('state', { loginAttemptId: id, challenge: challenge(verifier()), deepLink: APP, redirectUri: CALLBACK }, 60);
+  const service = createMobileService({}, { store });
+  const url = new URL(await service.callback({ state, error: 'access_denied' }));
+  assert.equal(url.protocol + '//' + url.host + url.pathname, APP);
+  assert.equal(url.searchParams.get('loginAttemptId'), id);
+});
+
+test('web CORS preflight and JSON use only the configured web origin on start/exchange', async () => {
+  const origin = new URL(WEB).origin;
+  for (const endpoint of ['start', 'exchange']) {
+    const url = base + '/api/v1/auth/kakao/' + endpoint;
+    const headers = { Origin: origin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' };
+    const preflight = await fetch(url, { method: 'OPTIONS', headers });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'), origin);
+    assert.equal(preflight.headers.get('access-control-allow-credentials'), null);
+    const denied = await fetch(url, { method: 'OPTIONS', headers: { ...headers, Origin: 'https://other.test' } });
+    assert.equal(denied.status, 403);
+    assert.equal(denied.headers.get('access-control-allow-origin'), null);
+    const invalid = await fetch(url, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(invalid.status, 422);
+    assert.equal(invalid.headers.get('access-control-allow-origin'), origin);
+  }
+  const response = await fetch(base + '/api/v1/auth/refresh', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(response.headers.get('access-control-allow-origin'), null);
 });
 
 test('existing SocialAccount and learning progress survive callback/exchange', async () => {
@@ -300,6 +388,11 @@ test('mobile exchange uses existing refresh rotation and logout/session middlewa
 test('Swagger distinguishes callback redirect, exchange JSON, and legacy deprecation', async () => {
   const spec = await (await fetch(`${base}/api-docs.json`)).json();
   assert.ok(spec.paths['/api/v1/auth/kakao/start'].post);
+  const startSpec = spec.components.schemas.KakaoStartRequest;
+  assert.equal(startSpec.additionalProperties, false);
+  assert.deepEqual(startSpec.required, ['codeChallenge', 'codeChallengeMethod']);
+  assert.deepEqual(startSpec.properties.client.enum, ['web', 'mobile']);
+  assert.equal(startSpec.properties.client.default, 'mobile');
   const callbackSpec = spec.paths['/api/v1/auth/kakao/callback'].get;
   assert.ok(callbackSpec.responses[302].headers.Location);
   assert.equal(callbackSpec.requestBody, undefined);

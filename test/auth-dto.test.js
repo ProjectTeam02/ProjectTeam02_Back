@@ -62,6 +62,12 @@ test('login response exposes fixed user fields, token metadata and never entity 
 
 test('Kakao DTO keeps PKCE shapes strict', () => {
   assert.deepEqual(kakaoRequest.parseStart({ codeChallenge: B64, codeChallengeMethod: 'S256' }), { codeChallenge: B64, codeChallengeMethod: 'S256' });
+  for (const client of ['web', 'mobile']) {
+    assert.equal(kakaoRequest.parseStart({ codeChallenge: B64, codeChallengeMethod: 'S256', client }).client, client);
+  }
+  for (const client of [null, '', true, ['web'], 'WEB', 'desktop']) {
+    assert.throws(() => kakaoRequest.parseStart({ codeChallenge: B64, codeChallengeMethod: 'S256', client }), isValidation);
+  }
   assert.throws(() => kakaoRequest.parseStart({ codeChallenge: B64, codeChallengeMethod: 'plain' }), isValidation);
   assert.throws(() => kakaoRequest.parseStart({ codeChallenge: B64, codeChallengeMethod: 'S256', redirectUri: 'x' }), isValidation);
   const exchange = { loginCode: B64, codeVerifier: 'v'.repeat(43), loginAttemptId: '123e4567-e89b-42d3-a456-426614174000' };
