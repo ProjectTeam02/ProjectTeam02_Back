@@ -6,7 +6,7 @@
 
 ## 배포 순서
 
-1. 배포 승인 후 마이그레이션 계정으로 `npm run db:migrate`를 실행한다. `KakaoOAuthEntries1794210000000`이 `app.kakao_oauth_entries`와 만료 인덱스를 생성한다. 런타임 `app_user`에는 기존 `app` 기본 권한 설정에 따라 SELECT, INSERT, UPDATE, DELETE가 부여되어야 한다. SELECT FOR UPDATE에는 UPDATE 권한도 필요하다.
+1. 배포 승인 후 마이그레이션 계정으로 `npm run db:migrate`를 실행한다. `KakaoOAuthEntries1794210000000`이 테이블과 만료 인덱스를 만들고 `SplitAppSchema1794700000000`이 테이블을 `account.kakao_oauth_entries`로 이동한다. 최종 스키마에서 런타임 `app_user`의 `account` USAGE와 해당 테이블의 SELECT, INSERT, UPDATE, DELETE 권한을 확인한다. SELECT FOR UPDATE에는 UPDATE 권한도 필요하다.
 2. 모든 API 인스턴스를 같은 PostgreSQL과 카카오 OAuth 설정에 연결한다. `NODE_ENV=production`, `KAKAO_OAUTH_STORE_MODE=postgres`를 설정한다. `KAKAO_REST_API_KEY`와 `KAKAO_CLIENT_SECRET`은 기존 비밀 설정 경로로 주입한다.
 3. Kakao Developers Redirect URI와 서버의 `KAKAO_OAUTH_CALLBACK_URL` 및 `KAKAO_ALLOWED_REDIRECT_URIS`에 `https://lerenapp.com/api/v1/auth/kakao/callback`을 등록한다. Expo에서 `leren` 스킴과 `leren://auth/callback`을 확인하고 서버의 `KAKAO_APP_DEEP_LINK`와 `KAKAO_ALLOWED_APP_DEEP_LINKS`에 같은 주소를 넣는다.
 4. 테스트 계정으로 HTTPS에서 start, 카카오 브라우저 인증, 앱 복귀, exchange 순으로 확인한다. 앱이 교환 응답에서 LEREN 세션 토큰을 받고 보호 API를 호출할 수 있는지 확인한다. 모드나 콜백 설정 변경 전에 시작한 흐름은 start부터 다시 진행한다.
