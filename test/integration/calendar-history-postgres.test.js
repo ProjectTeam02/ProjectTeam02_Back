@@ -341,29 +341,233 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
     assert.equal((await db.getRepository(E.QuestionSubmission).countBy({ attemptId: id })), 3);
   });
 
-  await t.test('reward configuration failure rolls back terminal answer and state', async () => {
-    const otherQuizUser = await db.getRepository(E.User).save({ nickname: 'rollback user', email: 'rollback-user@example.test' });
-    const otherSession = await db.getRepository(E.UserSession).save({ userId: otherQuizUser.userId,
+  async function rewardFixture() {
+    const user = await db.getRepository(E.User).save({ nickname: 'reward fixture', email: `reward-${crypto.randomUUID()}@example.test` });
+    const session = await db.getRepository(E.UserSession).save({ userId: user.userId,
       refreshTokenHash: crypto.randomBytes(32).toString('hex'), loginMethod: 'EMAIL',
       expiresAt: new Date(Date.now() + 3600000) });
-    const otherToken = require(root + '/src/common/utils/token.util').issueAccessToken(otherQuizUser, otherSession.sessionId);
-    const started = await quizRequest('POST', `/quizzes/stages/${quizStage.stageId}/attempts`, null, otherToken);
-    const id = started.body.data.attemptId;
-    const answer = (index, correct) => quizRequest('POST', `/quizzes/${answers[index].questionId}/submit`,
-      { attemptId: id, choiceId: (correct ? answers[index].correct : answers[index].wrong).choiceId }, otherToken);
-    assert.equal((await answer(0, true)).status, 201);
-    await db.getRepository(E.Stage).update({ stageId: quizStage.stageId }, { rewardCoin: null });
+    const bearer = require(root + '/src/common/utils/token.util').issueAccessToken(user, session.sessionId);
+    await db.getRepository(E.UserGrowth).save({ userId: user.userId, totalExp: 13, economyExp: 11 });
+    await db.getRepository(E.UserWallet).save({ userId: user.userId, coinBalance: 17, version: 3 });
+    return { userId: user.userId, bearer };
+  }
+
+  function rewardStart(fixture, route, relearn = false) {
+    const prefix = route === 'legacy' ? '/quizzes/stages' : '/stages';
+    const action = relearn ? 'relearn' : 'attempts';
+    const body = route === 'official' && !relearn ? { mode: 'START' } : null;
+    return quizRequest('POST', `${prefix}/${quizStage.stageId}/${action}`, body, fixture.bearer);
+  }
+
+  function rewardAnswer(fixture, route, attemptId, index, { correct = true, key = crypto.randomUUID() } = {}) {
+    const { questionId } = answers[index];
+    const { choiceId } = correct ? answers[index].correct : answers[index].wrong;
+    return route === 'legacy'
+      ? quizRequest('POST', `/quizzes/${questionId}/submit`, { attemptId, choiceId }, fixture.bearer, { 'Idempotency-Key': key })
+      : quizRequest('POST', `/attempts/${attemptId}/answers`, { questionId, choiceId, submissionId: key }, fixture.bearer);
+  }
+
+  async function rewardSnapshot({ userId }, attemptId) {
+    const [attempt, progress, submissions, exp, coin, growth, wallet] = await Promise.all([
+      db.getRepository(E.LearningAttempt).findOneByOrFail({ attemptId }),
+      db.getRepository(E.UserStageProgress).findOneByOrFail({ userId, stageId: quizStage.stageId }),
+      db.getRepository(E.QuestionSubmission).find({ where: { attemptId }, order: { sequenceNo: 'ASC' } }),
+      db.getRepository(E.ExpLedger).findBy({ userId }),
+      db.getRepository(E.CoinLedger).findBy({ userId }),
+      db.getRepository(E.UserGrowth).findOneByOrFail({ userId }),
+      db.getRepository(E.UserWallet).findOneByOrFail({ userId }),
+    ]);
+    return { attempt, progress, submissions, exp, coin, growth, wallet };
+  }
+
+  async function startedReward(fixture, route) {
+    const started = await rewardStart(fixture, route);
+    assert.equal(started.status, 201);
+    const { attemptId } = started.body.data;
+    assert.equal((await rewardAnswer(fixture, route, attemptId, 0)).status, 201);
+    return { attemptId, before: await rewardSnapshot(fixture, attemptId) };
+  }
+
+  async function assertSettledOnce(fixture, attemptId, before, reward = quizStage) {
+    const state = await rewardSnapshot(fixture, attemptId);
+    assert.equal(state.submissions.length, 2);
+    assert.equal(state.attempt.status, 'PASSED');
+    assert.equal(state.attempt.isFirstPass, true);
+    assert.equal(state.attempt.rewardGranted, true);
+    assert.equal(state.progress.progressStatus, 'PASSED');
+    assert.equal(state.progress.firstPassAttemptId, attemptId);
+    assert.equal(state.exp.length, 1);
+    assert.equal(state.coin.length, 1);
+    assert.equal(state.exp[0].attemptId, attemptId);
+    assert.equal(state.exp[0].sourceStageId, quizStage.stageId);
+    assert.equal(state.exp[0].totalExpAmount, reward.rewardTotalExp);
+    assert.equal(state.exp[0].economyExpAmount, reward.rewardEconomyExp);
+    assert.equal(state.coin[0].attemptId, attemptId);
+    assert.equal(state.coin[0].refId, quizStage.stageId);
+    assert.equal(state.coin[0].amount, reward.rewardCoin);
+    assert.equal(state.coin[0].balanceBefore, before.wallet.coinBalance);
+    assert.equal(state.growth.totalExp, before.growth.totalExp + reward.rewardTotalExp);
+    assert.equal(state.growth.economyExp, before.growth.economyExp + reward.rewardEconomyExp);
+    assert.equal(state.exp[0].totalExpAfter, state.growth.totalExp);
+    assert.equal(state.exp[0].economyExpAfter, state.growth.economyExp);
+    assert.equal(state.wallet.coinBalance, before.wallet.coinBalance + reward.rewardCoin);
+    assert.equal(state.coin[0].balanceAfter, state.wallet.coinBalance);
+    assert.equal(state.wallet.version, before.wallet.version + 1);
+    return state;
+  }
+
+  for (const route of ['legacy', 'official']) {
+    await t.test(`${route} first clear rolls back missing rewards and accepts the same request after repair`, async () => {
+      const fixture = await rewardFixture();
+      const { attemptId, before } = await startedReward(fixture, route);
+      const key = crypto.randomUUID();
+      const complete = () => rewardAnswer(fixture, route, attemptId, 1, { key });
+      const changedField = route === 'legacy' ? 'rewardCoin' : 'rewardTotalExp';
+      await db.getRepository(E.Stage).update({ stageId: quizStage.stageId }, { [changedField]: null });
+      try {
+        const failed = await complete();
+        assert.equal(failed.status, 503);
+        assert.deepEqual(failed.body, { success: false, message: 'Stage 최초 통과 보상이 설정되지 않았습니다.', code: 'SERVICE_UNAVAILABLE' });
+        assert.equal(before.attempt.status, 'IN_PROGRESS');
+        assert.equal(before.attempt.submittedCount, 1);
+        assert.equal(before.submissions.length, 1);
+        assert.equal(before.progress.progressStatus, 'IN_PROGRESS');
+        assert.equal(before.exp.length, 0);
+        assert.equal(before.coin.length, 0);
+        assert.deepEqual(await rewardSnapshot(fixture, attemptId), before);
+      } finally {
+        await db.getRepository(E.Stage).update({ stageId: quizStage.stageId }, { [changedField]: quizStage[changedField] });
+      }
+      const settled = await complete();
+      assert.equal(settled.status, 201);
+      assert.equal(settled.body.data.rewardGranted, true);
+      const committed = await assertSettledOnce(fixture, attemptId, before);
+      const duplicate = await complete();
+      assert.equal(duplicate.status, 201);
+      assert.deepEqual(duplicate.body.data, { ...settled.body.data, duplicate: true });
+      assert.equal((await rewardAnswer(fixture, route, attemptId, 1)).status, 409);
+      assert.deepEqual(await rewardSnapshot(fixture, attemptId), committed);
+    });
+  }
+
+  await t.test('explicit zero rewards settle normally and remain distinct from missing settings', async () => {
+    const fixture = await rewardFixture();
+    const zero = { rewardTotalExp: 0, rewardEconomyExp: 0, rewardCoin: 0 };
+    const stages = db.getRepository(E.Stage);
+    await stages.update({ stageId: quizStage.stageId }, zero);
     try {
-      assert.equal((await answer(1, true)).status, 503);
-      const attempt = await db.getRepository(E.LearningAttempt).findOneByOrFail({ attemptId: id });
-      assert.equal(attempt.status, 'IN_PROGRESS');
-      assert.equal(attempt.submittedCount, 1);
-      assert.equal((await db.getRepository(E.QuestionSubmission).countBy({ attemptId: id })), 1);
-      assert.equal((await db.getRepository(E.ExpLedger).countBy({ userId: otherQuizUser.userId })), 0);
+      const { attemptId, before } = await startedReward(fixture, 'official');
+      const result = await rewardAnswer(fixture, 'official', attemptId, 1);
+      assert.equal(result.status, 201);
+      assert.equal(result.body.data.rewardGranted, true);
+      await assertSettledOnce(fixture, attemptId, before, zero);
     } finally {
-      await db.getRepository(E.Stage).update({ stageId: quizStage.stageId }, { rewardCoin: quizStage.rewardCoin });
+      await stages.update({ stageId: quizStage.stageId }, {
+        rewardTotalExp: quizStage.rewardTotalExp, rewardEconomyExp: quizStage.rewardEconomyExp, rewardCoin: quizStage.rewardCoin,
+      });
     }
   });
+
+  await t.test('mixed-route first-clear competition settles once and relearning keeps the original reward', async () => {
+    const fixture = await rewardFixture();
+    const starts = await Promise.all(['legacy', 'official'].map(route => rewardStart(fixture, route)));
+    assert.deepEqual(starts.map(response => response.status).sort(), [200, 201]);
+    const { attemptId } = starts[0].body.data;
+    assert.equal(starts[1].body.data.attemptId, attemptId);
+    assert.equal(await db.getRepository(E.LearningAttempt).countBy({ userId: fixture.userId, stageId: quizStage.stageId }), 1);
+
+    const key = crypto.randomUUID();
+    const first = await Promise.all([0, 1].map(() => rewardAnswer(fixture, 'official', attemptId, 0, { key })));
+    assert.deepEqual(first.map(response => response.status), [201, 201]);
+    assert.deepEqual(first.map(response => Boolean(response.body.data.duplicate)).sort(), [false, true]);
+    const before = await rewardSnapshot(fixture, attemptId);
+    assert.equal(before.submissions.length, 1);
+    const routes = ['legacy', 'official'];
+    const keys = routes.map(() => crypto.randomUUID());
+    const final = await Promise.all(routes.map((route, i) => rewardAnswer(fixture, route, attemptId, 1, { key: keys[i] })));
+    assert.deepEqual(final.map(response => response.status).sort(), [201, 409]);
+    const winner = final.findIndex(response => response.status === 201);
+    assert.equal(final[winner].body.data.rewardGranted, true);
+    const committed = await assertSettledOnce(fixture, attemptId, before);
+    const replay = await rewardAnswer(fixture, routes[winner], attemptId, 1, { key: keys[winner] });
+    assert.equal(replay.status, 201);
+    assert.equal(replay.body.data.duplicate, true);
+    assert.equal(replay.body.data.rewardGranted, true);
+
+    const relearn = await rewardStart(fixture, 'official', true);
+    assert.equal(relearn.status, 201);
+    const relearnId = relearn.body.data.attemptId;
+    assert.notEqual(relearnId, attemptId);
+    assert.equal((await rewardAnswer(fixture, 'official', relearnId, 0)).status, 201);
+    const done = await rewardAnswer(fixture, 'official', relearnId, 1);
+    assert.equal(done.status, 201);
+    assert.equal(done.body.data.status, 'PASSED');
+    assert.equal(done.body.data.rewardGranted, false);
+    assert.equal((await db.getRepository(E.LearningAttempt).findOneByOrFail({ attemptId: relearnId })).attemptType, 'RELEARN');
+    assert.deepEqual(await rewardSnapshot(fixture, attemptId), committed);
+  });
+
+  await t.test('a fresh failed Stage attempt leaves growth, wallet and ledgers unchanged', async () => {
+    const fixture = await rewardFixture();
+    const { attemptId, before } = await startedReward(fixture, 'official');
+    assert.equal((await rewardAnswer(fixture, 'official', attemptId, 1, { correct: false })).status, 201);
+    const failed = await rewardAnswer(fixture, 'official', attemptId, 2, { correct: false });
+    assert.equal(failed.status, 201);
+    assert.equal(failed.body.data.status, 'FAILED');
+    assert.equal(failed.body.data.rewardGranted, false);
+    const state = await rewardSnapshot(fixture, attemptId);
+    assert.equal(state.attempt.status, 'FAILED');
+    assert.equal(state.attempt.isFirstPass, false);
+    assert.equal(state.submissions.length, 3);
+    for (const key of ['progress', 'exp', 'coin', 'growth', 'wallet']) assert.deepEqual(state[key], before[key]);
+  });
+
+  await t.test('a repeated submissionId cannot replace another attempt’s saved answer', async () => {
+    const fixtures = await Promise.all([rewardFixture(), rewardFixture()]);
+    const started = await Promise.all(fixtures.map(fixture => rewardStart(fixture, 'official')));
+    assert.deepEqual(started.map(response => response.status), [201, 201]);
+    const ids = started.map(response => response.body.data.attemptId);
+    const key = crypto.randomUUID();
+    const replies = await Promise.all(fixtures.map((fixture, i) => rewardAnswer(fixture, 'official', ids[i], 0, { key })));
+    assert.deepEqual(replies.map(response => response.status).sort(), [201, 409]);
+    const winner = replies.findIndex(response => response.status === 201);
+    const stored = await db.getRepository(E.QuestionSubmission).findOneByOrFail({ submissionId: key });
+    assert.equal(stored.attemptId, ids[winner]);
+    for (let i = 0; i < fixtures.length; i++) {
+      const state = await rewardSnapshot(fixtures[i], ids[i]);
+      assert.equal(state.submissions.length, i === winner ? 1 : 0);
+      assert.equal(state.attempt.submittedCount, i === winner ? 1 : 0);
+      assert.equal(state.exp.length, 0);
+      assert.equal(state.coin.length, 0);
+    }
+  });
+
+  for (const [table, operation, route] of [
+    ['exp_ledger', 'INSERT', 'legacy'], ['coin_ledger', 'INSERT', 'official'],
+    ['user_growth', 'UPDATE', 'legacy'], ['user_wallets', 'UPDATE', 'official'],
+  ]) {
+    await t.test(`${table} write failure rolls back the entire first clear`, async () => {
+      const fixture = await rewardFixture();
+      const { attemptId, before } = await startedReward(fixture, route);
+      const key = crypto.randomUUID();
+      await admin.query("CREATE FUNCTION app.reject_test_reward_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated reward write failed'; END $$");
+      try {
+        await admin.query(`CREATE TRIGGER reject_test_reward_write BEFORE ${operation} ON reward.${table} FOR EACH ROW EXECUTE FUNCTION app.reject_test_reward_write()`);
+        try {
+          const failed = await rewardAnswer(fixture, route, attemptId, 1, { key });
+          assert.equal(failed.status, 503);
+          assert.equal(failed.body.code, 'SERVICE_UNAVAILABLE');
+          assert.deepEqual(await rewardSnapshot(fixture, attemptId), before);
+        } finally {
+          await admin.query(`DROP TRIGGER reject_test_reward_write ON reward.${table}`);
+        }
+      } finally {
+        await admin.query('DROP FUNCTION app.reject_test_reward_write()');
+      }
+      assert.equal((await rewardAnswer(fixture, route, attemptId, 1, { key })).status, 201);
+      await assertSettledOnce(fixture, attemptId, before);
+    });
+  }
 
   await t.test('a prior PASSED attempt without progress cannot earn first-clear rewards again', async () => {
     const pastUser = await db.getRepository(E.User).save({ nickname: 'past passer', email: 'past-passer@example.test' });
@@ -375,8 +579,21 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
       userId: pastUser.userId, stageId: quizStage.stageId, attemptNo: 1,
       attemptType: 'PLAY', mode: 'START', status: 'PASSED', endReason: 'MONSTER_DEFEATED',
       maxQuestionCount: 3, requiredCorrectCount: 2, initialHp: 2, finalHp: 0,
-      submittedCount: 2, correctCount: 2, endedAt: new Date(),
+      submittedCount: 2, correctCount: 2, endedAt: new Date(), isFirstPass: true, rewardGranted: false,
     });
+    // A historical first clear can have been recorded before any reward was granted.
+    const previousAnswers = await db.getRepository(E.QuestionSubmission).save(answers.slice(0, 2).map(({ questionId, correct }, index) => ({
+      submissionId: crypto.randomUUID(), attemptId: old.attemptId, questionId, sequenceNo: index + 1,
+      displayedChoiceOrder: [correct.choiceId], choiceId: correct.choiceId, selectedPosition: correct.baseOrder,
+      isCorrect: true, hpBefore: 2 - index, hpAfter: 1 - index,
+    })));
+    const terminal = previousAnswers[1];
+    const replay = await quizRequest('POST', `/attempts/${old.attemptId}/answers`, {
+      questionId: terminal.questionId, choiceId: terminal.choiceId, submissionId: terminal.submissionId,
+    }, pastToken);
+    assert.equal(replay.status, 201);
+    assert.equal(replay.body.data.duplicate, true);
+    assert.equal(replay.body.data.rewardGranted, false);
     const retry = await quizRequest('POST', `/quizzes/stages/${quizStage.stageId}/attempts`, null, pastToken);
     assert.equal(retry.status, 201);
     assert.equal(retry.body.data.mode, 'RETRY');

@@ -13,6 +13,8 @@ const historyDto = require('../learning/dto/historyResponse.dto');
 
 const normalRules = { questions: 3, correct: 2, hp: 2 };
 const repository = (manager, entity) => manager.getRepository(entity);
+const hasConfiguredReward = stage => [stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin]
+  .every(value => Number.isSafeInteger(value) && value >= 0);
 
 function submissionIdFor(attemptId, key) {
   const bytes = crypto.createHash('sha256').update(attemptId).update('\0').update(key).digest().subarray(0, 16);
@@ -70,8 +72,7 @@ async function requireStage(manager, stageId, expectedType = 'NORMAL') {
   }
   if (expectedType === 'BOSS' && ![stage.maxQuestionCount, stage.requiredCorrectCount, stage.initialMonsterHp]
     .every(value => Number.isInteger(value) && value > 0)) throw AppError.unavailable('Boss Stage Quiz 설정이 올바르지 않습니다.');
-  if (expectedType === 'NORMAL' && [stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin]
-    .some(value => !Number.isSafeInteger(value) || value < 0)) {
+  if (expectedType === 'NORMAL' && !hasConfiguredReward(stage)) {
     throw AppError.unavailable('Stage 최초 통과 보상이 설정되지 않았습니다.');
   }
   return stage;
@@ -130,8 +131,7 @@ async function levelFor(manager, scope, exp) {
 }
 
 async function grantFirstPass(manager, userId, stage, attempt) {
-  const amounts = [stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin];
-  if (amounts.some(value => !Number.isSafeInteger(value) || value < 0)) {
+  if (!hasConfiguredReward(stage)) {
     throw AppError.unavailable('Stage 최초 통과 보상이 설정되지 않았습니다.');
   }
   // One user row serializes balance changes from distinct Stage completions.
@@ -274,7 +274,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
                 explanation: question?.question?.explanation,
                 hpBefore: priorKey.hpBefore, hpAfter: priorKey.hpAfter,
                 submittedCount: priorKey.sequenceNo, correctCount, status,
-                rewardGranted: status === 'PASSED' && attempt.isFirstPass,
+                rewardGranted: status === 'PASSED' && (expectedType === 'NORMAL' ? attempt.rewardGranted : attempt.isFirstPass),
                 duplicate: true,
                 currentQuestion: status === 'IN_PROGRESS' ? await currentQuestion(manager, attempt) : null,
               });
@@ -298,7 +298,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
           const { hpBefore, hpAfter, submittedCount, correctCount, status } = transition(attempt, isCorrect);
           const passed = status === 'PASSED';
           const now = status === 'IN_PROGRESS' ? null : new Date();
-          await submissionRepo.save({
+          await submissionRepo.insert({
             submissionId: effectiveSubmissionId, attemptId, questionId, sequenceNo: order,
             displayedChoiceOrder: choices.map(item => item.choiceId), choiceId,
             selectedPosition: choice.baseOrder, isCorrect, hpBefore, hpAfter,
@@ -318,9 +318,8 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
                 order: { endedAt: 'ASC', attemptNo: 'ASC' },
               });
               if (!earlierPass) {
-                const rewardConfigured = [stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin]
-                  .every(value => Number.isSafeInteger(value) && value >= 0);
-                if (rewardConfigured) {
+                // Normal first clears must settle or roll back. Boss keeps its existing optional reward.
+                if (stage.stageType === 'NORMAL' || hasConfiguredReward(stage)) {
                   await grantFirstPass(manager, userId, stage, attempt);
                   attempt.rewardGranted = true;
                 }
