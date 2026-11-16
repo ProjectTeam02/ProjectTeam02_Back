@@ -19,6 +19,18 @@ const studyPlanBody = required => ({ required: true, content: { 'application/jso
 const success = (description = '성공') => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/ExtendedSuccess' } } } });
 const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 403: error, 404: error, 409: error, 422: error, 503: error, ...responses } });
 
+const bossCombatProperties = {
+  consecutiveCorrectCount: { type: 'integer', minimum: 0 },
+  criticalUsed: { type: 'boolean' },
+  defeatedAtQuestion: { type: 'integer', minimum: 1, maximum: 7, nullable: true },
+  bonusQuestionCount: { type: 'integer', minimum: 0, description: '격파한 문항 뒤에 남았던 보너스 대상 문항 수' },
+  bonusCorrectCount: { type: 'integer', minimum: 0 },
+};
+const bossCombatSchema = properties => ({ type: 'object', required: Object.keys(properties), properties });
+const bossResponse = (description, schema) => ({ description, content: { 'application/json': { schema: {
+  type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: `#/components/schemas/${schema}` } },
+} } } });
+
 const classCodeField = { type: 'string', enum: ['WARRIOR', 'MAGE', 'ARCHER'], description: '직업 코드 (GET /api/v1/character-classes의 classCode)' };
 const notificationSettingsResponse = { description: '알림 설정', content: { 'application/json': { schema: { type: 'object', required: ['success', 'data'], properties: {
   success: { type: 'boolean' },
@@ -35,6 +47,12 @@ const only = (operation, codes) => ({ ...operation, responses: Object.fromEntrie
 module.exports = {
   schemas: {
     ExtendedSuccess: { type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean', example: true }, data: { type: 'object', additionalProperties: true } } },
+    BossAttempt: { allOf: [{ $ref: '#/components/schemas/NormalStageAttempt' }, { type: 'object', properties: {
+      bossCombat: bossCombatSchema(bossCombatProperties),
+    } }] },
+    BossAnswer: { allOf: [{ $ref: '#/components/schemas/NormalStageAnswer' }, { type: 'object', properties: {
+      bossCombat: bossCombatSchema({ ...bossCombatProperties, isBonusQuestion: { type: 'boolean' }, criticalTriggered: { type: 'boolean' } }),
+    } }] },
   },
   paths: {
     '/api/v1/topics/tree': { get: secure('공개 주제 트리') },
@@ -42,25 +60,21 @@ module.exports = {
     '/api/v1/concepts/{conceptId}': { get: secure('개념 상세', [uuid('conceptId')]) },
     '/api/v1/stages/{stageId}/relearn': { post: secure('통과 Stage 재학습', [uuid('stageId')]) },
     '/api/v1/bosses/{bossId}': { get: { ...secure('Boss Stage 상세', [uuid('bossId')]),
-      description: 'maxQuestionCount는 신규 Boss 응시의 최대 문항 수(7)입니다. 이전 응시는 각 응시의 기존 문항 수를 유지합니다.',
+      description: '신규 응시는 7문항과 HP 6으로 시작합니다. requiredCorrectCount는 크리티컬을 포함해 격파하는 데 필요한 최소 정답 수(5)이며 최종 결과는 7번째 제출 후 확정합니다. 이전 응시는 저장된 구성을 유지합니다.',
     } },
     '/api/v1/bosses/{bossId}/attempts': { post: { ...secure('Boss 응시 시작', [uuid('bossId')], body({ mode: { type: 'string', enum: ['START', 'RETRY'] } }, ['mode']), {
-      200: success('진행 중 응시 복구'), 201: success('랜덤 7문항을 저장한 신규 응시'),
+      200: bossResponse('진행 중 응시 복구', 'BossAttempt'), 201: bossResponse('랜덤 7문항을 저장한 신규 응시', 'BossAttempt'),
       503: { ...error, description: '적격 공개 문항 부족 또는 Boss 설정/서비스 사용 불가. 새 응시는 저장되지 않습니다.' },
-    }), description: '동일 주제의 공개 문항 중 일반 Stage에 배정된 문항을 제외하고 7개를 선정합니다. 진행 중인 응시는 기존 구성과 답안을 유지합니다. 전투의 통과 조건은 기존 규칙을 사용합니다.',
+    }), description: '동일 주제의 공개 문항 중 일반 Stage에 배정된 문항을 제외하고 7개를 선정합니다. 진행 중 응시는 기존 구성과 답안을 유지합니다. bossCombat 필드는 새 전투 규칙으로 시작한 응시에 제공됩니다.',
     } },
     '/api/v1/boss-attempts/{attemptId}': { get: only(secure('Boss 응시 조회', [uuid('attemptId')], undefined, {
-      200: { description: 'Boss 응시 상태와 현재 문항', content: { 'application/json': { schema: {
-        type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAttempt' } },
-      } } } },
+      200: bossResponse('Boss 응시 상태와 현재 문항', 'BossAttempt'),
     }), [200, 401, 404, 422, 503]) },
     '/api/v1/boss-attempts/{attemptId}/answers': { post: only(secure('Boss 답안 제출', [uuid('attemptId')], {
       required: true,
       content: { 'application/json': { schema: { $ref: '#/components/schemas/NormalStageAnswerRequest' } } },
     }, {
-      201: { description: 'Boss 답안 채점 결과', content: { 'application/json': { schema: {
-        type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NormalStageAnswer' } },
-      } } } },
+      201: bossResponse('Boss 답안 채점 결과. 새 규칙에서는 HP가 0이어도 7번째 제출까지 진행합니다. 같은 답안 재전송에는 원래 채점 결과와 duplicate가 반환됩니다.', 'BossAnswer'),
     }), [201, 401, 404, 409, 422, 503]) },
     '/api/v1/attempts/{attemptId}/current-question': { get: secure('현재 문항', [uuid('attemptId')]) },
     '/api/v1/attempts/{attemptId}/answers': { post: secure('일반 Stage 답안 제출', [uuid('attemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid' } })) },

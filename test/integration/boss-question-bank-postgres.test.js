@@ -5,7 +5,7 @@ const listenTestServer = require('../helpers/listen-test-server');
 
 const config = process.env.LEREN_EXTENDED_API_PG_TEST_CONFIG;
 
-test('Boss question bank against isolated Express and PostgreSQL', { skip: !config, timeout: 120000 }, async t => {
+test('Boss question bank and combat against isolated Express and PostgreSQL', { skip: !config, timeout: 120000 }, async t => {
   const E = require('@leren/database');
   const { AppDataSource: db } = E;
   const env = require('../../src/config/env');
@@ -110,15 +110,18 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
   await t.test('exactly six eligible questions rejects and leaves no new attempt, progress, or snapshots', async () => {
     await save(E.UserStageProgress, { userId: owner.id, stageId: scarce.normal.stageId,
       progressStatus: 'PASSED', firstPassedAt: new Date() });
-    const snapshotCount = await snapshots.count();
-    const response = await request(bossStart(scarce), owner, resumeOrStart);
+    let response;
+    try {
+      response = await request(bossStart(scarce), owner, resumeOrStart);
+    } finally {
+      // The synthetic cross-topic assignment must affect only this test's pool eligibility.
+      await db.getRepository(E.StageQuestion).delete({ stageId: main.normal.stageId, questionOrder: 4 });
+    }
     assert.equal(response.status, 503, JSON.stringify(response.body));
     assert.equal(response.body.code, 'SERVICE_UNAVAILABLE');
     assert.equal(await attempts.countBy({ userId: owner.id, stageId: scarce.boss.stageId }), 0);
     assert.equal(await progress.countBy({ userId: owner.id, stageId: scarce.boss.stageId }), 0);
-    assert.equal(await snapshots.count(), snapshotCount);
-    // This synthetic cross-topic assignment must affect only pool eligibility, so remove it before playing its Normal Stage.
-    await db.getRepository(E.StageQuestion).delete({ stageId: main.normal.stageId, questionOrder: 4 });
+    assert.equal(await snapshots.countBy({ attempt: { userId: owner.id, stageId: scarce.boss.stageId } }), 0);
   });
 
   await t.test('Normal keeps its mapped three questions, HP 2, pass at two and fail/retry at three', async () => {
@@ -126,6 +129,7 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
     let state = data(await request(start, owner, resumeOrStart), 201);
     assert.equal(state.maxQuestionCount, 3);
     assert.equal(state.hp, 2);
+    assert.equal('bossCombat' in state, false);
     let nextQuestion = state.currentQuestion;
     for (let index = 0; index < 2; index += 1) {
       assert.equal(nextQuestion.id, main.normalIds[index]);
@@ -135,6 +139,8 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
     assert.equal(state.status, 'PASSED');
     assert.equal(state.submittedCount, 2);
     assert.equal(nextQuestion, null);
+    assert.equal('bossCombat' in state, false);
+    assert.equal((await attempts.findOneByOrFail({ attemptId: state.attemptId })).bossCombatState, null);
     assert.equal(await snapshots.countBy({ attemptId: state.attemptId }), 0);
 
     let failure = data(await request(start, outsider, resumeOrStart), 201);
@@ -153,7 +159,8 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
   await t.test('authenticated concurrent Boss start creates one seven-question snapshot, then resumes it', async () => {
     const detail = data(await request(`/bosses/${main.boss.stageId}`, owner), 200);
     assert.equal(detail.maxQuestionCount, 7);
-    assert.equal(detail.initialMonsterHp, 4);
+    assert.equal(detail.initialMonsterHp, 6);
+    assert.equal(detail.requiredCorrectCount, 5);
     assert.equal((await request(bossStart(main), null, resumeOrStart)).status, 401);
     assert.equal((await request(bossStart(main), owner, { mode: 'INVALID' })).status, 422);
     const pair = await Promise.all([request(bossStart(main), owner, resumeOrStart), request(bossStart(main), owner, resumeOrStart)]);
@@ -163,7 +170,9 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
     assert.equal(started.resumed, false);
     assert.deepEqual(resumed, { ...started, resumed: true });
     assert.equal(started.maxQuestionCount, 7);
-    assert.equal(started.hp, 4);
+    assert.equal(started.hp, 6);
+    assert.deepEqual(started.bossCombat, { consecutiveCorrectCount: 0, criticalUsed: false,
+      defeatedAtQuestion: null, bonusQuestionCount: 0, bonusCorrectCount: 0 });
     assert.equal(started.currentQuestion.choices.length, 4);
     assert.ok(started.currentQuestion.choices.every(choice => !('isCorrect' in choice)));
     assert.equal('explanation' in started.currentQuestion, false);
@@ -217,7 +226,8 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
   await t.test('a write failure after inserting the snapshot rolls back both it and the new attempt', async testContext => {
     const retired = main.eligibleIds.find(id => !orderedIds.includes(id));
     await db.getRepository(E.Question).update({ questionId: retired }, { status: 'PUBLISHED' });
-    const snapshotCount = await snapshots.count();
+    const snapshotScope = { attempt: { userId: owner.id, stageId: main.boss.stageId } };
+    const snapshotCount = await snapshots.countBy(snapshotScope);
     const originalSave = bossQuestions.save;
     const failure = testContext.mock.method(bossQuestions, 'save', async (...args) => {
       await originalSave(...args);
@@ -228,19 +238,27 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
     assert.equal(response.status, 503);
     assert.equal(await attempts.countBy({ userId: owner.id, stageId: main.boss.stageId }), 1);
     assert.equal(await attempts.countBy({ userId: owner.id, stageId: main.boss.stageId, status: 'IN_PROGRESS' }), 0);
-    assert.equal(await snapshots.count(), snapshotCount);
+    assert.equal(await snapshots.countBy(snapshotScope), snapshotCount);
   });
 
-  await t.test('a new snapshot retains the existing early pass rule while Boss combat is unchanged', async () => {
+  await t.test('a pre-combat seven-question snapshot retains its original HP and early pass', async () => {
     const player = await account('은행전투사용자');
-    await save(E.UserStageProgress, { userId: player.id, stageId: main.normal.stageId,
-      progressStatus: 'PASSED', firstPassedAt: new Date() });
-    let state = data(await request(bossStart(main), player, resumeOrStart), 201);
+    const existing = await save(E.LearningAttempt, { userId: player.id, stageId: main.boss.stageId, attemptNo: 1,
+      maxQuestionCount: 7, requiredCorrectCount: 4, initialHp: 4, status: 'IN_PROGRESS' });
+    await save(E.BossAttemptQuestion, main.eligibleIds.slice(0, 7).map((questionId, index) => ({
+      attemptId: existing.attemptId, questionOrder: index + 1, questionId,
+    })));
+    let state = data(await request(bossStart(main), player, resumeOrStart), 200);
+    assert.equal(state.attemptId, existing.attemptId);
+    assert.equal(state.hp, 4);
+    assert.equal('bossCombat' in state, false);
     let nextQuestion = state.currentQuestion;
     for (let correct = 1; correct <= 4; correct += 1) {
       state = data(await request(`${bossAttempt(state.attemptId)}/answers`, player, await answerFor(nextQuestion.id, true)), 201);
       nextQuestion = state.nextQuestion;
       assert.equal(state.status, correct < 4 ? 'IN_PROGRESS' : 'PASSED');
+      assert.equal(state.hpAfter, 4 - correct);
+      assert.equal('bossCombat' in state, false);
     }
     assert.equal(state.submittedCount, 4);
     assert.equal(nextQuestion, null);
@@ -255,9 +273,135 @@ test('Boss question bank against isolated Express and PostgreSQL', { skip: !conf
     const restored = data(await request(bossStart(main), legacy, resumeOrStart), 200);
     assert.equal(restored.attemptId, existing.attemptId);
     assert.equal(restored.maxQuestionCount, 5);
+    assert.equal('bossCombat' in restored, false);
     assert.equal(restored.currentQuestion.id, main.normalIds[0]);
     const advanced = data(await request(`${bossAttempt(restored.attemptId)}/answers`, legacy, await answerFor(main.normalIds[0])), 201);
     assert.equal(advanced.nextQuestion.id, main.normalIds[1]);
     assert.equal(await snapshots.countBy({ attemptId: restored.attemptId }), 0);
   });
+
+  const scenarios = [
+    { label: 'defeat on five with wrong and correct bonus answers', answers: 'TTTTTFT', hp: [5, 3, 2, 1, 0, 0, 0], criticalAt: 2, defeatedAt: 5, bonusCorrect: 1 },
+    { label: 'wrong answer resets streak before defeat on six', answers: 'TFTTTTF', hp: [5, 5, 4, 2, 1, 0, 0], criticalAt: 4, defeatedAt: 6, bonusCorrect: 0 },
+    { label: 'defeat on seven has no bonus questions', answers: 'TFTFTTT', hp: [5, 5, 4, 4, 3, 1, 0], criticalAt: 6, defeatedAt: 7, bonusCorrect: 0 },
+    { label: 'four nonconsecutive correct answers fail after seven', answers: 'TFTFTFT', hp: [5, 5, 4, 4, 3, 3, 2], criticalAt: null, defeatedAt: null, bonusCorrect: 0 },
+  ];
+  const stageId = main.boss.stageId;
+  const rewardExp = db.getRepository(E.ExpLedger);
+  const rewardCoin = db.getRepository(E.CoinLedger);
+  await db.getRepository(E.Stage).update({ stageId }, { rewardTotalExp: 10, rewardEconomyExp: 5, rewardCoin: 3 });
+
+  for (const [scenarioIndex, scenario] of scenarios.entries()) {
+    await t.test(scenario.label, async () => {
+      const player = await account(`전투${scenarioIndex}`);
+      await save(E.UserStageProgress, { userId: player.id, stageId: main.normal.stageId,
+        progressStatus: 'PASSED', firstPassedAt: new Date() });
+      const start = data(await request(bossStart(main), player, resumeOrStart), 201);
+      const path = `${bossAttempt(start.attemptId)}/answers`;
+      const expCriteria = { userId: player.id, sourceStageId: stageId };
+      const coinCriteria = { userId: player.id, refId: stageId };
+      assert.equal(start.hp, 6);
+      assert.equal(start.maxQuestionCount, 7);
+      let nextQuestion = start.currentQuestion;
+      let streak = 0;
+      let bonusCorrect = 0;
+      let criticalReplay;
+      let result;
+      for (const [index, outcome] of [...scenario.answers].entries()) {
+        const order = index + 1;
+        const isCorrect = outcome === 'T';
+        const isBonus = scenario.defeatedAt !== null && order > scenario.defeatedAt;
+        const defeated = scenario.defeatedAt !== null && order >= scenario.defeatedAt;
+        const requestBody = await answerFor(nextQuestion.id, isCorrect);
+        streak = isCorrect ? streak + 1 : 0;
+        if (isBonus && isCorrect) bonusCorrect += 1;
+        if (scenarioIndex === 0 && (order === 2 || order === 7)) {
+          const pair = await Promise.all([request(path, player, requestBody), request(path, player, requestBody)]);
+          const graded = pair.map(response => data(response, 201));
+          result = graded.find(answer => !answer.duplicate);
+          assert.deepEqual(graded.find(answer => answer.duplicate), { ...result, duplicate: true });
+          assert.equal(await submissions.countBy({ attemptId: start.attemptId }), order);
+          if (order === 2) criticalReplay = { requestBody, result };
+        } else if (scenarioIndex === 0 && order === 3) {
+          const competing = { ...requestBody, submissionId: randomUUID() };
+          const pair = await Promise.all([request(path, player, requestBody), request(path, player, competing)]);
+          assert.deepEqual(pair.map(response => response.status).sort(), [201, 409]);
+          result = data(pair.find(response => response.status === 201), 201);
+          assert.equal(await submissions.countBy({ attemptId: start.attemptId }), order);
+        } else {
+          result = data(await request(path, player, requestBody), 201);
+        }
+        assert.equal(result.hpBefore, index === 0 ? 6 : scenario.hp[index - 1]);
+        assert.equal(result.hpAfter, scenario.hp[index]);
+        assert.equal(result.submittedCount, order);
+        assert.equal(result.isCorrect, isCorrect);
+        assert.deepEqual(result.bossCombat, {
+          consecutiveCorrectCount: streak, criticalUsed: scenario.criticalAt !== null && order >= scenario.criticalAt,
+          defeatedAtQuestion: defeated ? scenario.defeatedAt : null, bonusQuestionCount: defeated ? 7 - scenario.defeatedAt : 0,
+          bonusCorrectCount: bonusCorrect, isBonusQuestion: isBonus, criticalTriggered: scenario.criticalAt === order,
+        });
+        nextQuestion = result.nextQuestion;
+        if (order < 7) {
+          assert.equal(result.status, 'IN_PROGRESS');
+          assert.equal(result.endReason, null);
+          assert.equal(result.rewardGranted, false);
+          assert.ok(nextQuestion);
+          const stored = await attempts.findOneByOrFail({ attemptId: start.attemptId });
+          assert.equal(stored.status, 'IN_PROGRESS');
+          assert.equal(stored.resultSavedAt, null);
+          assert.equal(stored.endedAt, null);
+          assert.equal(await rewardExp.countBy(expCriteria), 0);
+          assert.equal(await rewardCoin.countBy(coinCriteria), 0);
+          if (scenario.defeatedAt === order) {
+            const get = data(await request(bossAttempt(start.attemptId), player), 200);
+            const resumed = data(await request(bossStart(main), player, resumeOrStart), 200);
+            assert.deepEqual(resumed, { ...get, resumed: true });
+            assert.equal(get.hp, 0);
+            assert.equal(get.currentQuestion.id, nextQuestion.id);
+            assert.deepEqual(get.bossCombat, stored.bossCombatState);
+          }
+        }
+      }
+
+      const passed = scenario.defeatedAt !== null;
+      assert.equal(result.status, passed ? 'PASSED' : 'FAILED');
+      assert.equal(result.endReason, passed ? 'MONSTER_DEFEATED' : 'QUESTIONS_EXHAUSTED');
+      assert.equal(result.bossCombat.bonusCorrectCount, scenario.bonusCorrect);
+      assert.equal(result.nextQuestion, null);
+      assert.equal(result.rewardGranted, passed);
+      const stored = await attempts.findOneByOrFail({ attemptId: start.attemptId });
+      assert.equal(stored.status, result.status);
+      assert.equal(stored.finalHp, result.hpAfter);
+      assert.equal(stored.submittedCount, 7);
+      assert.ok(stored.resultSavedAt);
+      const { isBonusQuestion, criticalTriggered, ...responseState } = result.bossCombat;
+      assert.deepEqual(stored.bossCombatState, responseState);
+      const rows = await submissions.find({ where: { attemptId: start.attemptId }, order: { sequenceNo: 'ASC' } });
+      assert.deepEqual(rows.map(row => row.hpAfter), scenario.hp);
+      assert.deepEqual(rows.map(row => row.isCorrect), [...scenario.answers].map(answer => answer === 'T'));
+      assert.equal(await rewardExp.countBy(expCriteria), Number(passed));
+      assert.equal(await rewardCoin.countBy(coinCriteria), Number(passed));
+
+      if (scenarioIndex === 0) {
+        const replayed = data(await request(path, player, criticalReplay.requestBody), 201);
+        assert.deepEqual(replayed, { ...criticalReplay.result, duplicate: true });
+        assert.equal(await submissions.countBy({ attemptId: start.attemptId }), 7);
+        let retry = data(await request(bossStart(main), player, { mode: 'RETRY' }), 201);
+        assert.equal(retry.hp, 6);
+        const retryPath = `${bossAttempt(retry.attemptId)}/answers`;
+        let nextQuestion = retry.currentQuestion;
+        for (let order = 1; order <= 7; order += 1) {
+          retry = data(await request(retryPath, player, await answerFor(nextQuestion.id, true)), 201);
+          nextQuestion = retry.nextQuestion;
+        }
+        assert.equal(retry.status, 'PASSED');
+        assert.equal(retry.rewardGranted, false);
+        assert.equal(await rewardExp.countBy(expCriteria), 1);
+        assert.equal(await rewardCoin.countBy(coinCriteria), 1);
+        assert.equal((await rewardExp.findOneByOrFail(expCriteria)).totalExpAmount, 10);
+        assert.equal((await rewardCoin.findOneByOrFail(coinCriteria)).amount, 3);
+        assert.equal((await progress.findOneByOrFail({ userId: player.id, stageId })).firstPassAttemptId, start.attemptId);
+      }
+    });
+  }
 });
