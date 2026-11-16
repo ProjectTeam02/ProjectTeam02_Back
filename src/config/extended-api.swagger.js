@@ -46,6 +46,20 @@ const only = (operation, codes) => ({ ...operation, responses: Object.fromEntrie
 
 module.exports = {
   schemas: {
+    ConceptStatisticsResponse: {
+      type: 'object', required: ['success', 'data'], properties: {
+        success: { type: 'boolean', example: true },
+        data: { type: 'object', required: ['items', 'sort'], properties: {
+          items: { type: 'array', items: { type: 'object', required: ['conceptId', 'title', 'attempts', 'correct', 'accuracy'], properties: {
+            conceptId: { type: 'string', format: 'uuid' }, title: { type: 'string' },
+            attempts: { type: 'integer', minimum: 0, description: '실제 제출 문항 수. 0이면 미응시' },
+            correct: { type: 'integer', minimum: 0 },
+            accuracy: { type: 'number', minimum: 0, maximum: 1, description: '정답/제출 수. 미응시의 숫자 0은 호환용 값' },
+          } } },
+          sort: { type: 'string', enum: ['title', 'accuracy', 'attempts'] },
+        } },
+      },
+    },
     ExtendedSuccess: { type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean', example: true }, data: { type: 'object', additionalProperties: true } } },
     BossAttempt: { allOf: [{ $ref: '#/components/schemas/NormalStageAttempt' }, { type: 'object', properties: {
       bossCombat: bossCombatSchema(bossCombatProperties),
@@ -97,7 +111,11 @@ module.exports = {
       delete: { ...secure('문항 북마크 해제', [uuid('questionId')]), description: '북마크 표시를 해제하며 오답 이력은 보존합니다.' },
     },
     '/api/v1/statistics/overall': { get: secure('전체 학습 통계', [query('from', { type: 'string', format: 'date' }), query('to', { type: 'string', format: 'date' })]) },
-    '/api/v1/statistics/concepts': { get: secure('개념별 학습 통계', [query('sort', { type: 'string', enum: ['title', 'accuracy', 'attempts'] }), query('limit', { type: 'integer', minimum: 1, maximum: 100 }), query('topicId', { type: 'string', format: 'uuid' })]) },
+    '/api/v1/statistics/concepts': { get: {
+      ...secure('개념별 학습 통계', [query('sort', { type: 'string', enum: ['title', 'accuracy', 'attempts'] }), query('limit', { type: 'integer', minimum: 1, maximum: 100 }), query('topicId', { type: 'string', format: 'uuid' })],
+        undefined, { 200: { description: '본인 개념별 통계', content: { 'application/json': { schema: { $ref: '#/components/schemas/ConceptStatisticsResponse' } } } } }),
+      description: 'attempts는 본인이 실제로 제출한 문항 수이고 correct는 정답 제출 수입니다. attempts가 0이면 미응시로 표시하세요(accuracy는 호환을 위해 숫자 0). attempts가 1 이상이고 accuracy가 0이면 실제 정답률 0%입니다. sort=accuracy에서는 미응시 개념을 응시한 개념 뒤에 둡니다.',
+    } },
     '/api/v1/home/summary': { get: secure('홈 요약') },
     '/api/v1/mypage/summary': { get: secure('마이페이지 요약') },
     '/api/v1/growth/me': { get: secure('성장 정보') },

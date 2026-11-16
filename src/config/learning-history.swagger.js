@@ -80,11 +80,13 @@ module.exports = {
   paths: {
     '/api/v1/learning/history': { get: {
       tags: ['Learning History'], security: [{ bearerAuth: [] }], summary: '내 학습 이력 목록',
-      description: 'LearningAttempt의 일반/BOSS/재학습 시도를 조회합니다. 복습 ReviewAttempt는 통합하지 않습니다. 기본은 모든 상태이며 startedAt 내림차순, 동률이면 attemptId 내림차순입니다. 빈 목록은 200, totalPages=0입니다. 사용자 조건은 JWT에서만 받으며 알 수 없는 query는 422입니다.',
+      description: 'LearningAttempt의 일반/BOSS/재학습 시도를 조회합니다. 복습 ReviewAttempt는 통합하지 않습니다. 날짜 범위는 startedAt의 Asia/Seoul 날짜(learningDate)를 기준으로 양쪽 날짜를 포함하며, 한쪽만 지정할 수도 있습니다. 잘못된 날짜나 날짜 역전은 422입니다. 기본은 모든 상태이며 startedAt 내림차순, 동률이면 attemptId 내림차순입니다. 빈 목록은 200, totalPages=0입니다. 사용자 조건은 JWT에서만 받으며 알 수 없는 query는 422입니다.',
       parameters: [
         { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 2147483647, default: 1 } },
         { name: 'pageSize', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
         { name: 'status', in: 'query', schema: summaryFields.status },
+        { name: 'dateFrom', in: 'query', schema: { type: 'string', format: 'date' }, description: '이 날짜의 서울 시간 00:00부터 포함합니다.' },
+        { name: 'dateTo', in: 'query', schema: { type: 'string', format: 'date' }, description: '이 날짜 전체를 포함합니다(다음 날 00:00 미포함).' },
       ],
       responses: { 200: { description: '본인 이력 목록', content: { 'application/json': {
         schema: { $ref: '#/components/schemas/LearningHistoryListResponse' }, examples: listExamples,
