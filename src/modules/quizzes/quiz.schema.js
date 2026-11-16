@@ -11,6 +11,7 @@ module.exports = {
   start: attemptRequest.parseStart,
   startNew: attemptRequest.parseStartNew,
   attempt: attemptRequest.parseAttempt,
+  abandon: attemptRequest.parseAbandon,
   generate: attemptRequest.parseGenerate,
   newAnswer: attemptRequest.parseNewAnswer,
 };

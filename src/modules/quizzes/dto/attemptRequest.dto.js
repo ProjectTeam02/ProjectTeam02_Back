@@ -35,6 +35,11 @@ function parseAttempt({ params, query }) {
   return { params: { attemptId: f.uuid(f.object(params, 'params').attemptId, 'attemptId') } };
 }
 
+function parseAbandon(request) {
+  f.onlyKeys(f.object(request.body, 'body'), [], 'body');
+  return parseAttempt(request);
+}
+
 function parseGenerate({ query }) {
   const value = f.onlyKeys(f.object(query, 'query'), ['conceptId'], 'query');
   return { query: value.conceptId === undefined ? {} : { conceptId: f.uuid(value.conceptId, 'conceptId') } };
@@ -52,4 +57,4 @@ function parseNewAnswer({ params, body }) {
   };
 }
 
-module.exports = { parseStart, parseStartNew, parseAttempt, parseGenerate, parseNewAnswer };
+module.exports = { parseStart, parseStartNew, parseAttempt, parseAbandon, parseGenerate, parseNewAnswer };

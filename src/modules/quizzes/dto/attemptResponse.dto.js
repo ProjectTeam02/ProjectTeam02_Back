@@ -18,7 +18,7 @@
  *   attemptNo                   number
  *   maxQuestionCount, submittedCount, correctCount   number
  *   hp                          number  현재 몬스터 HP (final_hp, 아직 제출 전이면 initial_hp)
- *   endReason                   'MONSTER_DEFEATED' | 'QUESTIONS_EXHAUSTED' | null
+ *   endReason                   'MONSTER_DEFEATED' | 'QUESTIONS_EXHAUSTED' | 'ABANDONED' | null
  *   endedAt                     ISO 시각 | null
  *   rewardGranted               boolean  최초 통과 보상 지급 여부
  *
@@ -73,4 +73,8 @@ function started(attempt, currentQuestion, resumed) {
   return { ...view(attempt, currentQuestion), resumed };
 }
 
-module.exports = { question, legacyQuestion, summary, view, started };
+function abandoned(attempt) {
+  return { attemptId: attempt.attemptId, status: attempt.status, endReason: attempt.endReason, endedAt: iso(attempt.endedAt) };
+}
+
+module.exports = { question, legacyQuestion, summary, view, started, abandoned };

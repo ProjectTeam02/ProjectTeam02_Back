@@ -21,6 +21,7 @@
     "db:test": "npm run test:db -w @leren/database",
     "test:stage-quiz:contract": "node --test test/integration/extended-api-postgres.test.js",
     "test:push-reminder:pg": "node --test test/integration/push-reminder-postgres.test.js",
+    "test:attempt-abandon:pg": "node --test test/integration/attempt-abandon-postgres.test.js",
     "test:question-generation:pg": "npm run db:build && node scripts/test-question-generation-postgres.js"
   },
   "dependencies": {
