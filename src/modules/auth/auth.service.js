@@ -23,6 +23,28 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
   const sessions = sessionRepository(dataSource);
   const transaction = (callback) => dataSource.transaction(callback);
 
+  // Rotation and all-device logout acquire the user lock before any session lock.
+  function lockUserSessions(manager, userId) {
+    return manager.getRepository(User).findOne({ where: { userId }, lock: { mode: 'for_no_key_update' } });
+  }
+
+  function refreshClaims(refreshToken) {
+    try {
+      const payload = verifyRefreshToken(refreshToken);
+      if (payload.sid && payload.sub) return payload;
+    } catch (_error) { /* Invalid or expired signature. */ }
+    throw AppError.unauthorized('유효하지 않은 Refresh Token입니다.');
+  }
+
+  async function lockRefreshSession(manager, payload, refreshToken) {
+    const session = await sessions.lockActiveByToken(payload.sid, payload.sub, hashToken(refreshToken), manager);
+    const now = Date.now();
+    // Recheck expiry after any lock wait.
+    if (payload.exp <= Math.floor(now / 1000)) throw AppError.unauthorized('유효하지 않은 Refresh Token입니다.');
+    if (!session || session.expiresAt.getTime() <= now) throw AppError.unauthorized('Refresh Token이 만료되었거나 폐기되었습니다.');
+    return session;
+  }
+
   async function growthFor(userId, manager = dataSource.manager) {
     return manager.getRepository(UserGrowth).findOneBy({ userId });
   }
@@ -68,14 +90,12 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
       return loginResponse.session({ user, growth: await growthFor(user.userId), issued: await issueTokens(user, 'EMAIL') });
     },
     async refresh(refreshToken) {
-      let payload;
-      try { payload = verifyRefreshToken(refreshToken); } catch (_error) { throw AppError.unauthorized('유효하지 않은 Refresh Token입니다.'); }
-      const session = await sessions.findActive(payload.sid, payload.sub);
-      if (!session || session.refreshTokenHash !== hashToken(refreshToken)) throw AppError.unauthorized('Refresh Token이 만료되었거나 폐기되었습니다.');
+      const payload = refreshClaims(refreshToken);
       return transaction(async (manager) => {
-        await sessions.revoke(session.sessionId, 'ROTATED', manager);
-        const user = await manager.getRepository(User).findOneBy({ userId: payload.sub });
+        const user = await lockUserSessions(manager, payload.sub);
+        const session = await lockRefreshSession(manager, payload, refreshToken);
         if (!user || user.accountStatus !== 'ACTIVE') throw AppError.unauthorized();
+        await sessions.revoke(session.sessionId, 'ROTATED', manager);
         await ensureUserRows(manager, user);
         return loginResponse.session({ user, growth: await growthFor(user.userId, manager), issued: await issueTokens(user, session.loginMethod || 'EMAIL', manager) });
       });
@@ -83,18 +103,19 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
     // 로그아웃은 모든 기기 세션을 폐기하므로, 같은 트랜잭션에서 그 사용자 기기도 모두 비활성화해 알림이 가지 않게 한다
     async logout(userId) {
       await transaction(async manager => {
+        await lockUserSessions(manager, userId);
         await sessions.revokeAll(userId, manager);
         await deactivateAllDevices(userId, manager);
       });
       return { loggedOut: true };
     },
     async logoutByRefreshToken(refreshToken) {
-      let payload;
-      try { payload = verifyRefreshToken(refreshToken); } catch (_error) { throw AppError.unauthorized('유효하지 않은 Refresh Token입니다.'); }
-      const session = await sessions.findActive(payload.sid, payload.sub);
-      if (!session || session.refreshTokenHash !== hashToken(refreshToken)) throw AppError.unauthorized('Refresh Token이 만료되었거나 폐기되었습니다.');
-      await sessions.revoke(session.sessionId, 'LOGOUT');
-      return { loggedOut: true };
+      const payload = refreshClaims(refreshToken);
+      return transaction(async manager => {
+        const session = await lockRefreshSession(manager, payload, refreshToken);
+        await sessions.revoke(session.sessionId, 'LOGOUT', manager);
+        return { loggedOut: true };
+      });
     },
     async kakao(input) {
       if (!['development', 'test'].includes(env.nodeEnv) || !env.kakaoLegacyDirectLoginEnabled) {
