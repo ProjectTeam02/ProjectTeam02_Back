@@ -16,3 +16,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: 문항 생성 (Docker PostgreSQL 및 Mock FastAPI)
+        run: npm run test:question-generation:pg

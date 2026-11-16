@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { randomBytes, randomUUID } = require('node:crypto');
-const { mkdtemp, writeFile, rm } = require('node:fs/promises');
+const { mkdtemp, readFile, writeFile, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
@@ -41,7 +41,12 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
   await db.initialize();
   assert.equal((await db.query('SELECT current_database() AS name'))[0].name, 'leren_question_it');
   assert.equal((await db.query("SELECT to_regclass('content.questions') AS existing"))[0].existing, null);
-  await db.query('CREATE SCHEMA app'); await db.runMigrations();
+  // SplitAppSchema moves tables into the empty schemas prepared by the shared bootstrap SQL.
+  const schemaSql = await readFile(path.resolve(__dirname, '../../database/sql/init/01_app_schema.sql'), 'utf8');
+  await db.query(schemaSql);
+  await db.runMigrations();
+  assert.equal(await db.showMigrations(), false, 'The isolated test database has pending migrations');
+  assert.deepEqual(await db.runMigrations(), [], 'Reapplying migrations must be a no-op');
   const topic = await db.getRepository(E.Topic).save({ topicCode: 'IT_TOPIC', topicNo: 1, title: '인플레이션' });
   const concept = await db.getRepository(E.Concept).save({ topicId: topic.topicId, conceptCode: 'IT_CONCEPT', title: '인플레이션' });
   const corpusPath = path.join(dir, 'approved.jsonl');
