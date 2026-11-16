@@ -53,6 +53,10 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: npm run test:stage-quiz:contract
+      - name: 5-1a. 오답 자동 수집과 복습 공개 계약 (실제 Express·PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: npm run test:wrong-answer-collection:pg
       - name: 5-2. 학습 알림 대상·중복 방지 (실제 PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'

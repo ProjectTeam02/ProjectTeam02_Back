@@ -13,6 +13,7 @@
     "start": "node src/server.js",
     "pretest": "npm run db:build",
     "test": "node --test",
+    "test:wrong-answer-collection:pg": "node --test test/integration/wrong-answer-collection-postgres.test.js",
     "db:build": "npm run build -w @leren/database",
     "db:migrate": "npm run migration:run -w @leren/database",
     "db:migrate:show": "npm run migration:show -w @leren/database",

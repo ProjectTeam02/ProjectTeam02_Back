@@ -6,6 +6,7 @@ const {
 } = require('@leren/database');
 const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
+const { collectWrongAnswer } = require('../reviews/reviewItem.repository');
 const attemptDto = require('./dto/attemptResponse.dto');
 const resultDto = require('./dto/quizResultResponse.dto');
 const submitDto = require('./dto/submitAnswerResponse.dto');
@@ -347,6 +348,7 @@ module.exports = function normalStageService(dataSource = AppDataSource) {
             }
           }
           await attemptRepo.save(attempt);
+          if (!isCorrect) await collectWrongAnswer(manager, { userId, question: mapping.question, stageId: attempt.stageId });
           return submitDto.submitted({
             attemptId, questionId, choiceId, isCorrect, explanation: mapping.question.explanation,
             hpBefore, hpAfter, submittedCount, correctCount, status,
