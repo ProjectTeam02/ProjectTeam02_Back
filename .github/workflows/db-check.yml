@@ -49,10 +49,6 @@ jobs:
         run: npm run db:check
       - name: 5. 엔티티 연동 테스트 21개 (app_user)
         run: npm run db:test
-      - name: 상점 구매·재화·장착 정합성 (실제 PostgreSQL)
-        env:
-          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
-        run: node --test test/integration/shop-inventory-postgres.test.js
       - name: 5-1. 일반 Stage Quiz HTTP 계약 (실제 Express·PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
@@ -79,5 +75,9 @@ jobs:
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_tables_test.sql | tee ai-tables-test.log
           grep -q "TOTAL 21/21" ai-tables-test.log
+      - name: 상점 구매·재화·장착 정합성 (실제 PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/shop-inventory-postgres.test.js
       - name: 8. 서버가 database 패키지를 불러오는지 확인
         run: node -e "const db=require('@leren/database'); if(db.entities.length!==48 || !db.entities.includes(db.KakaoOAuthEntry)) throw new Error('Unexpected entity registration'); console.log('entities', db.entities.length)"
