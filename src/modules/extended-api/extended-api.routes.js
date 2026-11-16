@@ -33,6 +33,7 @@ const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
 const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
 const classChangeResponseDto = require('../characters/dto/classChangeResponse.dto');
 const quizSchema = require('../quizzes/quiz.schema');
+const { questionCount: bossQuestionCount } = require('../quizzes/boss-question.repository');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
 const quizContractService = require('../quizzes/quiz.service')(AppDataSource);
 const learningService = require('../learning/learning.service')(AppDataSource);
@@ -277,7 +278,8 @@ function routes() {
   }));
   router.get('/bosses/:bossId', auth, validate(requestDto.boss), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const stage = await repo(manager, Stage).findOne({ where: { stageId: req.params.bossId, stageType: 'BOSS', status: 'PUBLISHED' }, relations: { topic: true } });
-    if (!stage) throw AppError.notFound('공개된 Boss Stage를 찾을 수 없습니다.'); return publicStage(stage);
+    if (!stage) throw AppError.notFound('공개된 Boss Stage를 찾을 수 없습니다.');
+    return { ...publicStage(stage), maxQuestionCount: bossQuestionCount };
   }))));
   router.post('/bosses/:bossId/attempts', auth, validate(requestDto.bossStart), asyncHandler(async (req, res) => {
     const result = await quizContractService.bossStart(req.user.sub, req.params.bossId, req.body.mode);
