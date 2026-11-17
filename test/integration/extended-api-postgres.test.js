@@ -51,7 +51,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const choiceRepo = db.getRepository(QuestionChoice);
   const stageQuestionRepo = db.getRepository(StageQuestion);
   const questions = [];
-  for (let index = 1; index <= 5; index += 1) {
+  for (let index = 1; index <= 10; index += 1) {
     const question = await questionRepo.save({ questionCode: `EXT-Q-${suffix}-${index}`, conceptId: concept.conceptId,
       questionText: `테스트 문항 ${index}`, explanation: '테스트 해설', generatedBy: 'MANUAL', status: 'PUBLISHED' });
     const choices = await choiceRepo.save([1, 2, 3, 4].map(baseOrder => ({ questionId: question.questionId, baseOrder,
@@ -63,9 +63,8 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
     rewardTotalExp: 10, rewardEconomyExp: 5, rewardCoin: 5, status: 'PUBLISHED' });
   const boss = await db.getRepository(Stage).save({ topicId: topic.topicId, stageCode: `EXT-B-${suffix}`, stageNo: 2,
     stageType: 'BOSS', title: '보스 테스트', maxQuestionCount: 5, requiredCorrectCount: 4, initialMonsterHp: 4, status: 'PUBLISHED' });
-  for (let index = 0; index < 5; index += 1) {
-    await stageQuestionRepo.save({ stageId: boss.stageId, questionId: questions[index].question.questionId, questionOrder: index + 1 });
-    if (index < 3) await stageQuestionRepo.save({ stageId: normal.stageId, questionId: questions[index].question.questionId, questionOrder: index + 1 });
+  for (let index = 0; index < 3; index += 1) {
+    await stageQuestionRepo.save({ stageId: normal.stageId, questionId: questions[index].question.questionId, questionOrder: index + 1 });
   }
   await db.getRepository(UserStageProgress).save({ userId: user.userId, stageId: normal.stageId, progressStatus: 'PASSED', firstPassedAt: new Date() });
   await db.getRepository(LearningAttempt).save({ userId: user.userId, stageId: normal.stageId, attemptNo: 1,

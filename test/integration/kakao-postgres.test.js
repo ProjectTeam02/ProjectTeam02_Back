@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+const { setTimeout: delay } = require('node:timers/promises');
 const configPath = process.env.LEREN_KAKAO_PG_TEST_CONFIG;
 
 // Explicit opt-in. Ordinary npm test never opens or writes to a database here.
@@ -52,13 +53,14 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
   assert.equal(database.name, 'leren_kakao_it');
   // Never run on a previously populated DB, even when the name/port look correct.
   assert.equal((await admin.query("SELECT to_regclass('account.users') AS existing"))[0].existing, null);
-  await admin.query('CREATE SCHEMA app');
+  await admin.query('CREATE SCHEMA app; CREATE SCHEMA account; CREATE SCHEMA character; CREATE SCHEMA content; CREATE SCHEMA learning; CREATE SCHEMA reward; CREATE SCHEMA review; CREATE SCHEMA tutor');
   const migrations = await admin.runMigrations();
   evidence.database = database; evidence.migrations = migrations.map(x => x.name);
   const [role] = await admin.query("SELECT format('CREATE ROLE kakao_it_app LOGIN PASSWORD %L',$1::text) AS sql", [cfg.password]);
   await admin.query(role.sql);
-  await admin.query('GRANT USAGE ON SCHEMA app TO kakao_it_app');
-  await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA app TO kakao_it_app');
+  const fixtureSchemas = 'app, account, character, content, learning, reward, review, tutor';
+  await admin.query(`GRANT USAGE ON SCHEMA ${fixtureSchemas} TO kakao_it_app`);
+  await admin.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ${fixtureSchemas} TO kakao_it_app`);
   Object.assign(env, { nodeEnv: 'test', jwtAccessSecret: crypto.randomBytes(32).toString('hex'), jwtRefreshSecret: crypto.randomBytes(32).toString('hex'),
     kakaoRestApiKey: 'isolated-mock-key', kakaoClientSecret: 'isolated-mock-secret', kakaoOauthStoreMode: 'memory',
     kakaoOauthCallbackUrl: 'https://backend.test/api/v1/auth/kakao/callback', kakaoAllowedRedirectUris: ['https://backend.test/api/v1/auth/kakao/callback'],
@@ -91,13 +93,19 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     if (r.status === 302) return { status: r.status, location: new URL(r.headers.get('location')), text: await r.text(), headers: r.headers };
     return { status: r.status, body: await r.json(), headers: r.headers };
   }
+  async function cookieLogout(refreshToken) {
+    const response = await fetch(base + '/api/v1/auth/logout', {
+      method: 'POST', headers: { cookie: `refreshToken=${refreshToken}` },
+    });
+    return { status: response.status, body: await response.json() };
+  }
   function identity(id = String(++serial), extra = {}) {
     const code = 'it-code-' + crypto.randomUUID(); profiles.set(code, { id, ...extra });
     return { id, code, input: { authorizationCode: code, redirectUri: env.kakaoOauthCallbackUrl } };
   }
-  async function begin(who = identity()) {
+  async function begin(who = identity(), client) {
     const verifier = crypto.randomBytes(32).toString('base64url');
-    const s = await request('auth/kakao/start', { codeChallenge: crypto.createHash('sha256').update(verifier).digest('base64url'), codeChallengeMethod: 'S256' });
+    const s = await request('auth/kakao/start', { codeChallenge: crypto.createHash('sha256').update(verifier).digest('base64url'), codeChallengeMethod: 'S256', ...(client ? { client } : {}) });
     assert.equal(s.status, 200);
     return { who, verifier, start: s.body.data, state: new URL(s.body.data.authorizationUrl).searchParams.get('state') };
   }
@@ -229,38 +237,220 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
       assert.equal((await request('auth/login', { email: body.email, password: 'incorrect' })).status, 401);
       const login = await request('auth/login', body); assert.equal(login.status, 200);
       const rotated = await request('auth/refresh', { refreshToken: login.body.data.refreshToken }); assert.equal(rotated.status, 200);
+      assert.deepEqual(Object.keys(rotated.body.data).sort(), Object.keys(login.body.data).sort());
       assert.equal((await request('auth/refresh', { refreshToken: login.body.data.refreshToken })).status, 401);
       assert.equal((await request('users/me', null, login.body.data.accessToken)).status, 401);
       assert.equal((await request('users/me', null, rotated.body.data.accessToken)).status, 200);
-      assert.equal((await request('auth/logout', {}, rotated.body.data.accessToken)).status, 200);
-      assert.equal((await request('auth/refresh', { refreshToken: rotated.body.data.refreshToken })).status, 401);
+      const cookie = await fetch(base + '/api/v1/auth/refresh', {
+        method: 'POST', headers: { cookie: `refreshToken=${rotated.body.data.refreshToken}` },
+      });
+      assert.equal(cookie.status, 200);
+      const latest = (await cookie.json()).data;
+      assert.equal((await request('auth/logout', {}, latest.accessToken)).status, 200);
+      assert.equal((await request('auth/refresh', { refreshToken: latest.refreshToken })).status, 401);
     } finally { Object.assign(env, old); }
   });
-  await check('real PostgreSQL reproduces concurrent refresh reuse (known security defect)', async () => {
+  await check('concurrent refresh commits exactly one replacement session', async () => {
     const signup = await request('auth/signup', { email: 'refresh-race@example.test', password: 'it-password-123', nickname: '동시 재발급' }); assert.equal(signup.status, 201);
-    const data = signup.body.data, original = tokenUtil.verifyRefreshToken(data.refreshToken), qr = admin.createQueryRunner();
-    await qr.connect(); await qr.startTransaction();
-    let pending;
+    const data = signup.body.data;
+    const body = { refreshToken: data.refreshToken };
+    const responses = await Promise.all([request('auth/refresh', body), request('auth/refresh', body)]);
+    const statuses = responses.map(x => x.status).sort((a, b) => a - b);
+    assert.deepEqual(statuses, [200, 401]);
+    assert.deepEqual(responses.find(x => x.status === 401).body, {
+      success: false, code: 'UNAUTHORIZED', message: 'Refresh Token이 만료되었거나 폐기되었습니다.',
+    });
+    const winner = responses.find(x => x.status === 200).body.data;
+    const replay = await request('auth/refresh', body);
+    assert.equal(replay.status, 401);
+    assert.equal((await request('users/me', null, data.accessToken)).status, 401);
+    assert.equal((await request('users/me', null, winner.accessToken)).status, 200);
+    const sessions = await d.getRepository(E.UserSession).findBy({ userId: data.user.userId });
+    const active = sessions.filter(x => !x.revokedAt);
+    assert.equal(sessions.length, 2);
+    assert.equal(active.length, 1);
+    assert.equal(active[0].sessionId, tokenUtil.verifyRefreshToken(winner.refreshToken).sid);
+    assert.equal(sessions.find(x => x.sessionId === tokenUtil.verifyRefreshToken(data.refreshToken).sid).revokeReason, 'ROTATED');
+    evidence.refreshRotation = { statuses, resultingSessions: sessions.length, activeNewSessions: active.length, replayStatus: replay.status };
+  });
+  await check('expired JWT, invalid signature, and an expired session never rotate', async () => {
+    const signup = await request('auth/signup', { email: 'refresh-invalid@example.test', password: 'it-password-123', nickname: '갱신 거부' });
+    assert.equal(signup.status, 201);
+    const { refreshToken, user } = signup.body.data;
+    const { sid } = tokenUtil.verifyRefreshToken(refreshToken);
+    let expired;
+    const ttl = env.refreshTokenTtlSeconds;
     try {
-      await qr.query('SELECT session_id FROM account.user_sessions WHERE session_id=$1 FOR UPDATE', [original.sid]);
-      pending = Promise.all([request('auth/refresh', { refreshToken: data.refreshToken }), request('auth/refresh', { refreshToken: data.refreshToken })]);
-      let waiting = 0;
-      for (let i = 0; i < 100; i++) {
-        const [row] = await admin.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='leren-kakao-it' AND wait_event_type='Lock' AND query LIKE '%UPDATE%user_sessions%'");
-        waiting = row.n; if (waiting >= 2) break;
-        await new Promise(resolve => setTimeout(resolve, 25));
+      env.refreshTokenTtlSeconds = -60;
+      expired = tokenUtil.issueRefreshToken(user, sid);
+    } finally { env.refreshTokenTtlSeconds = ttl; }
+    const parts = refreshToken.split('.');
+    parts[2] = (parts[2].startsWith('A') ? 'B' : 'A') + parts[2].slice(1);
+    for (const invalid of [expired, parts.join('.')]) {
+      const result = await request('auth/refresh', { refreshToken: invalid });
+      assert.equal(result.status, 401);
+      assert.equal(result.body.code, 'UNAUTHORIZED');
+    }
+    const repo = d.getRepository(E.UserSession);
+    await repo.update({ sessionId: sid }, { expiresAt: new Date(Date.now() - 60_000) });
+    assert.equal((await request('auth/refresh', { refreshToken })).status, 401);
+    assert.equal(await repo.countBy({ userId: user.userId }), 1);
+    assert.equal((await repo.findOneByOrFail({ sessionId: sid })).revokedAt, null);
+  });
+  await check('replacement insert failure rolls back consumption and allows a retry', async () => {
+    const signup = await request('auth/signup', { email: 'refresh-rollback@example.test', password: 'it-password-123', nickname: '갱신 롤백' });
+    assert.equal(signup.status, 201);
+    const { refreshToken, accessToken, user } = signup.body.data;
+    const { sid } = tokenUtil.verifyRefreshToken(refreshToken);
+    const repo = d.getRepository(E.UserSession);
+    await fault('user_sessions', async () => {
+      const failed = await request('auth/refresh', { refreshToken });
+      assert.equal(failed.status, 503);
+      assert.equal(failed.body.code, 'SERVICE_UNAVAILABLE');
+      const original = await repo.findOneByOrFail({ sessionId: sid });
+      assert.equal(original.revokedAt, null);
+      assert.equal(original.revokeReason, null);
+      assert.equal(await repo.countBy({ userId: user.userId }), 1);
+      assert.equal((await request('users/me', null, accessToken)).status, 200);
+    });
+    const retry = await request('auth/refresh', { refreshToken });
+    assert.equal(retry.status, 200);
+    assert.equal((await request('users/me', null, retry.body.data.accessToken)).status, 200);
+    assert.equal(await repo.countBy({ userId: user.userId }), 2);
+  });
+
+  async function newRefreshFixture() {
+    const login = { email: `refresh-${crypto.randomUUID()}@example.test`, password: 'it-password-123' };
+    const response = await request('auth/signup', { ...login, nickname: '세션 검증' });
+    assert.equal(response.status, 201);
+    const { user, refreshToken, accessToken } = response.body.data;
+    return { ...login, userId: user.userId, sid: tokenUtil.verifyRefreshToken(refreshToken).sid, refreshToken, accessToken };
+  }
+
+  async function holdAuthRow(sql, id, verify) {
+    const lock = admin.createQueryRunner();
+    const requests = [];
+    try {
+      await lock.connect();
+      await lock.startTransaction();
+      assert.equal((await lock.query(sql, [id])).length, 1);
+      const track = promise => {
+        requests.push(promise);
+        promise.catch(() => {}); // Observed both by the scenario and by cleanup.
+        return promise;
+      };
+      const waitForRequests = async expected => {
+        for (let attempt = 0; attempt < 150; attempt++) {
+          const [row] = await admin.query(`
+            SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE application_name = 'leren-kakao-it' AND usename = 'kakao_it_app' AND wait_event_type = 'Lock'
+          `);
+          if (row.n === expected) return;
+          await delay(20);
+        }
+        assert.fail(`Expected ${expected} isolated HTTP request(s) to reach a database lock`);
+      };
+      return await verify({ track, waitForRequests, release: () => lock.commitTransaction() });
+    } finally {
+      if (lock.isTransactionActive) await lock.rollbackTransaction();
+      await lock.release();
+      await Promise.allSettled(requests);
+    }
+  }
+
+  async function runInOrder(sql, id, first, second) {
+    return holdAuthRow(sql, id, async ({ track, waitForRequests, release }) => {
+      const pendingFirst = track(first());
+      await waitForRequests(1);
+      const pendingSecond = track(second());
+      await waitForRequests(2);
+      await release();
+      return Promise.all([pendingFirst, pendingSecond]);
+    });
+  }
+
+  const lockSessionSql = 'SELECT 1 FROM account.user_sessions WHERE session_id=$1 FOR UPDATE';
+  const lockUserSql = 'SELECT 1 FROM account.users WHERE user_id=$1 FOR NO KEY UPDATE';
+
+  for (const refreshFirst of [false, true]) {
+    const order = refreshFirst ? 'refresh first' : 'logout first';
+    await check(`current-session cookie logout and refresh serialize (${order})`, async () => {
+      const fixture = await newRefreshFixture();
+      const refresh = () => request('auth/refresh', { refreshToken: fixture.refreshToken });
+      const logout = () => cookieLogout(fixture.refreshToken);
+      const ordered = await runInOrder(lockSessionSql, fixture.sid, ...(refreshFirst ? [refresh, logout] : [logout, refresh]));
+      const [rotated, loggedOut] = refreshFirst ? ordered : ordered.slice().reverse();
+      assert.equal(rotated.status, refreshFirst ? 200 : 401);
+      assert.equal(loggedOut.status, refreshFirst ? 401 : 200);
+      assert.equal((await request('users/me', null, fixture.accessToken)).status, 401);
+      assert.equal((await refresh()).status, 401);
+      const rows = await d.getRepository(E.UserSession).findBy({ userId: fixture.userId });
+      assert.equal(rows.find(row => row.sessionId === fixture.sid).revokeReason, refreshFirst ? 'ROTATED' : 'LOGOUT');
+      assert.equal(rows.length, refreshFirst ? 2 : 1);
+      assert.equal(rows.filter(row => !row.revokedAt).length, refreshFirst ? 1 : 0);
+      if (refreshFirst) {
+        const successor = rotated.body.data;
+        assert.equal((await request('users/me', null, successor.accessToken)).status, 200);
+        assert.equal((await cookieLogout(successor.refreshToken)).status, 200);
+        assert.equal((await request('users/me', null, successor.accessToken)).status, 401);
       }
-      assert.equal(waiting, 2, 'Both requests read active session before the UPDATE lock is released');
-      await qr.commitTransaction();
-      const responses = await pending;
-      assert.deepEqual(responses.map(x => x.status), [200, 200]);
-      const sessions = await d.getRepository(E.UserSession).findBy({ userId: data.user.userId });
-      assert.equal(sessions.length, 3); assert.equal(sessions.filter(x => !x.revokedAt).length, 2);
-      assert.equal((await request('auth/refresh', { refreshToken: data.refreshToken })).status, 401);
-      assert.equal((await request('users/me', null, data.accessToken)).status, 401);
-      for (const r of responses) assert.equal((await request('users/me', null, r.body.data.accessToken)).status, 200);
-      evidence.refreshRace = { statuses: responses.map(x => x.status), waitingUpdates: waiting, originalSessions: 1, resultingSessions: 3, activeNewSessions: 2, originalTokenSequentialReplayStatus: 401, bothNewAccessTokensAuthenticate: true, securityExpectationSatisfied: false };
-    } finally { if (qr.isTransactionActive) await qr.rollbackTransaction(); if (pending) await pending; await qr.release(); }
+      (evidence.cookieLogout ??= {})[order] = { refresh: rotated.status, logout: loggedOut.status, activeAfterRace: refreshFirst ? 1 : 0 };
+    });
+
+    await check(`all-device bearer logout and refresh serialize (${order})`, async () => {
+      const fixture = await newRefreshFixture();
+      const login = await request('auth/login', { email: fixture.email, password: fixture.password });
+      assert.equal(login.status, 200);
+      const otherDevice = login.body.data;
+      const refresh = () => request('auth/refresh', { refreshToken: fixture.refreshToken });
+      const logout = () => request('auth/logout', {}, otherDevice.accessToken);
+      const ordered = await runInOrder(lockUserSql, fixture.userId, ...(refreshFirst ? [refresh, logout] : [logout, refresh]));
+      const [rotated, loggedOut] = refreshFirst ? ordered : ordered.slice().reverse();
+      assert.equal(rotated.status, refreshFirst ? 200 : 401);
+      assert.equal(loggedOut.status, 200);
+      assert.equal((await request('users/me', null, fixture.accessToken)).status, 401);
+      assert.equal((await request('users/me', null, otherDevice.accessToken)).status, 401);
+      assert.equal((await refresh()).status, 401);
+      if (refreshFirst) {
+        assert.equal((await request('users/me', null, rotated.body.data.accessToken)).status, 401);
+        assert.equal((await request('auth/refresh', { refreshToken: rotated.body.data.refreshToken })).status, 401);
+      }
+      const rows = await d.getRepository(E.UserSession).findBy({ userId: fixture.userId });
+      assert.equal(rows.length, refreshFirst ? 3 : 2);
+      assert.equal(rows.filter(row => !row.revokedAt).length, 0);
+      (evidence.allDeviceLogout ??= {})[order] = { refresh: rotated.status, logout: loggedOut.status, activeAfterRace: 0 };
+    });
+  }
+
+  await check('refresh for another user completes while a user row is locked', async () => {
+    const first = await newRefreshFixture();
+    const second = await newRefreshFixture();
+    const [rotatedFirst, rotatedSecond] = await holdAuthRow(lockUserSql, first.userId, async ({ track, waitForRequests, release }) => {
+      const pendingFirst = track(request('auth/refresh', { refreshToken: first.refreshToken }));
+      await waitForRequests(1);
+      const pendingSecond = track(request('auth/refresh', { refreshToken: second.refreshToken }));
+      const timeout = new AbortController();
+      try {
+        const rotatedSecond = await Promise.race([pendingSecond, delay(5000, null, { signal: timeout.signal })]);
+        assert.ok(rotatedSecond, 'The independent user must finish before releasing the first user lock');
+        await release();
+        return [await pendingFirst, rotatedSecond];
+      } finally { timeout.abort(); }
+    });
+    for (const [fixture, rotated] of [[first, rotatedFirst], [second, rotatedSecond]]) {
+      assert.equal(rotated.status, 200);
+      assert.equal(rotated.body.data.user.userId, fixture.userId);
+      assert.equal((await request('users/me', null, rotated.body.data.accessToken)).status, 200);
+      const rows = await d.getRepository(E.UserSession).findBy({ userId: fixture.userId });
+      assert.equal(rows.length, 2);
+      assert.equal(rows.filter(row => !row.revokedAt).length, 1);
+    }
+    const [connections] = await admin.query(`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE application_name = 'leren-kakao-it' AND usename = 'kakao_it_app' AND state LIKE 'idle in transaction%'
+    `);
+    assert.equal(connections.n, 0);
+    evidence.independentRefresh = { statuses: [rotatedFirst.status, rotatedSecond.status], idleTransactions: connections.n };
   });
   await check('one login code accepts only one concurrent exchange', async () => {
     const f = await begin(), cb = await callback(f), before = await counts(), body = exchangeBody(f, cb);
@@ -321,6 +511,36 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     assert.equal((await request('auth/kakao/exchange', body)).status, 200);
     assert.equal(await entries.existsBy(exchangeKey), false);
     assert.equal((await request('auth/kakao/exchange', body)).status, 401);
+  });
+
+  await check('web callback creates a Kakao session in PostgreSQL and refresh rotates it', async () => {
+    const previous = env.kakaoWebReturnUrl;
+    const returnUrl = 'https://web.test/auth/callback';
+    env.kakaoWebReturnUrl = returnUrl;
+    try {
+      const flow = await begin(identity(), 'web');
+      const state = await entries.findOneByOrFail({ kind: 'state', tokenHash: digest(flow.state) });
+      assert.equal(state.payload.client, 'web');
+      const cb = await callback(flow);
+      assert.equal(cb.status, 302);
+      assert.equal(cb.location.origin + cb.location.pathname, returnUrl);
+      const exchange = await request('auth/kakao/exchange', exchangeBody(flow, cb));
+      assert.equal(exchange.status, 200);
+      const original = exchange.body.data;
+      const claims = tokenUtil.verifyRefreshToken(original.refreshToken);
+      const before = await d.getRepository(E.UserSession).findOneByOrFail({ sessionId: claims.sid });
+      assert.equal(before.loginMethod, 'KAKAO');
+      assert.equal(before.userId, original.user.userId);
+      const rotated = await request('auth/refresh', { refreshToken: original.refreshToken });
+      assert.equal(rotated.status, 200);
+      const replacement = tokenUtil.verifyRefreshToken(rotated.body.data.refreshToken);
+      assert.notEqual(replacement.sid, claims.sid);
+      assert.equal(replacement.sub, claims.sub);
+      const after = await d.getRepository(E.UserSession).findOneByOrFail({ sessionId: claims.sid });
+      assert.equal(after.revokeReason, 'ROTATED');
+    } finally {
+      env.kakaoWebReturnUrl = previous;
+    }
   });
 
   await check('expired database state and exchange codes fail closed and are pruned', async () => {
@@ -431,10 +651,17 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
     }
   });
 
-  await check('OAuth migration can be reversed and reapplied without changing existing auth rows', async () => {
+  await check('current migrations provide the OAuth store and temporary store absence preserves existing auth rows', async () => {
     const before = await counts();
-    assert.equal(migrations.at(-1).name, 'KakaoOAuthEntries1794210000000');
-    await admin.undoLastMigration();
+    assert.ok(migrations.some(migration => migration.name === 'KakaoOAuthEntries1794210000000'));
+    assert.equal(await admin.showMigrations(), false);
+    const [tables] = await admin.query(`
+      SELECT to_regclass('account.kakao_oauth_entries') IS NOT NULL AS current_store,
+             to_regclass('app.kakao_oauth_entries') IS NULL AS legacy_store_absent
+    `);
+    assert.deepEqual(tables, { current_store: true, legacy_store_absent: true });
+    // Simulate the missing store without reverting a later migration or dropping fixture data.
+    await admin.query('ALTER TABLE account.kakao_oauth_entries RENAME TO kakao_oauth_entries_it_hidden');
     try {
       assert.equal((await admin.query("SELECT to_regclass('account.kakao_oauth_entries') AS table_name"))[0].table_name, null);
       const response = await request('auth/kakao/start', {
@@ -444,9 +671,7 @@ test('Kakao OAuth with isolated PostgreSQL (external Kakao only mocked)', { skip
       assert.equal(response.body.message, 'OAuth 상태 저장소 마이그레이션이 적용되지 않았습니다.');
       assert.deepEqual(await counts(), before);
     } finally {
-      const reapplied = await admin.runMigrations();
-      assert.deepEqual(reapplied.map(migration => migration.name), ['KakaoOAuthEntries1794210000000']);
-      await admin.query('GRANT SELECT,INSERT,UPDATE,DELETE ON account.kakao_oauth_entries TO kakao_it_app');
+      await admin.query('ALTER TABLE account.kakao_oauth_entries_it_hidden RENAME TO kakao_oauth_entries');
     }
     const drift = await admin.driver.createSchemaBuilder().log();
     assert.equal(drift.upQueries.length, 0);

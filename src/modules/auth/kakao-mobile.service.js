@@ -3,6 +3,7 @@ const AppError = require('../../common/errors/AppError');
 const env = require('../../config/env');
 const { MemoryOAuthStore } = require('./kakao-oauth.store');
 const kakaoRequest = require('./dto/kakaoRequest.dto');
+const { webReturnUrl } = require('./kakao-web-return');
 
 const challengeFor = verifier => crypto.createHash('sha256').update(verifier).digest('base64url');
 const equal = (a, b) => typeof a === 'string' && typeof b === 'string'
@@ -25,21 +26,32 @@ function service(auth, { config = env, store: memoryStore = new MemoryOAuthStore
     const callback = config.kakaoOauthCallbackUrl;
     // Reuse exact-match HTTP(S) allow-list policy. No client-supplied redirect target.
     kakaoRequest.parseLegacyLogin({ authorizationCode: 'configuration-check', redirectUri: callback }, config.kakaoAllowedRedirectUris);
-    let url;
-    let deepLink;
-    try { url = new URL(callback); deepLink = new URL(config.kakaoAppDeepLink); } catch (_error) {
-      throw AppError.unavailable('OAuth 콜백 또는 앱 복귀 주소 설정이 올바르지 않습니다.');
-    }
-    if (url.pathname !== '/api/v1/auth/kakao/callback' || url.search || url.hash
-      || !['leren:', 'https:'].includes(deepLink.protocol) || deepLink.username || deepLink.password
-      || deepLink.search || deepLink.hash || !deepLink.hostname
-      || !config.kakaoAllowedAppDeepLinks.includes(config.kakaoAppDeepLink)) {
-      throw AppError.unavailable('OAuth 콜백 또는 앱 복귀 주소 설정이 올바르지 않습니다.');
+    const url = new URL(callback);
+    if (url.pathname !== '/api/v1/auth/kakao/callback' || url.search || url.hash) {
+      throw AppError.unavailable('OAuth 콜백 주소 설정이 올바르지 않습니다.');
     }
     for (const [ttl, max] of [[config.kakaoOauthStateTtlSeconds, 600], [config.kakaoOauthExchangeTtlSeconds, 120]]) {
       if (!Number.isInteger(ttl) || ttl < 1 || ttl > max) throw AppError.unavailable('OAuth 유효기간 설정이 올바르지 않습니다.');
     }
     return store;
+  }
+
+  function configuredReturn(client) {
+    if (client === 'web') {
+      if (!webReturnUrl(config)) throw AppError.unavailable('웹 OAuth 복귀 주소가 준비되지 않았습니다.');
+      return config.kakaoWebReturnUrl;
+    }
+    if (client !== 'mobile') throw AppError.validation('OAuth 클라이언트 정보가 올바르지 않습니다.');
+    let deepLink;
+    try { deepLink = new URL(config.kakaoAppDeepLink); } catch (_error) {
+      throw AppError.unavailable('OAuth 앱 복귀 주소 설정이 올바르지 않습니다.');
+    }
+    if (!['leren:', 'https:'].includes(deepLink.protocol) || deepLink.username || deepLink.password
+      || deepLink.search || deepLink.hash || !deepLink.hostname
+      || !config.kakaoAllowedAppDeepLinks.includes(config.kakaoAppDeepLink)) {
+      throw AppError.unavailable('OAuth 앱 복귀 주소 설정이 올바르지 않습니다.');
+    }
+    return config.kakaoAppDeepLink;
   }
 
   function appUrl(attempt, params) {
@@ -52,10 +64,10 @@ function service(auth, { config = env, store: memoryStore = new MemoryOAuthStore
   return {
     async start(body) {
       const store = configuredStore();
-      const { codeChallenge } = kakaoRequest.parseStart(body);
+      const { codeChallenge, client = 'mobile' } = kakaoRequest.parseStart(body);
       const attempt = {
-        loginAttemptId: crypto.randomUUID(), challenge: codeChallenge,
-        redirectUri: config.kakaoOauthCallbackUrl, deepLink: config.kakaoAppDeepLink,
+        loginAttemptId: crypto.randomUUID(), challenge: codeChallenge, client,
+        redirectUri: config.kakaoOauthCallbackUrl, deepLink: configuredReturn(client),
       };
       const state = await store.put('state', attempt, config.kakaoOauthStateTtlSeconds);
       const url = new URL('https://kauth.kakao.com/oauth/authorize');
@@ -72,7 +84,8 @@ function service(auth, { config = env, store: memoryStore = new MemoryOAuthStore
       // Consume before network I/O so concurrent/replayed callbacks never exchange the code twice.
       const attempt = await store.consume('state', query.state);
       if (!attempt) throw AppError.validation('OAuth state가 유효하지 않거나 만료되었습니다.');
-      if (attempt.deepLink !== config.kakaoAppDeepLink || attempt.redirectUri !== config.kakaoOauthCallbackUrl) {
+      // State issued before client selection existed belongs to the mobile flow.
+      if (attempt.deepLink !== configuredReturn(attempt.client ?? 'mobile') || attempt.redirectUri !== config.kakaoOauthCallbackUrl) {
         throw AppError.validation('OAuth 설정이 변경되었습니다. 로그인을 다시 시작하세요.');
       }
       if (typeof query.error === 'string') {

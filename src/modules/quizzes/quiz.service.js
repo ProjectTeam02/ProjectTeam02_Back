@@ -28,7 +28,7 @@ function service(dataSource = AppDataSource) {
       const choices = await repo(QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
       return attemptDto.legacyQuestion(question, choices);
     },
-    async submit(userId, quizId, { choiceId, attemptId, idempotencyKey }) {
+    async submit(userId, quizId, { choiceId, attemptId, idempotencyKey, submissionId }) {
       // 레거시 서비스 단위 테스트용 어댑터. 실제 요청은 아래 TypeORM 경로를 사용한다.
       if (typeof dataSource.getRepository !== 'function' && dataSource.quiz) {
         const quiz = await dataSource.quiz.findUnique({ where: { id: quizId }, include: { choices: true } });
@@ -45,7 +45,7 @@ function service(dataSource = AppDataSource) {
           throw AppError.validation('TypeORM 학습 기록과 연결하려면 attemptId가 필요합니다.');
         });
       }
-      return normalStage.submit(userId, quizId, { choiceId, attemptId, idempotencyKey });
+      return normalStage.submit(userId, quizId, { choiceId, attemptId, idempotencyKey, submissionId });
     },
   };
 }

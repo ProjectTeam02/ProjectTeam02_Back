@@ -346,7 +346,8 @@ test('Swagger and actual response fields agree and existing calendar mutations r
   const spec = await (await fetch(`${base}/api-docs.json`)).json();
   const list = spec.paths['/api/v1/learning/history'].get;
   const record = spec.paths['/api/v1/learning/history/{recordType}/{recordId}'].get;
-  assert.deepEqual(list.parameters.map(item => item.name), ['page', 'pageSize', 'status']);
+  assert.deepEqual(list.parameters.map(item => item.name), ['page', 'pageSize', 'status', 'dateFrom', 'dateTo']);
+  for (const key of ['dateFrom', 'dateTo']) assert.equal(list.parameters.find(item => item.name === key).schema.format, 'date');
   assert.deepEqual(record.parameters.map(item => item.name), ['recordType', 'recordId']);
   for (const operation of [list, record]) {
     assert.deepEqual(operation.security, [{ bearerAuth: [] }]);

@@ -29,10 +29,13 @@ const progressResponseDto = require('../learning/dto/learningProgressResponse.dt
 const reviewSubmitDto = require('../reviews/dto/reviewSubmitRequest.dto');
 const reviewResultDto = require('../reviews/dto/reviewResultResponse.dto');
 const bookmarkResponseDto = require('../reviews/dto/bookmarkResponse.dto');
+const reviewItems = require('../reviews/reviewItem.repository');
 const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
 const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
 const classChangeResponseDto = require('../characters/dto/classChangeResponse.dto');
 const quizSchema = require('../quizzes/quiz.schema');
+const { questionCount: bossQuestionCount } = require('../quizzes/boss-question.repository');
+const bossCombat = require('../quizzes/boss-combat');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
 const quizContractService = require('../quizzes/quiz.service')(AppDataSource);
 const learningService = require('../learning/learning.service')(AppDataSource);
@@ -112,8 +115,8 @@ function serializeCostume(row, owned = false, equipped = false) {
 }
 
 async function reviewItemResponse(manager, item) {
-  const question = item.latestQuestion || await repo(manager, Question).findOneBy({ questionId: item.latestQuestionId });
-  const choices = question ? await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } }) : [];
+  const question = item.latestQuestion;
+  const choices = await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
   return responseDto.reviewItem(item, question, choices);
 }
 
@@ -121,6 +124,7 @@ async function reviewAttemptResponse(manager, attempt) {
   const submissions = await repo(manager, ReviewSubmission).find({
     where: { reviewAttemptId: attempt.reviewAttemptId }, relations: { question: true, choice: true }, order: { sequenceNo: 'ASC' },
   });
+  if (submissions.some(row => row.question?.status !== 'PUBLISHED')) throw AppError.notFound('공개 복습 문항을 찾을 수 없습니다.');
   return responseDto.reviewAttempt(attempt, submissions);
 }
 
@@ -133,9 +137,9 @@ async function createReviewAttempt(userId, missionId = null) {
       if (mission.status === 'COMPLETED') throw AppError.conflict('이미 완료한 복습 임무입니다.');
     }
     const conceptCode = mission?.conceptCode || null;
-    const items = await repo(manager, ReviewItem).find({ where: { userId }, relations: { latestQuestion: true }, order: { lastAnsweredAt: 'ASC', firstRegisteredAt: 'ASC' } });
+    const items = await repo(manager, ReviewItem).find({ where: { userId, latestQuestion: { status: 'PUBLISHED' } },
+      relations: { latestQuestion: true }, order: { lastAnsweredAt: 'ASC', firstRegisteredAt: 'ASC' } });
     const selected = items.filter(item => (conceptCode ? item.conceptCode === conceptCode : true) && (item.wrongCount > 0 || item.isBookmarked))
-      .filter(item => item.latestQuestion || item.latestQuestionId)
       .slice(0, mission?.targetQuestionCount || 5);
     if (!selected.length) throw AppError.conflict('복습할 문항이 없습니다.');
     const attempt = await repo(manager, ReviewAttempt).save(repo(manager, ReviewAttempt).create({
@@ -145,8 +149,7 @@ async function createReviewAttempt(userId, missionId = null) {
     const submissions = repo(manager, ReviewSubmission);
     let sequenceNo = 0;
     for (const item of selected) {
-      const question = item.latestQuestion || await repo(manager, Question).findOneBy({ questionId: item.latestQuestionId });
-      if (!question) continue;
+      const question = item.latestQuestion;
       const choices = await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
       sequenceNo += 1;
       await submissions.save(submissions.create({ reviewAttemptId: attempt.reviewAttemptId, reviewItemId: item.reviewItemId,
@@ -171,6 +174,7 @@ async function answerReview(userId, reviewAttemptId, input) {
     const submission = await repo(manager, ReviewSubmission).findOne({ where: { reviewAttemptId: attempt.reviewAttemptId, submissionId, questionId }, lock: { mode: 'pessimistic_write' } });
     if (!submission) throw AppError.conflict('현재 복습 응시의 문항이 아닙니다.');
     const question = await repo(manager, Question).findOneBy({ questionId: submission.questionId });
+    if (question?.status !== 'PUBLISHED') throw AppError.notFound('공개 복습 문항을 찾을 수 없습니다.');
     if (submission.submittedAt) {
       if (submission.choiceId !== choiceId) throw AppError.conflict('이미 제출한 문항입니다.');
       return { ...(await reviewAttemptResponse(manager, attempt)), result: { isCorrect: Boolean(submission.isCorrect), explanation: question?.explanation || null, duplicate: true } };
@@ -183,8 +187,11 @@ async function answerReview(userId, reviewAttemptId, input) {
     attempt.submittedCount += 1; if (choice.isCorrect) attempt.correctCount += 1;
     if (attempt.submittedCount >= attempt.questionCount) { attempt.status = 'COMPLETED'; attempt.completedAt = new Date(); }
     await repo(manager, ReviewAttempt).save(attempt);
-    const item = await repo(manager, ReviewItem).findOneBy({ reviewItemId: submission.reviewItemId, userId });
-    if (item) { item.lastAnswerResult = choice.isCorrect ? 'CORRECT' : 'WRONG'; item.lastAnsweredAt = new Date(); if (!choice.isCorrect) item.wrongCount += 1; await repo(manager, ReviewItem).save(item); }
+    const item = await reviewItems.findLocked(manager, userId, question.questionCode);
+    if (item?.reviewItemId === submission.reviewItemId) {
+      reviewItems.recordAnswer(item, submission.isCorrect);
+      await repo(manager, ReviewItem).save(item);
+    }
     if (attempt.status === 'COMPLETED' && attempt.missionId) await repo(manager, ReviewMission).update({ missionId: attempt.missionId, userId }, { status: 'COMPLETED', completedAt: new Date() });
     return { ...(await reviewAttemptResponse(manager, attempt)), result: { isCorrect: Boolean(choice.isCorrect), explanation: question?.explanation || null } };
   });
@@ -198,16 +205,22 @@ async function lockKey(manager, key) {
 async function upsertBookmark(userId, questionId, bookmarked) {
   return AppDataSource.transaction(async manager => {
     const question = await repo(manager, Question).findOne({ where: { questionId: id(questionId, 'questionId') }, relations: { concept: true } });
-    if (!question) throw AppError.notFound('문항을 찾을 수 없습니다.');
+    if (!question || (bookmarked && question.status !== 'PUBLISHED')) throw AppError.notFound('문항을 찾을 수 없습니다.');
     const conceptCode = question.concept?.conceptCode;
     if (!conceptCode) throw AppError.unavailable('문항의 개념 정보가 없습니다.');
-    // 같은 사용자·같은 문항의 동시 요청이 review_items를 중복 생성하려다 23505(→503)가 나지 않도록 순서대로 처리
-    await lockKey(manager, `bookmark:${userId}:${question.questionCode}`);
-    let item = await repo(manager, ReviewItem).findOneBy({ userId, questionCode: question.questionCode });
+    let item = await reviewItems.findLocked(manager, userId, question.questionCode);
     if (!item && !bookmarked) return { questionId: question.questionId, bookmarked: false, reviewItemId: null };
     if (!item) item = repo(manager, ReviewItem).create({ userId, questionCode: question.questionCode, latestQuestionId: question.questionId,
       conceptCode, firstReason: 'BOOKMARK', wrongCount: 0, isBookmarked: bookmarked, bookmarkedAt: bookmarked ? new Date() : null, unbookmarkedAt: bookmarked ? null : new Date() });
-    else { item.latestQuestionId = question.questionId; item.isBookmarked = bookmarked; item.bookmarkedAt = bookmarked ? new Date() : item.bookmarkedAt; item.unbookmarkedAt = bookmarked ? null : new Date(); }
+    else {
+      if (bookmarked) {
+        item.latestQuestionId = question.questionId;
+        item.conceptCode = conceptCode;
+        item.bookmarkedAt = new Date();
+      }
+      item.isBookmarked = bookmarked;
+      item.unbookmarkedAt = bookmarked ? null : new Date();
+    }
     await repo(manager, ReviewItem).save(item);
     return { questionId: question.questionId, bookmarked, reviewItemId: item.reviewItemId };
   });
@@ -277,7 +290,9 @@ function routes() {
   }));
   router.get('/bosses/:bossId', auth, validate(requestDto.boss), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const stage = await repo(manager, Stage).findOne({ where: { stageId: req.params.bossId, stageType: 'BOSS', status: 'PUBLISHED' }, relations: { topic: true } });
-    if (!stage) throw AppError.notFound('공개된 Boss Stage를 찾을 수 없습니다.'); return publicStage(stage);
+    if (!stage) throw AppError.notFound('공개된 Boss Stage를 찾을 수 없습니다.');
+    return { ...publicStage(stage), maxQuestionCount: bossQuestionCount,
+      initialMonsterHp: bossCombat.initialHp, requiredCorrectCount: bossCombat.minimumCorrectCount };
   }))));
   router.post('/bosses/:bossId/attempts', auth, validate(requestDto.bossStart), asyncHandler(async (req, res) => {
     const result = await quizContractService.bossStart(req.user.sub, req.params.bossId, req.body.mode);
@@ -311,7 +326,10 @@ function routes() {
 
   // Review list, mission and answer APIs.
   router.get('/reviews/items', auth, validate(requestDto.reviewItems), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const paging = page(req.query); let rows = await repo(manager, ReviewItem).find({ where: { userId: req.user.sub }, relations: { latestQuestion: { concept: true } }, order: { firstRegisteredAt: 'DESC' } });
+    const paging = page(req.query); let rows = await repo(manager, ReviewItem).find({
+      where: { userId: req.user.sub, latestQuestion: { status: 'PUBLISHED' } },
+      relations: { latestQuestion: { concept: true } }, order: { firstRegisteredAt: 'DESC' },
+    });
     if (req.query.source === 'BOOKMARK') rows = rows.filter(row => row.isBookmarked); if (req.query.source === 'WRONG') rows = rows.filter(row => row.wrongCount > 0);
     if (req.query.conceptId) rows = rows.filter(row => row.latestQuestion?.conceptId === req.query.conceptId);
     if (req.query.topicId) rows = rows.filter(row => row.latestQuestion?.concept?.topicId === req.query.topicId);
@@ -354,7 +372,7 @@ function routes() {
   // 호환 경로: 직업 최초 선택(PATCH /users/me/character-class)과 같은 동작. 정리 이슈에서 삭제 예정
   router.put('/users/me/character/class', auth, validate(userSchema.characterClass), asyncHandler(async (req, res) => data(res, await characterService.select(req.user.sub, req.body.classCode))));
   router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classCode)))));
-  router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
+  router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
     const owned = await repo(manager, UserCostume).find({ where: { userId: req.user.sub }, relations: { costume: true } }); const equipped = await repo(manager, UserEquippedCostume).findBy({ userId: req.user.sub });
     return { items: owned.map(row => serializeCostume(row.costume, true, equipped.some(item => item.itemId === row.itemId))), equipped: equipped.map(row => ({ category: row.category, itemId: row.itemId })) };
   }))));
@@ -362,12 +380,23 @@ function routes() {
     const itemId = req.params.itemId; const owned = await repo(manager, UserCostume).findOne({ where: { userId: req.user.sub, itemId }, relations: { costume: true } }); if (!owned?.costume) throw AppError.forbidden('보유하지 않은 코스튬입니다.');
     await repo(manager, UserEquippedCostume).upsert({ userId: req.user.sub, category: owned.costume.category, itemId, equippedAt: new Date() }, ['userId', 'category']); return { category: owned.costume.category, itemId };
   }))));
-  router.get('/shop/costumes', auth, validate(requestDto.shopList), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const p = page(req.query); const all = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } }); const rows = req.query.category ? all.filter(row => row.category === req.query.category) : all; const owned = await repo(manager, UserCostume).findBy({ userId: req.user.sub });
-    return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.some(item => item.itemId === row.itemId))), page: p.page, size: p.size, total: rows.length };
+  router.get('/shop/costumes', auth, validate(requestDto.shopList), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
+    const p = page(req.query);
+    const userId = req.user.sub;
+    const all = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } });
+    const rows = req.query.category ? all.filter(row => row.category === req.query.category) : all;
+    const owned = new Set((await repo(manager, UserCostume).findBy({ userId })).map(row => row.itemId));
+    const equipped = new Set((await repo(manager, UserEquippedCostume).findBy({ userId })).map(row => row.itemId));
+    return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.has(row.itemId), equipped.has(row.itemId))),
+      page: p.page, size: p.size, total: rows.length };
   }))));
-  router.get('/shop/costumes/:itemId', auth, validate(requestDto.item), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const row = await repo(manager, Costume).findOneBy({ itemId: req.params.itemId, isOnSale: true }); if (!row) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.'); const owned = await repo(manager, UserCostume).findOneBy({ userId: req.user.sub, itemId: row.itemId }); return serializeCostume(row, Boolean(owned));
+  router.get('/shop/costumes/:itemId', auth, validate(requestDto.item), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
+    const row = await repo(manager, Costume).findOneBy({ itemId: req.params.itemId, isOnSale: true });
+    if (!row) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.');
+    const userId = req.user.sub;
+    const owned = await repo(manager, UserCostume).findOneBy({ userId, itemId: row.itemId });
+    const equipped = await repo(manager, UserEquippedCostume).findOneBy({ userId, category: row.category, itemId: row.itemId });
+    return serializeCostume(row, Boolean(owned), Boolean(equipped));
   }))));
   router.post('/shop/purchases', auth, validate(costumeRequestDto.parse), asyncHandler(async (req, res) => data(res, await purchase(req.user.sub, req.body), 201)));
 

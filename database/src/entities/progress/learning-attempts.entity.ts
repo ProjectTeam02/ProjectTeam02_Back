@@ -4,6 +4,14 @@ import { AttemptEndReason, AttemptMode, AttemptStatus, AttemptType } from '../co
 import { Stage } from '../content/stages.entity';
 import { User } from '../account/users.entity';
 
+interface BossCombatState {
+  consecutiveCorrectCount: number;
+  criticalUsed: boolean;
+  defeatedAtQuestion: number | null;
+  bonusQuestionCount: number;
+  bonusCorrectCount: number;
+}
+
 /** 퀴즈 응시 (일반·BOSS·재학습 공통). */
 @Unique('learning_attempts_idempotency_key_key', ['idempotencyKey'])
 @Index('learning_attempts_user_id_stage_id_attempt_no_idx', ['userId', 'stageId', 'attemptNo'], { unique: true })
@@ -77,6 +85,10 @@ export class LearningAttempt {
   /** 정답 수 */
   @Column({ name: 'correct_count', type: 'smallint', default: 0 })
   correctCount!: number;
+
+  /** 신규 Boss 전투 상태. 일반 Stage와 기존 Boss 응시는 null. */
+  @Column({ name: 'boss_combat_state', type: 'jsonb', nullable: true })
+  bossCombatState!: BossCombatState | null;
 
   /** 최초 통과 여부 */
   @Column({ name: 'is_first_pass', type: 'boolean', default: false })

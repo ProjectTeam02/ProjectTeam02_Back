@@ -825,6 +825,7 @@ Table learning.learning_attempts {
   final_hp smallint
   submitted_count smallint [not null, default: 0]
   correct_count smallint [not null, default: 0]
+  boss_combat_state jsonb [note: '신규 Boss의 연속 정답, 크리티컬 사용, 격파 문항 번호, 보너스 대상 문항 수와 정답 수. 기존 응시와 일반 Stage는 null']
   is_first_pass boolean [not null, default: false]
   reward_granted boolean [not null, default: false]
   started_at timestamptz [not null, default: `now()`]
@@ -842,6 +843,22 @@ Table learning.learning_attempts {
   }
   Note: 'rev.3 사용자·Stage별 IN_PROGRESS 응시 1개 (부분 유니크 인덱스, schema.sql 끝)'
 }
+
+Table learning.boss_attempt_questions {
+  attempt_id uuid [not null]
+  question_order smallint [not null]
+  question_id uuid [not null, ref: > content.questions.question_id]
+  indexes {
+    (attempt_id, question_order) [pk]
+    (attempt_id, question_id) [unique, name: 'uq_boss_attempt_questions_question']
+  }
+  checks {
+    `question_order BETWEEN 1 AND 7` [name: 'chk_boss_attempt_questions_order']
+  }
+  Note: '신규 Boss 응시의 7개 문항 ID와 순서. 응시 시작 트랜잭션에서 함께 저장.'
+}
+
+Ref boss_attempt_questions_attempt_id_fkey: learning.boss_attempt_questions.attempt_id > learning.learning_attempts.attempt_id [delete: cascade]
 
 Table learning.question_submissions {
   submission_id uuid [pk, note: 'API Body submissionId. 앱이 만든 UUID를 PK로 저장 → 같은 값 재제출은 PK 중복으로 거부']
@@ -1330,6 +1347,7 @@ TableGroup content [color: #2E8B57] {
 TableGroup progress_quiz [color: #C0702A] {
   learning.user_stage_progress
   learning.learning_attempts
+  learning.boss_attempt_questions
   learning.question_submissions
 }
 TableGroup reward [color: #B8932B] {

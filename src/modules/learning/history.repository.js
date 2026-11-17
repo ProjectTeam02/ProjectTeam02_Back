@@ -1,15 +1,20 @@
 const { LearningAttempt, QuestionSubmission } = require('@leren/database');
-const { In } = require('typeorm');
+const { And, In, LessThan, MoreThanOrEqual } = require('typeorm');
 
 module.exports = function repository(manager) {
   const attempts = manager.getRepository(LearningAttempt);
   const submissions = manager.getRepository(QuestionSubmission);
   return {
-    list: (userId, { status, skip, take }) => attempts.findAndCount({
-      where: { userId, ...(status ? { status } : {}) },
-      relations: { stage: { topic: true } },
-      order: { startedAt: 'DESC', attemptId: 'DESC' }, skip, take,
-    }),
+    list: (userId, { status, startedFrom, startedBefore, skip, take }) => {
+      const lower = startedFrom ? MoreThanOrEqual(startedFrom) : undefined;
+      const upper = startedBefore ? LessThan(startedBefore) : undefined;
+      const startedAt = lower && upper ? And(lower, upper) : lower ?? upper;
+      return attempts.findAndCount({
+        where: { userId, ...(status ? { status } : {}), ...(startedAt ? { startedAt } : {}) },
+        relations: { stage: { topic: true } },
+        order: { startedAt: 'DESC', attemptId: 'DESC' }, skip, take,
+      });
+    },
     ownAttempt: (userId, attemptId) => attempts.findOne({
       where: { userId, attemptId }, relations: { stage: { topic: true } },
     }),

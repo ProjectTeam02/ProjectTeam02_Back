@@ -1,5 +1,7 @@
 const AppError = require('../../common/errors/AppError');
 const { pagination } = require('../../common/utils/pagination.util');
+const { dateOnly } = require('../calendar/dto/scheduleRequest.dto');
+const { dayRange } = require('../calendar/calendar-date');
 
 const statuses = ['IN_PROGRESS', 'PASSED', 'FAILED', 'ABANDONED'];
 function integer(value, fallback, name, maximum) {
@@ -22,7 +24,14 @@ function list({ query = {} }) {
   if (query.status !== undefined && !statuses.includes(query.status)) {
     throw AppError.validation('status가 올바르지 않습니다.');
   }
-  return { query: { page: String(page), pageSize: String(pageSize), ...(query.status ? { status: query.status } : {}), ...(query.type ? { type: query.type } : {}), ...(query.dateFrom ? { dateFrom: query.dateFrom } : {}), ...(query.dateTo ? { dateTo: query.dateTo } : {}) } };
+  const dateFrom = query.dateFrom === undefined ? undefined : dateOnly(query.dateFrom, 'dateFrom');
+  const dateTo = query.dateTo === undefined ? undefined : dateOnly(query.dateTo, 'dateTo');
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    throw AppError.validation('dateFrom은 dateTo보다 늦을 수 없습니다.');
+  }
+  return { query: { page: String(page), pageSize: String(pageSize),
+    ...(query.status ? { status: query.status } : {}), ...(query.type ? { type: query.type } : {}),
+    ...(dateFrom ? { dateFrom } : {}), ...(dateTo ? { dateTo } : {}) } };
 }
 
 function detail({ params = {} }) {
@@ -38,7 +47,9 @@ function detail({ params = {} }) {
 
 function listOptions(query) {
   const validated = list({ query }).query;
-  return { ...pagination(validated), ...(validated.status ? { status: validated.status } : {}) };
+  return { ...pagination(validated), ...(validated.status ? { status: validated.status } : {}),
+    startedFrom: validated.dateFrom ? dayRange(validated.dateFrom).start : undefined,
+    startedBefore: validated.dateTo ? dayRange(validated.dateTo).end : undefined };
 }
 
 module.exports = { list, detail, listOptions };
