@@ -1,0 +1,69 @@
+# Leren 운영 배포용 Compose (EC2 1대)
+# - deploy/deploy.sh가 이미지 태그(ECR_REGISTRY, BACKEND_TAG, AI_TAG)와 env 파일을 준비한 뒤 실행합니다.
+# - api: ALB → 호스트 3000 → 컨테이너 3000 (보안 그룹에서 ALB만 허용)
+# - ai : 외부 포트 없음. 같은 Compose 네트워크에서 http://ai:8000 으로만 접근
+# - 비밀값은 Parameter Store(/leren/prod/*) → /opt/leren/env/*.env (root만 읽기)
+name: leren
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    image: ${ECR_REGISTRY:?ECR_REGISTRY 필요 (deploy.sh로 실행)}/leren-backend:${BACKEND_TAG:?BACKEND_TAG 필요}
+    init: true
+    env_file:
+      - path: /opt/leren/env/backend.env
+        format: raw
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      FASTAPI_BASE_URL: http://ai:8000
+      NODE_EXTRA_CA_CERTS: /certs/rds-ca.pem
+    volumes:
+      - /opt/leren/certs/rds-ca.pem:/certs/rds-ca.pem:ro
+    ports:
+      - "${API_HOST_PORT:-3000}:3000"
+    depends_on:
+      ai:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+    logging: *logging
+
+  ai:
+    image: ${ECR_REGISTRY:?ECR_REGISTRY 필요}/leren-ai:${AI_TAG:?AI_TAG 필요 (deploy.sh로 실행)}
+    env_file:
+      - path: /opt/leren/env/ai.env
+        format: raw
+    volumes:
+      - /opt/leren/ai/data:/app/data:ro
+    expose:
+      - "8000"
+    restart: unless-stopped
+    logging: *logging
+
+  # 배포 때만 실행 (deploy.sh). 마이그레이션 계정(migrator) 비밀번호는 이 컨테이너에만 들어갑니다.
+  migrate:
+    image: ${ECR_REGISTRY:?ECR_REGISTRY 필요}/leren-backend:${BACKEND_TAG:?BACKEND_TAG 필요}
+    profiles: ["tools"]
+    env_file:
+      - path: /opt/leren/env/backend.env
+        format: raw
+      - path: /opt/leren/env/migrate.env
+        format: raw
+    environment:
+      NODE_ENV: production
+      NODE_EXTRA_CA_CERTS: /certs/rds-ca.pem
+    volumes:
+      - /opt/leren/certs/rds-ca.pem:/certs/rds-ca.pem:ro
+    command: ["npm", "run", "db:migrate"]
+    restart: "no"
