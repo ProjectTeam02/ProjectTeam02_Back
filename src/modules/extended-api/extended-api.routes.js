@@ -5,6 +5,7 @@
 const crypto = require('node:crypto');
 const express = require('express');
 const { IsNull } = require('typeorm');
+const { hasAnswerKey } = require('../quizzes/question-pool-policy');
 const auth = require('../../common/middleware/auth.middleware');
 const validate = require('../../common/middleware/validate.middleware');
 const asyncHandler = require('../../common/utils/asyncHandler');
@@ -143,15 +144,21 @@ async function createReviewAttempt(userId, missionId = null) {
     const selected = items.filter(item => (conceptCode ? item.conceptCode === conceptCode : true) && (item.wrongCount > 0 || item.isBookmarked))
       .slice(0, mission?.targetQuestionCount || 5);
     if (!selected.length) throw AppError.conflict('복습할 문항이 없습니다.');
+    const pools = await Promise.all(selected.map(async item => {
+      const question = item.latestQuestion;
+      const choices = await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
+      if (!hasAnswerKey(choices.length, choices.filter(choice => choice.isCorrect).length)) {
+        throw AppError.unavailable('복습 문항 선택지 구성이 올바르지 않습니다.');
+      }
+      return { item, question, choices };
+    }));
     const attempt = await repo(manager, ReviewAttempt).save(repo(manager, ReviewAttempt).create({
       userId, missionId: mission?.missionId || null, reviewType: mission ? 'AUTO' : 'RECOMMENDED', entryPoint: mission ? 'HOME' : 'REVIEW_NOTE',
       conceptCode, status: 'IN_PROGRESS', questionCount: selected.length, submittedCount: 0, correctCount: 0,
     }));
     const submissions = repo(manager, ReviewSubmission);
     let sequenceNo = 0;
-    for (const item of selected) {
-      const question = item.latestQuestion;
-      const choices = await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
+    for (const { item, question, choices } of pools) {
       sequenceNo += 1;
       await submissions.save(submissions.create({ reviewAttemptId: attempt.reviewAttemptId, reviewItemId: item.reviewItemId,
         questionId: question.questionId, sequenceNo, displayedChoiceOrder: choices.map(choice => choice.choiceId),

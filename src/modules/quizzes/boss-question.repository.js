@@ -3,12 +3,8 @@ const AppError = require('../../common/errors/AppError');
 
 const questionCount = 7;
 
-async function draw(manager, topicId) {
-  const rows = await manager.query(`
-    SELECT question.question_id AS "questionId"
-    FROM content.questions AS question
-    JOIN content.concepts AS concept ON concept.concept_id = question.concept_id
-    WHERE concept.topic_id = $1 AND question.status = 'PUBLISHED'
+// The random draw and the preflight count use the same eligibility predicate.
+const eligibleQuestion = `question.status = 'PUBLISHED'
       AND NOT EXISTS (
         SELECT 1 FROM content.stage_questions AS assignment
         JOIN content.stages AS stage ON stage.stage_id = assignment.stage_id
@@ -19,7 +15,21 @@ async function draw(manager, topicId) {
         WHERE choice.question_id = question.question_id
         GROUP BY choice.question_id
         HAVING count(*) = 4 AND count(*) FILTER (WHERE choice.is_correct) = 1
-      )
+      )`;
+
+async function eligibleCounts(manager) {
+  return manager.query(`SELECT concept.topic_id, count(*)::int AS eligible
+    FROM content.questions AS question
+    JOIN content.concepts AS concept ON concept.concept_id = question.concept_id
+    WHERE ${eligibleQuestion} GROUP BY concept.topic_id`);
+}
+
+async function draw(manager, topicId) {
+  const rows = await manager.query(`
+    SELECT question.question_id AS "questionId"
+    FROM content.questions AS question
+    JOIN content.concepts AS concept ON concept.concept_id = question.concept_id
+    WHERE concept.topic_id = $1 AND ${eligibleQuestion}
     ORDER BY random()
     LIMIT $2
   `, [topicId, questionCount]);
@@ -41,4 +51,4 @@ async function findForAttempt(manager, attemptId, questionOrder) {
   return await repo.existsBy({ attemptId }) ? null : undefined;
 }
 
-module.exports = { questionCount, draw, save, findForAttempt };
+module.exports = { questionCount, eligibleCounts, draw, save, findForAttempt };

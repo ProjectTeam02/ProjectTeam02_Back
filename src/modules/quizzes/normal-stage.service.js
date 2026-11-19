@@ -14,10 +14,8 @@ const historyDto = require('../learning/dto/historyResponse.dto');
 const bossQuestions = require('./boss-question.repository');
 const bossCombat = require('./boss-combat');
 
-const normalRules = { questions: 3, correct: 2, hp: 2 };
+const { normalRules, hasConfiguredReward, hasAnswerKey, hasPublishedSlots } = require('./question-pool-policy');
 const repository = (manager, entity) => manager.getRepository(entity);
-const hasConfiguredReward = stage => [stage.rewardTotalExp, stage.rewardEconomyExp, stage.rewardCoin]
-  .every(value => Number.isSafeInteger(value) && value >= 0);
 
 function submissionIdFor(attemptId, key) {
   const bytes = crypto.createHash('sha256').update(attemptId).update('\0').update(key).digest().subarray(0, 16);
@@ -116,12 +114,12 @@ async function requireQuestionPool(manager, stageId, expectedCount = normalRules
   const mappings = await repository(manager, StageQuestion).find({
     where: { stageId }, relations: { question: true }, order: { questionOrder: 'ASC' },
   });
-  if (mappings.length !== expectedCount || mappings.some((row, i) => row.questionOrder !== i + 1 || row.question?.status !== 'PUBLISHED')) {
+  if (!hasPublishedSlots(mappings.map(row => ({ order: row.questionOrder, status: row.question?.status })), expectedCount)) {
     throw AppError.unavailable(`Stage에 공개된 문항 ${expectedCount}개가 필요합니다.`);
   }
   for (const row of mappings) {
     const choices = await repository(manager, QuestionChoice).findBy({ questionId: row.questionId });
-    if (choices.length !== 4 || choices.filter(choice => choice.isCorrect).length !== 1) {
+    if (!hasAnswerKey(choices.length, choices.filter(choice => choice.isCorrect).length)) {
       throw AppError.unavailable('문항마다 선택지 4개와 정답 1개가 필요합니다.');
     }
   }
