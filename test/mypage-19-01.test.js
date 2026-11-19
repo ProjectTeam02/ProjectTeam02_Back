@@ -18,7 +18,7 @@ test('19-01 DTO reads real DB values without leaking private columns', () => {
     growth: { totalLevel: 12, economyLevel: 8, totalExp: 240, economyExp: 120 },
     wallet: { coinBalance: 840 },
     character: { characterClass: { classId: 'class-1', classCode: 'MAGE', name: '마법사', imageKey: 'mage.png' } },
-    equippedCostumes: [{ category: 'TOP', itemId: 'item-1', costume: { name: '별빛 로브', imageKey: 'robe.png' } }],
+    equippedCostumes: [{ category: 'OUTFIT', itemId: 'item-1', costume: { name: '별빛 로브', imageKey: 'robe.png' } }],
     completedStageCount: 8,
   });
   assert.equal(result.level, 12);

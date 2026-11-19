@@ -33,7 +33,7 @@ const bossResponse = (description, schema) => ({ description, content: { 'applic
 
 const classCodeField = { type: 'string', enum: ['WARRIOR', 'MAGE', 'ARCHER'], description: '직업 코드 (GET /api/v1/character-classes의 classCode)' };
 const costumeId = { type: 'string', format: 'uuid' };
-const costumeCategory = { type: 'string', enum: ['TOP', 'BOTTOM'], description: '기존 상품 분류. 상품은 직업 공용이며 한벌옷 하나로 장착합니다.' };
+const costumeCategory = { type: 'string', enum: ['OUTFIT'], description: '모든 직업에 공용인 한벌옷' };
 const costumeText = { type: 'string', nullable: true };
 const costumeItemRef = { $ref: '#/components/schemas/ShopCostumeItem' };
 const equippedCostumeRef = { $ref: '#/components/schemas/EquippedCostume' };
@@ -162,7 +162,7 @@ module.exports = {
       200: costumeSuccess('장착된 코스튬', equippedCostumeRef),
     }), [200, 401, 403, 404, 422, 503]), description: '선택한 보유 상품을 장착하고 이전 장착을 자동으로 해제합니다.' } },
     '/api/v1/shop/costumes': { get: { ...only(secure('공용 코스튬 상점', [
-      { ...query('category', costumeCategory), deprecated: true, description: '기존 클라이언트 호환용. 공용 상품 목록에는 생략하세요.' },
+      { ...query('category', { type: 'string', enum: ['OUTFIT', 'TOP', 'BOTTOM'] }), deprecated: true, description: '호환용. 생략하거나 세 값 중 하나를 보내면 같은 공용 목록을 반환합니다.' },
       query('page', { type: 'integer', minimum: 1, default: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100, default: 20 }),
       query('limit', { type: 'integer', minimum: 1, maximum: 100 }),
     ], undefined, { 200: costumeSuccess('상품 목록', costumeObject({ items: { type: 'array', items: costumeItemRef },

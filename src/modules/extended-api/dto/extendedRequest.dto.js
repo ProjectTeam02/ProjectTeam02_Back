@@ -83,7 +83,8 @@ function classUpdate({ params, query, body }) {
 function shopList({ query }) {
   const value = f.onlyKeys(f.object(query, 'query'), ['category', 'page', 'size', 'limit'], 'query');
   const result = paging({ page: value.page, size: value.size, limit: value.limit });
-  if (value.category !== undefined) result.category = f.oneOf(value.category, ['TOP', 'BOTTOM'], 'category');
+  // Older clients may still send a category. All supported values use the shared catalog.
+  if (value.category !== undefined) f.oneOf(value.category, ['OUTFIT', 'TOP', 'BOTTOM'], 'category');
   return { query: result };
 }
 

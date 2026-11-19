@@ -128,7 +128,7 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
 
 - `user_growth`·`user_wallets`, `review_items.wrong_count`·`last_answer_result`는 원장·제출 기록과 **같은 트랜잭션**에서만 갱신
-- 온보딩: `user_characters` → 기본 코스튬 `user_costumes`(DEFAULT) → `user_equipped_costumes` 순서
+- 온보딩 DB 연동 테스트: `user_characters` → 기본 코스튬 `user_costumes`(DEFAULT) → 공용 한벌옷 한 건 `user_equipped_costumes` 순서
 - 장착: `upsert({ userId, category, itemId }, ['userId', 'category'])` → 같은 부위 이전 코스튬 자동 교체
 - 응시 시작 전 남은 `IN_PROGRESS` 응시를 `ABANDONED`로 끝내거나 이어서 반환
 - 퀴즈 `submissionId`(UUID 형식 검증)는 `insert`, PK 중복이면 기존 채점 결과 반환. 복습은 시작 시 답안 행을 미리 만들고 제출 때 `update`

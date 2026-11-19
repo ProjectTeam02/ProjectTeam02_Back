@@ -61,7 +61,7 @@ test('response DTOs whitelist public fields and omit secrets/internal columns', 
   assert.deepEqual(userDto, { userId: uuid, nickname: 'tester' });
   assert.equal(Object.hasOwn(userDto, 'passwordHash'), false);
 
-  const costume = responseDto.costume({ itemId: uuid, costumeCode: 'TOP_1', name: 'coat', category: 'TOP', priceCoin: 10,
+  const costume = responseDto.costume({ itemId: uuid, costumeCode: 'OUTFIT_1', name: 'coat', category: 'OUTFIT', priceCoin: 10,
     description: null, flavorText: null, imageKey: null, thumbnailKey: null, isOnSale: true, passwordHash: 'secret' }, true, false);
   assert.equal(costume.passwordHash, undefined);
   assert.equal(costume.priceCoin, 10);

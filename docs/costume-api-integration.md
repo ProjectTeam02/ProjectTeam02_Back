@@ -15,7 +15,7 @@ WARRIOR·MAGE·ARCHER는 같은 판매 상품을 조회하고 각각 `itemId` �
 | `PUT /api/v1/inventory/{itemId}/equip` | 200 | 현재 장착한 상품의 `category`, `itemId` |
 | `GET /api/v1/users/me` | 200 | 프로필과 `equippedCostumes` 배열 0~1개 |
 
-`category`는 기존 데이터 분류인 `TOP` 또는 `BOTTOM`입니다. 새 UI는 상품을 구분하거나 장착 상태를 계산하는 데 이 필드를 사용하지 않습니다. 기존 목록 쿼리의 `category=TOP`·`BOTTOM`은 호환용이므로 공용 목록 요청에서는 생략합니다. `WARRIOR`·`MAGE`·`ARCHER`를 `category`로 보내면 422입니다. `size` 기본값은 20이고 최댓값은 100입니다. `limit`도 호환용으로 지원합니다.
+목록·상세·보관함·장착·프로필의 코스튬 `category` 값은 `OUTFIT`입니다. 공용 목록 요청에서는 `category`를 생략합니다. 기존 요청과의 호환을 위해 `category=TOP`, `category=BOTTOM`, `category=OUTFIT`은 모두 같은 목록을 반환합니다. `WARRIOR`·`MAGE`·`ARCHER`를 `category`로 보내면 422입니다. `size` 기본값은 20이고 최댓값은 100입니다. `limit`도 호환용으로 지원합니다.
 
 `priceCoin`과 `coinBalance`는 기존 Gold 정수 필드입니다. 상품명은 `name`, 이미지 참조는 `imageKey`·`thumbnailKey`입니다. 재화 부족 또는 다른 `requestId`로 이미 보유한 상품을 다시 구매하면 409입니다. 판매 중이 아닌 상품의 상점 상세 조회와 구매는 404입니다. 미보유 상품 장착은 403입니다. 장착 해제 전용 API는 없으며 다른 상품을 장착하면 이전 상품이 자동 해제됩니다.
 
@@ -33,7 +33,7 @@ WARRIOR·MAGE·ARCHER는 같은 판매 상품을 조회하고 각각 `itemId` �
       "name": "푸른 새벽 로브",
       "description": null,
       "flavorText": null,
-      "category": "TOP",
+      "category": "OUTFIT",
       "priceCoin": 300,
       "imageKey": null,
       "thumbnailKey": null,
@@ -78,7 +78,7 @@ WARRIOR·MAGE·ARCHER는 같은 판매 상품을 조회하고 각각 `itemId` �
       "name": "푸른 새벽 로브",
       "description": null,
       "flavorText": null,
-      "category": "TOP",
+      "category": "OUTFIT",
       "priceCoin": 300,
       "imageKey": null,
       "thumbnailKey": null,
@@ -94,10 +94,10 @@ WARRIOR·MAGE·ARCHER는 같은 판매 상품을 조회하고 각각 `itemId` �
 `PUT /api/v1/inventory/9942012e-eb31-4adb-8d4a-e67946d34fc1/equip`는 본문 없이 호출합니다.
 
 ```json
-{"success":true,"data":{"category":"TOP","itemId":"9942012e-eb31-4adb-8d4a-e67946d34fc1"}}
+{"success":true,"data":{"category":"OUTFIT","itemId":"9942012e-eb31-4adb-8d4a-e67946d34fc1"}}
 ```
 
-재조회하면 해당 상품의 `equipped`는 `true`이고, `data.equipped`에는 응답과 같은 `{category, itemId}` 객체 하나가 들어갑니다. 기존에 두 부위가 장착돼 있으면 서버는 `equipped_at`이 가장 최근인 상품을 표시합니다. 시각이 같으면 `itemId` 오름차순으로 결정합니다. 기존 장착 행은 사용자가 장착에 성공할 때까지 보존합니다. 장착 트랜잭션은 사용자 행을 잠그고 다른 부위의 장착만 정리합니다. 상품, 소유, 잔액, 원장은 그대로 유지됩니다.
+재조회하면 해당 상품의 `equipped`는 `true`이고, `data.equipped`에는 응답과 같은 `{category, itemId}` 객체 하나가 들어갑니다. 장착 요청은 사용자 행을 잠그고 장착 행을 교체합니다. DB는 `OUTFIT`만 허용하는 Enum과 `(user_id, category)` 기본 키로 사용자당 한 건을 보장합니다. 상품 ID, 소유, 잔액, 원장은 그대로 유지됩니다.
 
 ### 직업 선택 및 변경
 
@@ -113,4 +113,8 @@ WARRIOR·MAGE·ARCHER는 같은 판매 상품을 조회하고 각각 `itemId` �
 4. 직업을 바꾼 뒤 같은 보관함과 장착 상품, 잔액이 보이는지 확인합니다.
 5. 승인된 한벌옷 이미지를 확인합니다. `frontend/src/constants/costumeImages.ts`의 이름 기반 매핑과 상품 이미지 키의 관계도 프론트에서 확인합니다.
 
-새 Migration이나 기존 상품 일괄 변환은 필요하지 않습니다. 사용자당 한벌옷 하나는 현 API의 트랜잭션에서 보장합니다. 이전 서버는 부위별 장착을 저장할 수 있으므로 배포 후 장착 요청을 받는 서버의 버전이 모두 일치하는지 확인합니다. 기존 부위 전용 이미지가 실제 판매 SKU에 연결돼 있다면 배포 전 승인된 한벌옷 이미지와 연결합니다.
+## 기존 DB 전환
+
+`1795080000000-SharedCostumeOutfit`은 트랜잭션에서 상품과 장착을 `OUTFIT`으로 바꿉니다. 상품 ID, SKU, 가격, 소유·구매행, 잔액·원장은 유지합니다. 장착 두 건이 있으면 #139와 같은 `equipped_at DESC, item_id ASC` 기준으로 한 건을 유지합니다. 다른 한 건은 원래 분류와 시각을 그대로 `character.legacy_equipped_costumes`에 보관합니다. 보관 테이블은 장착 조회 및 쓰기에 사용하지 않습니다.
+
+배포 시 장착·구매 쓰기를 중지하고 스냅샷을 만든 뒤 Migration과 새 백엔드 배포를 같은 점검 구간에서 진행합니다. 배포 스크립트가 기존 서버를 유지한 채 Migration을 실행하는 환경에서는 트래픽을 먼저 중지합니다. 재개 전 전체 목록·구매·장착을 확인합니다. 기존 상품 분류를 `OUTFIT`에서 역산할 수 없으므로 자동 다운 Migration은 중단됩니다. 쓰기 재개 전 되돌려야 하면 사전 스냅샷과 이전 백엔드 버전을 함께 복구합니다.

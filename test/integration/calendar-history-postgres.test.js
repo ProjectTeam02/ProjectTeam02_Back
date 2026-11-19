@@ -511,7 +511,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
     const fixture = await rewardFixture();
     const { attemptId, before } = await startedReward(fixture, 'official');
     const product = await db.getRepository(E.Costume).save({ costumeCode: 'CALENDAR-REWARD-OUTFIT',
-      name: '공용 코스튬', category: 'TOP', priceCoin: 5, isOnSale: true });
+      name: '공용 코스튬', category: 'OUTFIT', priceCoin: 5, isOnSale: true });
     const requestId = crypto.randomUUID();
     const [clear, purchase] = await Promise.all([
       rewardAnswer(fixture, 'official', attemptId, 1),

@@ -4,7 +4,7 @@
  */
 const crypto = require('node:crypto');
 const express = require('express');
-const { IsNull, Not } = require('typeorm');
+const { IsNull } = require('typeorm');
 const auth = require('../../common/middleware/auth.middleware');
 const validate = require('../../common/middleware/validate.middleware');
 const asyncHandler = require('../../common/utils/asyncHandler');
@@ -393,7 +393,6 @@ function routes() {
 
     const { category } = owned.costume;
     const equipment = repo(manager, UserEquippedCostume);
-    await equipment.delete({ userId, category: Not(category) });
     const current = await equipment.findOneBy({ userId, category });
     if (current?.itemId !== itemId) {
       await equipment.upsert({ userId, category, itemId, equippedAt: new Date() }, ['userId', 'category']);
@@ -403,8 +402,7 @@ function routes() {
   router.get('/shop/costumes', auth, validate(requestDto.shopList), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
     const p = page(req.query);
     const userId = req.user.sub;
-    const all = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } });
-    const rows = req.query.category ? all.filter(row => row.category === req.query.category) : all;
+    const rows = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } });
     const owned = new Set((await repo(manager, UserCostume).findBy({ userId })).map(row => row.itemId));
     const equipped = await findEquippedCostume(manager, userId);
     return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.has(row.itemId), equipped?.itemId === row.itemId)),
