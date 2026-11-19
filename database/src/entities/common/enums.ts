@@ -73,10 +73,9 @@ export enum ClassCode {
   Archer = 'ARCHER',
 }
 
-/** 코스튬 부위 (상의·하의, API category) — DB 타입: costume_category */
+/** 공용 한벌옷 분류 (API category), DB 타입: costume_category */
 export enum CostumeCategory {
-  Top = 'TOP',
-  Bottom = 'BOTTOM',
+  Outfit = 'OUTFIT',
 }
 
 /** 코스튬 획득 방식 — DB 타입: costume_acquire_type */

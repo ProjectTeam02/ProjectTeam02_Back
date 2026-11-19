@@ -115,8 +115,7 @@ Enum character.class_code {
   ARCHER
 }
 Enum character.costume_category {
-  TOP [note: '상의']
-  BOTTOM [note: '하의']
+  OUTFIT [note: '모든 직업 공용 한벌옷']
 }
 Enum character.costume_acquire_type {
   DEFAULT
@@ -510,11 +509,11 @@ Table character.costumes {
   name varchar(100) [not null]
   description varchar(255)
   flavor_text varchar(255)
-  category character.costume_category [not null, note: 'rev.5 부위 (TOP 상의 / BOTTOM 하의) → API Query category. 직업과 무관']
+  category character.costume_category [not null, note: 'OUTFIT. 모든 직업 공용']
   price_coin integer [note: 'is_on_sale = true 이면 필수, >= 0']
   image_key varchar(255)
   thumbnail_key varchar(255)
-  is_default boolean [not null, default: false, note: '가입 시 기본 지급 (부위별 1개씩, 직업과 무관)']
+  is_default boolean [not null, default: false, note: '직업 공용 기본 지급 대상']
   is_on_sale boolean [not null, default: false]
   sort_order integer [not null, default: 0]
   created_at timestamptz [not null, default: `now()`]
@@ -525,7 +524,7 @@ Table character.costumes {
   }
   indexes {
     (item_id, category) [unique, note: 'rev.5 장착 테이블 복합 FK 대상 (부위 일치 검사)']
-    (category, sort_order) [note: '상점 부위별 목록']
+    (category, sort_order) [note: '코스튬 분류·정렬 인덱스']
   }
   Note: 'rev.5 직업과 무관하게 부위(category)로 분류'
 }
@@ -552,13 +551,24 @@ Table character.user_costumes {
 
 Table character.user_equipped_costumes {
   user_id uuid [not null, note: '사용자']
-  category character.costume_category [not null, note: '장착 부위 (TOP / BOTTOM)']
+  category character.costume_category [not null, note: 'OUTFIT']
   item_id uuid [not null, note: '장착한 코스튬 → API itemId']
   equipped_at timestamptz [not null, default: `now()`]
   indexes {
-    (user_id, category) [pk, note: '부위당 1개. 다시 장착하면 이 행을 교체']
+    (user_id, category) [pk, note: 'OUTFIT만 허용되므로 사용자당 1개']
   }
-  Note: 'rev.5 추가. 부위별 장착 상태. 보유한 코스튬만, 부위가 맞는 코스튬만 저장됨 (복합 FK 2개). 행이 없으면 해당 부위 미장착'
+  Note: '현재 장착한 한벌옷. 소유 및 상품 FK를 검증하고 새 장착은 기존 행을 교체함'
+}
+
+Table character.legacy_equipped_costumes {
+  user_id uuid [not null]
+  item_id uuid [not null]
+  category text [not null, note: '이관 전 TOP 또는 BOTTOM']
+  equipped_at timestamptz [not null]
+  indexes {
+    (user_id, item_id) [pk]
+  }
+  Note: 'OUTFIT 이관 중 보존한 이전 보조 장착 기록'
 }
 
 // =====================================================================
@@ -1304,6 +1314,7 @@ Table ai.rag_index_configurations {
 // =====================================================================
 // rev.5 보유한 코스튬만 장착 가능
 Ref fk_equipped_owned: character.user_equipped_costumes.(user_id, item_id) > character.user_costumes.(user_id, item_id)
+Ref: character.legacy_equipped_costumes.(user_id, item_id) > character.user_costumes.(user_id, item_id) [delete: cascade]
 // rev.5 장착 부위와 코스튬 부위가 같아야 함 (상의 칸에 하의 금지)
 Ref fk_equipped_category: character.user_equipped_costumes.(item_id, category) > character.costumes.(item_id, category)
 // 답안의 선택지는 그 문항의 선택지여야 함

@@ -1,6 +1,6 @@
 // 검증용 최소 시드 (v3 rev.8)
 // 주제 2개(선수관계 1→2), Stage 1-1, 개념 1개(학습 카드 3장, 용어 2개), 문항 3개(4지선다), 직업 3개,
-// 기본 코스튬 2개(상의·하의) + 판매 코스튬 1개(상의), 레벨 기준표, 현재 약관 4종, 배지 1개
+// 기본 한벌옷 1개 + 판매 한벌옷 1개, 레벨 기준표, 현재 약관 4종, 배지 1개
 // 여러 번 실행해도 같은 결과가 되도록 topic_code 기준으로 이미 있으면 건너뜀
 import { AppDataSource } from '../data-source';
 import {
@@ -66,10 +66,8 @@ export async function seedMinimal() {
     for (const [classCode, name, sortOrder] of [[ClassCode.Warrior, '전사', 1], [ClassCode.Mage, '마법사', 2], [ClassCode.Archer, '궁수', 3]] as const) {
       await tx.save(CharacterClass, { classCode, name, sortOrder });
     }
-    // 기본 코스튬은 부위별 1개 (is_default = true), 직업과 무관
-    await tx.save(Costume, { costumeCode: 'BASIC_TOP', name: '기본 상의', category: CostumeCategory.Top, isDefault: true, sortOrder: 1 });
-    await tx.save(Costume, { costumeCode: 'BASIC_BOTTOM', name: '기본 하의', category: CostumeCategory.Bottom, isDefault: true, sortOrder: 2 });
-    await tx.save(Costume, { costumeCode: 'BLUE_DAWN_ROBE', name: '푸른 새벽 로브', category: CostumeCategory.Top, priceCoin: 300, isOnSale: true, sortOrder: 3 });
+    await tx.save(Costume, { costumeCode: 'BASIC_OUTFIT', name: '기본 한벌옷', category: CostumeCategory.Outfit, isDefault: true, sortOrder: 1 });
+    await tx.save(Costume, { costumeCode: 'BLUE_DAWN_ROBE', name: '푸른 새벽 로브', category: CostumeCategory.Outfit, priceCoin: 300, isOnSale: true, sortOrder: 3 });
 
     for (const [scope, level, exp] of [[LevelScope.Account, 1, 0], [LevelScope.Account, 2, 100], [LevelScope.Economy, 1, 0], [LevelScope.Economy, 2, 100]] as const) {
       await tx.save(LevelThreshold, { scope, level, requiredExp: exp });

@@ -80,8 +80,8 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
     if (!found) await db.getRepository(CharacterClass).save({ classCode, name, isActive: true, sortOrder });
     else if (!found.isActive) await db.getRepository(CharacterClass).update({ classId: found.classId }, { isActive: true });
   }
-  const ownedCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-OWN-${suffix}`, name: '보유 코스튬', category: 'TOP', isOnSale: false, isDefault: false });
-  const saleCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-SALE-${suffix}`, name: '판매 코스튬', category: 'BOTTOM', priceCoin: 10, isOnSale: true, isDefault: false });
+  const ownedCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-OWN-${suffix}`, name: '보유 코스튬', category: 'OUTFIT', isOnSale: false, isDefault: false });
+  const saleCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-SALE-${suffix}`, name: '판매 코스튬', category: 'OUTFIT', priceCoin: 10, isOnSale: true, isDefault: false });
   await db.getRepository(UserCostume).save({ userId: user.userId, itemId: ownedCostume.itemId, acquireType: 'DEFAULT' });
   await db.getRepository(UserWallet).save({ userId: user.userId, coinBalance: 100, version: 0 });
 

@@ -93,5 +93,13 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test test/integration/shop-inventory-postgres.test.js
+      - name: 기존 코스튬·장착·구매 데이터의 OUTFIT 이관
+        env:
+          PGPASSWORD: admin_ci
+          LEREN_COSTUME_MIGRATION_PG_TEST_CONFIG: '{"port":5432,"database":"leren_costume_upgrade","password":"migrator_local"}'
+        run: |
+          createdb -h localhost -U leren_admin leren_costume_upgrade
+          psql -h localhost -U leren_admin -d leren_costume_upgrade -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+          node --test test/integration/costume-outfit-migration-postgres.test.js
       - name: 8. 서버가 database 패키지를 불러오는지 확인
         run: node -e "const db=require('@leren/database'); if(db.entities.length!==49 || !db.entities.includes(db.KakaoOAuthEntry) || !db.entities.includes(db.BossAttemptQuestion)) throw new Error('Unexpected entity registration'); console.log('entities', db.entities.length)"

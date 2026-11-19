@@ -31,6 +31,8 @@
 | `user_costumes` | `UserCostume` | `user` → User<br>`costume` → Costume<br>`coinLedger` → CoinLedger |
 | `user_equipped_costumes` | `UserEquippedCostume` | `costume` → Costume (복합 FK)<br>`ownedCostume` → UserCostume (복합 FK) |
 
+`character.legacy_equipped_costumes`는 OUTFIT 전환 시 두 번째 장착 행을 보관하는 Migration 관리 테이블입니다. 현재 장착은 `user_equipped_costumes`에 사용자당 한 건만 저장합니다.
+
 ## 학습 콘텐츠 (`content/` → 스키마 `content`)
 
 | 테이블 | 엔티티 | 관계 속성 → 대상 |

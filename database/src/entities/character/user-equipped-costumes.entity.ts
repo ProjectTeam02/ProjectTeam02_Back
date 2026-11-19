@@ -4,14 +4,14 @@ import { CostumeCategory } from '../common/enums';
 import { Costume } from './costumes.entity';
 import { UserCostume } from './user-costumes.entity';
 
-/** 부위별 장착 상태. 부위당 1행이고, 행이 없으면 미장착입니다. 다시 장착하면 같은 행을 교체합니다. */
+/** 사용자당 공용 한벌옷 1행. 새 코스튬을 장착하면 이 행을 교체합니다. */
 @Entity({ name: 'user_equipped_costumes', schema: 'character' })
 export class UserEquippedCostume {
   /** 사용자 */
   @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'user_equipped_costumes_pkey' })
   userId!: string;
 
-  /** 장착 부위 (TOP / BOTTOM) */
+  /** OUTFIT만 허용되므로 복합 PK는 사용자당 한 행을 보장합니다. */
   @PrimaryColumn({ name: 'category', type: 'enum', enum: CostumeCategory, enumName: 'costume_category', primaryKeyConstraintName: 'user_equipped_costumes_pkey' })
   category!: CostumeCategory;
 

@@ -37,7 +37,7 @@ INSERT INTO question_choices (choice_id, question_id, base_order, choice_text, i
 INSERT INTO ai_conversations (conversation_id, user_id, context_stage_id)
   VALUES ('00000000-0000-0000-0000-0000000000f1','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000b1');
 INSERT INTO user_wallets (user_id, coin_balance) VALUES ('00000000-0000-0000-0000-000000000001', 100);
-INSERT INTO costumes (item_id, costume_code, name, category, price_coin, is_on_sale) VALUES ('00000000-0000-0000-0000-000000000031','TOP-1','모험가 상의','TOP',50,true), ('00000000-0000-0000-0000-000000000032','BOTTOM-1','모험가 하의','BOTTOM',80,true);
+INSERT INTO costumes (item_id, costume_code, name, category, price_coin, is_on_sale) VALUES ('00000000-0000-0000-0000-000000000031','OUTFIT-1','모험가 한벌옷','OUTFIT',50,true), ('00000000-0000-0000-0000-000000000032','OUTFIT-2','수호자 한벌옷','OUTFIT',80,true);
 INSERT INTO questions (question_id, question_code, concept_id, question_text, explanation, generated_by)
   VALUES ('00000000-0000-0000-0000-0000000000d2','Q-2','00000000-0000-0000-0000-0000000000c2','공급이 늘면?','가격 하락','MANUAL');
 INSERT INTO question_choices (choice_id, question_id, base_order, choice_text, is_correct) VALUES
@@ -107,13 +107,13 @@ SELECT pg_temp.expect_err(26, '같은 Stage에 진행 중 응시 2개 거부', $
 UPDATE learning_attempts SET status = 'PASSED', ended_at = now() WHERE attempt_id = '00000000-0000-0000-0000-000000000041';
 SELECT pg_temp.expect_ok (27, '이전 응시 종료 후 새 응시 허용', $q$INSERT INTO learning_attempts (user_id, stage_id, attempt_no, max_question_count, required_correct_count, initial_hp) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000b1',3,3,2,2)$q$);
 INSERT INTO user_characters (user_id, class_id) SELECT '00000000-0000-0000-0000-000000000001', class_id FROM character_classes WHERE class_code = 'WARRIOR';
-SELECT pg_temp.expect_err(28, '보유하지 않은 하의 장착 거부', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','BOTTOM','00000000-0000-0000-0000-000000000032')$q$, '23503');
+SELECT pg_temp.expect_err(28, '보유하지 않은 한벌옷 장착 거부', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','OUTFIT','00000000-0000-0000-0000-000000000032')$q$, '23503');
 INSERT INTO user_costumes (user_id, item_id, acquire_type) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000032','DEFAULT');
-SELECT pg_temp.expect_err(29, '상의 칸에 하의 장착 거부 (부위 불일치)', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','TOP','00000000-0000-0000-0000-000000000032')$q$, '23503');
-SELECT pg_temp.expect_ok (40, '보유한 상의를 상의 칸에 장착', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','TOP','00000000-0000-0000-0000-000000000031')$q$);
-SELECT pg_temp.expect_ok (41, '하의도 함께 장착 (상의+하의 동시)', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','BOTTOM','00000000-0000-0000-0000-000000000032')$q$);
-SELECT pg_temp.expect_err(42, '같은 부위에 두 번째 행 거부 (부위당 1개)', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','TOP','00000000-0000-0000-0000-000000000031')$q$, '23505');
-SELECT pg_temp.expect_err(43, '코스튬 부위 없이 등록 거부', $q$INSERT INTO costumes (costume_code, name) VALUES ('X-1','부위 없음')$q$, '23502');
+SELECT pg_temp.expect_err(29, '장착에 기존 부위 분류 사용 거부', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','TOP','00000000-0000-0000-0000-000000000032')$q$, '22P02');
+SELECT pg_temp.expect_ok (40, '보유한 한벌옷 장착', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','OUTFIT','00000000-0000-0000-0000-000000000031')$q$);
+SELECT pg_temp.expect_err(41, '서로 다른 한벌옷을 동시에 장착할 수 없음', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','OUTFIT','00000000-0000-0000-0000-000000000032')$q$, '23505');
+SELECT pg_temp.expect_err(42, '같은 상품의 장착 행 중복 거부', $q$INSERT INTO user_equipped_costumes (user_id, category, item_id) VALUES ('00000000-0000-0000-0000-000000000001','OUTFIT','00000000-0000-0000-0000-000000000031')$q$, '23505');
+SELECT pg_temp.expect_err(43, '카테고리 없이 코스튬 등록 거부', $q$INSERT INTO costumes (costume_code, name) VALUES ('X-1','카테고리 없음')$q$, '23502');
 SELECT pg_temp.expect_err(30, '다른 문항의 선택지로 답안 제출 거부', $q$INSERT INTO question_submissions (submission_id, attempt_id, question_id, sequence_no, displayed_choice_order, choice_id, selected_position, is_correct, hp_before, hp_after) VALUES ('00000000-0000-0000-0000-000000000052','00000000-0000-0000-0000-000000000041','00000000-0000-0000-0000-0000000000d2',2,ARRAY['00000000-0000-0000-0000-0000000000e1']::uuid[],'00000000-0000-0000-0000-0000000000e1',1,true,1,0)$q$, '23503');
 
 SELECT pg_temp.expect_ok (31, '같은 문항의 선택지면 저장', $q$INSERT INTO question_submissions (submission_id, attempt_id, question_id, sequence_no, displayed_choice_order, choice_id, selected_position, is_correct, hp_before, hp_after) VALUES ('00000000-0000-0000-0000-000000000053','00000000-0000-0000-0000-000000000041','00000000-0000-0000-0000-0000000000d2',2,ARRAY['00000000-0000-0000-0000-0000000000e2']::uuid[],'00000000-0000-0000-0000-0000000000e2',1,true,1,0)$q$);
@@ -209,9 +209,10 @@ SELECT pg_temp.expect_ok (95, 'AI 문항 저장 (근거·분류·학습 목표 �
 SELECT pg_temp.expect_err(96, '정의되지 않은 문제 분류 거부', $q$INSERT INTO questions (question_code, concept_id, question_text, explanation, generated_by, question_category) VALUES ('Q-97-4','00000000-0000-0000-0000-0000000000c1','물가가 오르면?','화폐 가치 하락','MANUAL','QUIZ')$q$, '22P02');
 
 -- 97~98 #98 영역별 스키마
-INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 (account 10, character 5, content 12, learning 4, reward 7, review 5, tutor 6)',
-  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:10,character:5,content:12,learning:4,review:5,reward:7,tutor:6'
-    AND to_regclass('learning.boss_attempt_questions') IS NOT NULL,
+INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 및 장착 이관 보관함 권한',
+  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:10,character:6,content:12,learning:4,review:5,reward:7,tutor:6'
+    AND to_regclass('learning.boss_attempt_questions') IS NOT NULL
+    AND NOT has_table_privilege(current_user, 'character.legacy_equipped_costumes', 'SELECT'),
   string_agg(schemaname || ':' || n, ',' ORDER BY schemaname)
   FROM (SELECT schemaname, count(*) n FROM pg_tables WHERE schemaname IN ('account','character','content','learning','reward','review','tutor') GROUP BY 1) x;
 INSERT INTO result SELECT 98, 'app 스키마에는 TypeORM 관리 테이블만 (migrations, typeorm_metadata)',
