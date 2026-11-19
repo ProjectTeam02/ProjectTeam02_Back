@@ -10,7 +10,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const options = JSON.parse(config);
   const { AppDataSource: db, User, UserSession, AccountToken, Topic, Stage, Concept, Question,
     QuestionChoice, StageQuestion, LearningAttempt, UserStageProgress, ReviewItem, ReviewMission,
-    Costume, UserCostume, UserWallet, CharacterClass } = require('@leren/database');
+    Costume, UserCostume, UserEquippedCostume, UserWallet, UserGrowth, CharacterClass, UserCharacter, CoinLedger } = require('@leren/database');
   const env = require('../../src/config/env');
   const previous = { ...db.options };
   const secrets = { jwtAccessSecret: env.jwtAccessSecret, jwtRefreshSecret: env.jwtRefreshSecret };
@@ -38,7 +38,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const user = await users.save({ email: `extended-${suffix}@example.com`, passwordHash: hashPassword('old-password-123'), nickname: `확장${suffix}` });
   const session = await db.getRepository(UserSession).save({ userId: user.userId, refreshTokenHash: randomBytes(32).toString('hex'),
     loginMethod: 'EMAIL', expiresAt: new Date(Date.now() + 3600000) });
-  const token = issueAccessToken(user, session.sessionId);
+  let token = issueAccessToken(user, session.sessionId);
   const otherUser = await users.save({ nickname: `타사용자${suffix}` });
   const otherSession = await db.getRepository(UserSession).save({ userId: otherUser.userId, refreshTokenHash: randomBytes(32).toString('hex'),
     loginMethod: 'EMAIL', expiresAt: new Date(Date.now() + 3600000) });
@@ -75,7 +75,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
     firstReason: 'WRONG', wrongCount: 1, isBookmarked: true });
   const mission = await db.getRepository(ReviewMission).save({ userId: user.userId, conceptCode: concept.conceptCode,
     firstRegisteredAt: new Date(), dueDate: new Date().toISOString().slice(0, 10), status: 'AVAILABLE', targetQuestionCount: 1 });
-  for (const [classCode, name, sortOrder] of [['WARRIOR', '전사', 1], ['MAGE', '마법사', 2]]) {
+  for (const [classCode, name, sortOrder] of [['WARRIOR', '전사', 1], ['MAGE', '마법사', 2], ['ARCHER', '궁수', 3]]) {
     const found = await db.getRepository(CharacterClass).findOneBy({ classCode });
     if (!found) await db.getRepository(CharacterClass).save({ classCode, name, isActive: true, sortOrder });
     else if (!found.isActive) await db.getRepository(CharacterClass).update({ classId: found.classId }, { isActive: true });
@@ -113,13 +113,16 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   ok(await request('/api/v1/topics/tree'));
   ok(await request(`/api/v1/topics/${topic.topicId}`));
 
-  ok(await request('/api/v1/auth/password-reset/request', { method: 'POST', body: { email: user.email }, auth: false }));
+  t.mock.method(require('../../src/modules/auth/password-reset.delivery'), 'create', () => null);
+  assert.equal((await request('/api/v1/auth/password-reset/request', { method: 'POST', body: { email: user.email }, auth: false })).status, 503);
   const resetToken = `reset-${suffix}`;
   await db.getRepository(AccountToken).save({ userId: user.userId, tokenType: 'PASSWORD_RESET', tokenHash: hashToken(resetToken),
     targetEmail: user.email, expiresAt: new Date(Date.now() + 1800000) });
   ok(await request('/api/v1/auth/password-reset/confirm', { method: 'POST', body: { resetToken, newPassword: 'new-password-123' }, auth: false }));
   const reusedReset = await request('/api/v1/auth/password-reset/confirm', { method: 'POST', body: { resetToken, newPassword: 'new-password-123' }, auth: false });
   assert.equal(reusedReset.status, 401);
+  assert.equal((await request('/api/v1/users/me')).status, 401);
+  token = ok(await request('/api/v1/auth/login', { method: 'POST', body: { email: user.email, password: 'new-password-123' }, auth: false })).accessToken;
   ok(await request('/api/v1/home/summary'));
   ok(await request('/api/v1/mypage/summary'));
   ok(await request('/api/v1/learning/progress/active'));
@@ -239,5 +242,28 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const otherUserSameRequestId = await request('/api/v1/shop/purchases', { method: 'POST', requestToken: otherToken,
     body: { itemId: saleCostume.itemId, requestId: `purchase-${suffix}` } });
   assert.equal(otherUserSameRequestId.status, 409, JSON.stringify(otherUserSameRequestId.body));
+
+  await t.test('job changes are scoped to the signed-in account and preserve outfit, rewards and history', async () => {
+    const path = '/api/v1/users/me/character/class';
+    const change = (body, options = {}) => request(path, { method: 'PATCH', body, ...options });
+    const snapshot = () => Promise.all([UserGrowth, UserWallet, CoinLedger, UserCostume, UserEquippedCostume, LearningAttempt, UserStageProgress]
+      .map(entity => db.getRepository(entity).findBy({ userId: user.userId })));
+    const before = await snapshot();
+    assert.equal((await change({ classCode: 'MAGE' }, { auth: false })).status, 401);
+    for (const payload of [{}, { classCode: 'INVALID' }, { classId: user.userId }, { userId: otherUser.userId, classCode: 'MAGE' }]) {
+      assert.equal((await change(payload)).status, 422);
+    }
+    for (const classCode of ['MAGE', 'ARCHER', 'WARRIOR']) {
+      assert.equal(ok(await change({ classCode })).classCode, classCode);
+      assert.equal(ok(await request('/api/v1/users/me')).characterClass.classCode, classCode);
+    }
+    const selected = await db.getRepository(UserCharacter).findOneByOrFail({ userId: user.userId });
+    assert.equal(ok(await change({ classCode: 'WARRIOR' })).classId, selected.classId);
+    assert.deepEqual(await db.getRepository(UserCharacter).findOneByOrFail({ userId: user.userId }), selected);
+    assert.equal(ok(await request('/api/v1/users/me', { requestToken: otherToken })).characterClass, null);
+    token = ok(await request('/api/v1/auth/login', { method: 'POST', body: { email: user.email, password: 'new-password-123' }, auth: false })).accessToken;
+    assert.equal(ok(await request('/api/v1/users/me')).characterClass.classCode, 'WARRIOR');
+    assert.deepEqual(await snapshot(), before);
+  });
 
 });

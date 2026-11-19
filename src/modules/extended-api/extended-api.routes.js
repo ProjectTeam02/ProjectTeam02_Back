@@ -2,9 +2,7 @@
  * 기존 기능에 없거나 기존 경로와 달랐던 확장 API 모음.
  * 기존 라우터를 제거하지 않고, 호환 경로를 추가해 앱의 점진적 전환을 지원한다.
  */
-const crypto = require('node:crypto');
 const express = require('express');
-const { IsNull } = require('typeorm');
 const auth = require('../../common/middleware/auth.middleware');
 const validate = require('../../common/middleware/validate.middleware');
 const asyncHandler = require('../../common/utils/asyncHandler');
@@ -15,11 +13,9 @@ const {
   StageQuestion, Question, QuestionChoice, LearningAttempt, QuestionSubmission,
   UserStageProgress, UserGrowth, UserWallet, ExpLedger, CoinLedger,
   ReviewItem, ReviewMission, ReviewAttempt, ReviewSubmission, StudyPlan,
-  Costume, UserCostume, UserEquippedCostume, AccountToken,
+  Costume, UserCostume, UserEquippedCostume,
 } = require('@leren/database');
-const { hashToken } = require('../../common/utils/token.util');
-const { hashPassword } = require('../../common/utils/password.util');
-const passwordResetDelivery = require('../auth/password-reset.delivery');
+const passwordReset = require('../auth/password-reset.service')(AppDataSource);
 const notificationSetting = require('../notifications/dto/notificationSetting.dto');
 const requestDto = require('./dto/extendedRequest.dto');
 const responseDto = require('./dto/extendedResponse.dto');
@@ -227,37 +223,6 @@ async function upsertBookmark(userId, questionId, bookmarked) {
   });
 }
 
-async function passwordResetRequest(email) {
-  const normalized = string(email, 'email').toLowerCase();
-  return AppDataSource.transaction(async manager => {
-    const user = await repo(manager, User).findOneBy({ email: normalized });
-    if (user) {
-      const raw = crypto.randomBytes(32).toString('base64url');
-      const activeTokens = await repo(manager, AccountToken).find({ where: { userId: user.userId, tokenType: 'PASSWORD_RESET', usedAt: IsNull() } });
-      for (const activeToken of activeTokens) { activeToken.usedAt = new Date(); await repo(manager, AccountToken).save(activeToken); }
-      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-      await repo(manager, AccountToken).save({ userId: user.userId, tokenType: 'PASSWORD_RESET', tokenHash: hashToken(raw), targetEmail: normalized,
-        sendCount: 1, lastSentAt: new Date(), expiresAt, usedAt: null });
-      await passwordResetDelivery.send({ email: normalized, token: raw, expiresAt });
-    }
-    return { accepted: true };
-  });
-}
-
-async function passwordResetConfirm(token, newPassword) {
-  const raw = string(token, 'resetToken', 4096);
-  if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) throw AppError.validation('newPassword는 8~128자여야 합니다.');
-  return AppDataSource.transaction(async manager => {
-    const tokenRow = await repo(manager, AccountToken).findOne({ where: { tokenHash: hashToken(raw), tokenType: 'PASSWORD_RESET' }, lock: { mode: 'pessimistic_write' } });
-    if (!tokenRow || tokenRow.usedAt || tokenRow.expiresAt <= new Date()) throw AppError.unauthorized('유효하지 않거나 만료된 재설정 토큰입니다.');
-    const user = await repo(manager, User).findOneBy({ userId: tokenRow.userId });
-    if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
-    user.passwordHash = hashPassword(newPassword); user.passwordChangedAt = new Date();
-    await repo(manager, User).save(user); tokenRow.usedAt = new Date(); await repo(manager, AccountToken).save(tokenRow);
-    return { reset: true };
-  });
-}
-
 function routes() {
   // Content tree and details
   router.get('/topics/tree', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
@@ -419,8 +384,8 @@ function routes() {
   router.post('/shop/purchases', auth, validate(costumeRequestDto.parse), asyncHandler(async (req, res) => data(res, await purchase(req.user.sub, req.body), 201)));
 
   // Password reset, growth, reward ledger, home and statistics.
-  router.post('/auth/password-reset/request', validate(requestDto.passwordResetRequest), asyncHandler(async (req, res) => data(res, await passwordResetRequest(req.body.email))));
-  router.post('/auth/password-reset/confirm', validate(requestDto.passwordResetConfirm), asyncHandler(async (req, res) => data(res, await passwordResetConfirm(req.body.resetToken, req.body.newPassword))));
+  router.post('/auth/password-reset/request', validate(requestDto.passwordResetRequest), asyncHandler(async (req, res) => data(res, await passwordReset.request(req.body.email))));
+  router.post('/auth/password-reset/confirm', validate(requestDto.passwordResetConfirm), asyncHandler(async (req, res) => data(res, await passwordReset.confirm(req.body.resetToken, req.body.newPassword))));
   router.get('/growth/me', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(
     res,
     await AppDataSource.transaction(async manager => publicGrowth(

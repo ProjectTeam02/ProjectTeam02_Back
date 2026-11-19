@@ -93,6 +93,10 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test test/integration/shop-inventory-postgres.test.js
+      - name: 비밀번호 재설정 및 기존 인증 (실제 PostgreSQL, SMTP 모의)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/password-reset-postgres.test.js
       - name: 기존 코스튬·장착·구매 데이터의 OUTFIT 이관
         env:
           PGPASSWORD: admin_ci
