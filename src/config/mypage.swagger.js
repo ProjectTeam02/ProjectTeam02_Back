@@ -27,10 +27,10 @@ module.exports = {
           },
         },
         equippedCostumes: {
-          type: 'array', items: {
+          type: 'array', maxItems: 1, description: '현재 장착한 공용 한벌옷', items: {
             type: 'object',
             properties: {
-              category: { type: 'string', enum: ['TOP', 'BOTTOM'] },
+              category: { type: 'string', enum: ['TOP', 'BOTTOM'], description: '기존 상품 분류' },
               itemId: { type: 'string', format: 'uuid' },
               name: nullableString,
               imageKey: nullableString,

@@ -32,6 +32,15 @@ const bossResponse = (description, schema) => ({ description, content: { 'applic
 } } } });
 
 const classCodeField = { type: 'string', enum: ['WARRIOR', 'MAGE', 'ARCHER'], description: '직업 코드 (GET /api/v1/character-classes의 classCode)' };
+const costumeId = { type: 'string', format: 'uuid' };
+const costumeCategory = { type: 'string', enum: ['TOP', 'BOTTOM'], description: '기존 상품 분류. 상품은 직업 공용이며 한벌옷 하나로 장착합니다.' };
+const costumeText = { type: 'string', nullable: true };
+const costumeItemRef = { $ref: '#/components/schemas/ShopCostumeItem' };
+const equippedCostumeRef = { $ref: '#/components/schemas/EquippedCostume' };
+const costumeObject = (properties, required = Object.keys(properties)) => ({ type: 'object', required, properties });
+const costumeSuccess = (description, data) => ({ description, content: { 'application/json': { schema: costumeObject({
+  success: { type: 'boolean' }, data,
+}) } } });
 const notificationSettingsResponse = { description: '알림 설정', content: { 'application/json': { schema: { type: 'object', required: ['success', 'data'], properties: {
   success: { type: 'boolean' },
   data: { type: 'object', required: ['reminderEnabled', 'reminderTime', 'timezone', 'updatedAt'], properties: {
@@ -46,6 +55,13 @@ const only = (operation, codes) => ({ ...operation, responses: Object.fromEntrie
 
 module.exports = {
   schemas: {
+    ShopCostumeItem: costumeObject({
+      itemId: costumeId, costumeCode: { type: 'string' }, name: { type: 'string' },
+      description: costumeText, flavorText: costumeText, category: costumeCategory,
+      priceCoin: { type: 'integer', minimum: 0, nullable: true }, imageKey: costumeText, thumbnailKey: costumeText,
+      isOnSale: { type: 'boolean' }, owned: { type: 'boolean' }, equipped: { type: 'boolean' },
+    }),
+    EquippedCostume: costumeObject({ category: costumeCategory, itemId: costumeId }),
     ConceptStatisticsResponse: {
       type: 'object', required: ['success', 'data'], properties: {
         success: { type: 'boolean', example: true },
@@ -139,13 +155,27 @@ module.exports = {
     '/api/v1/learning/progress/active': { get: secure('활성 학습 진행') },
     '/api/v1/learning/progress/{stageId}': { put: secure('학습 진행 위치 저장', [uuid('stageId')], body({ contentPosition: { type: 'integer', minimum: 1 } })) },
     '/api/v1/learning/history/{historyId}': { get: { ...only(secure('학습 이력 상세 (호환 경로)', [uuid('historyId')], undefined, { 200: { description: '응시 요약과 실제 답안', content: { 'application/json': { schema: { $ref: '#/components/schemas/LearningHistoryDetailResponse' } } } } }), [200, 401, 404, 422, 503]), deprecated: true, description: '앱은 /api/v1/learning/history/LEARNING/{recordId}를 사용합니다. 응답은 같습니다.' } },
-    '/api/v1/inventory': { get: { ...secure('인벤토리 조회'), description: '로그인한 사용자의 보유 상품(items)과 부위별 장착 상태(equipped)를 동일 시점의 데이터로 반환합니다.' } },
-    '/api/v1/inventory/{itemId}/equip': { put: secure('코스튬 장착', [uuid('itemId')]) },
-    '/api/v1/shop/costumes': { get: { ...secure('코스튬 상점', [query('category', { type: 'string', enum: ['TOP', 'BOTTOM'] }), query('page', { type: 'integer', minimum: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100 }), query('limit', { type: 'integer', minimum: 1, maximum: 100 })]),
-      description: '판매 중인 상품과 로그인한 사용자 기준의 보유(owned)·장착(equipped) 여부를 반환합니다.' } },
-    '/api/v1/shop/costumes/{itemId}': { get: { ...secure('코스튬 상세', [uuid('itemId')]),
-      description: '판매 중인 상품의 상세 정보와 로그인한 사용자 기준의 보유(owned)·장착(equipped) 여부를 반환합니다.' } },
-    '/api/v1/shop/purchases': { post: secure('코스튬 구매', [], body({ itemId: { type: 'string', format: 'uuid' }, requestId: { type: 'string', minLength: 1, maxLength: 100 } })) },
+    '/api/v1/inventory': { get: { ...only(secure('인벤토리 조회', [], undefined, { 200: costumeSuccess('인벤토리', costumeObject({
+      items: { type: 'array', items: costumeItemRef }, equipped: { type: 'array', maxItems: 1, items: equippedCostumeRef },
+    })) }), [200, 401, 422, 503]), description: '직업과 관계없이 보유 상품과 현재 장착 상태를 동일 시점의 데이터로 반환합니다.' } },
+    '/api/v1/inventory/{itemId}/equip': { put: { ...only(secure('한벌옷 장착', [uuid('itemId')], undefined, {
+      200: costumeSuccess('장착된 코스튬', equippedCostumeRef),
+    }), [200, 401, 403, 404, 422, 503]), description: '선택한 보유 상품을 장착하고 이전 장착을 자동으로 해제합니다.' } },
+    '/api/v1/shop/costumes': { get: { ...only(secure('공용 코스튬 상점', [
+      { ...query('category', costumeCategory), deprecated: true, description: '기존 클라이언트 호환용. 공용 상품 목록에는 생략하세요.' },
+      query('page', { type: 'integer', minimum: 1, default: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100, default: 20 }),
+      query('limit', { type: 'integer', minimum: 1, maximum: 100 }),
+    ], undefined, { 200: costumeSuccess('상품 목록', costumeObject({ items: { type: 'array', items: costumeItemRef },
+      page: { type: 'integer', minimum: 1 }, size: { type: 'integer', minimum: 1 }, total: { type: 'integer', minimum: 0 },
+    })) }), [200, 401, 422, 503]), description: '모든 직업에서 같은 판매 상품을 조회합니다. 보유와 장착 상태는 로그인한 사용자 기준입니다.' } },
+    '/api/v1/shop/costumes/{itemId}': { get: { ...only(secure('코스튬 상세', [uuid('itemId')], undefined, {
+      200: costumeSuccess('상품 상세', costumeItemRef),
+    }), [200, 401, 404, 422, 503]), description: '판매 중인 상품의 상세 정보와 사용자별 보유·장착 여부를 반환합니다.' } },
+    '/api/v1/shop/purchases': { post: only(secure('코스튬 구매', [], body({
+      itemId: costumeId, requestId: { type: 'string', minLength: 1, maxLength: 100 },
+    }), { 201: costumeSuccess('구매 결과', costumeObject({ purchaseId: costumeId, itemId: costumeId,
+      coinBalance: { type: 'integer', minimum: 0 }, duplicate: { type: 'boolean' },
+    }, ['purchaseId', 'itemId', 'coinBalance'])) }), [201, 401, 403, 404, 409, 422, 503]) },
     '/api/v1/study-plans': { post: { ...secure('학습 일정 생성 (호환 경로)', [], studyPlanBody(['scheduledDate', 'title'])), deprecated: true, description: '앱은 /api/v1/calendar/plans를 사용합니다. 이 경로는 목표를 title로 받아 같은 규칙으로 저장하며, 응답 필드는 goal입니다.' } },
     '/api/v1/study-plans/{planId}': {
       patch: { ...secure('학습 일정 변경 (호환 경로)', [uuid('planId')], studyPlanBody([])), deprecated: true, description: '앱은 /api/v1/calendar/plans/{planId}를 사용합니다. 보내지 않은 필드는 유지합니다.' },

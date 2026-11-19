@@ -1,7 +1,12 @@
-/**
- * 코스튬 PostgreSQL 접근 계층 파일
- * 백엔드 작업: 조회·저장 로직과 쿼리를 관리
- * 주의: 기존 DB 스키마와 환경변수 유지
- * 현재 상태: 구현 전 스캐폴드이며 역할별 코드를 이 파일에 작성합니다.
- */
-module.exports = {};
+const { UserEquippedCostume } = require('@leren/database');
+
+function findEquippedCostume(manager, userId, withCostume = false) {
+  // 기존 부위별 장착 데이터가 둘이면 가장 최근 장착을 표시한다. 조회에서 기록을 수정하지 않는다.
+  return manager.getRepository(UserEquippedCostume).findOne({
+    where: { userId },
+    order: { equippedAt: 'DESC', itemId: 'ASC' },
+    relations: { costume: withCostume },
+  });
+}
+
+module.exports = { findEquippedCostume };

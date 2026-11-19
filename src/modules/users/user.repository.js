@@ -4,9 +4,10 @@
  * 주의: 기존 DB 스키마와 트랜잭션 정책을 유지한다.
  */
 const {
-  User, UserGrowth, UserWallet, UserCharacter, UserEquippedCostume,
+  User, UserGrowth, UserWallet, UserCharacter,
   UserStageProgress, ProgressStatus,
 } = require('@leren/database');
+const { findEquippedCostume } = require('../costumes/userCostume.repository');
 
 function repository(dataSource) {
   async function findWithGrowth(id, manager = dataSource.manager) {
@@ -27,9 +28,8 @@ function repository(dataSource) {
       const character = await manager.getRepository(UserCharacter).findOne({
         where: { userId }, relations: { characterClass: true },
       });
-      const equippedCostumes = await manager.getRepository(UserEquippedCostume).find({
-        where: { userId }, relations: { costume: true },
-      });
+      const equipped = await findEquippedCostume(manager, userId, true);
+      const equippedCostumes = equipped ? [equipped] : [];
       const completedStageCount = await manager.getRepository(UserStageProgress).count({
         where: { userId, progressStatus: ProgressStatus.Passed },
       });
