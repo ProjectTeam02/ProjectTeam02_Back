@@ -28,6 +28,8 @@ module.exports = {
   kakaoOauthCallbackUrl: process.env.KAKAO_OAUTH_CALLBACK_URL,
   kakaoAppDeepLink: process.env.KAKAO_APP_DEEP_LINK,
   kakaoWebReturnUrl: process.env.KAKAO_WEB_RETURN_URL,
+  // 운영에서 PC 개발용 웹 복귀(http://localhost:<포트>/auth/callback)를 명시적으로 허용할 때만 true
+  kakaoAllowLoopbackWebReturn: process.env.KAKAO_ALLOW_LOOPBACK_WEB_RETURN === 'true',
   kakaoAllowedAppDeepLinks: (process.env.KAKAO_ALLOWED_APP_DEEP_LINKS || '')
     .split(',').map((uri) => uri.trim()).filter(Boolean),
   kakaoOauthStoreMode: process.env.KAKAO_OAUTH_STORE_MODE,
