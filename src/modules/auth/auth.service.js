@@ -81,13 +81,17 @@ function service(dataSource = AppDataSource, kakaoClient = null) {
       }
     },
     async login({ email, password }) {
-      const userRepo = dataSource.getRepository(User);
-      const user = await userRepo.findOneBy({ email });
-      if (!user || !user.passwordHash || !verifyPassword(password, user.passwordHash)) throw AppError.unauthorized('이메일 또는 비밀번호가 올바르지 않습니다.');
-      if (user.accountStatus !== 'ACTIVE') throw AppError.forbidden('정지된 계정입니다.');
-      user.failedLoginCount = 0; user.lastLoginAt = new Date(); user.lastLoginMethod = 'EMAIL';
-      await userRepo.save(user); await ensureUserRows(dataSource.manager, user);
-      return loginResponse.session({ user, growth: await growthFor(user.userId), issued: await issueTokens(user, 'EMAIL') });
+      return transaction(async manager => {
+        const userRepo = manager.getRepository(User);
+        // 비밀번호 확인과 세션 생성을 재설정과 직렬화한다.
+        const user = await userRepo.findOne({ where: { email }, lock: { mode: 'for_no_key_update' } });
+        if (!user || !user.passwordHash || !verifyPassword(password, user.passwordHash)) throw AppError.unauthorized('이메일 또는 비밀번호가 올바르지 않습니다.');
+        if (user.accountStatus !== 'ACTIVE') throw AppError.forbidden('정지된 계정입니다.');
+        user.failedLoginCount = 0; user.lastLoginAt = new Date(); user.lastLoginMethod = 'EMAIL';
+        await userRepo.save(user);
+        await ensureUserRows(manager, user);
+        return loginResponse.session({ user, growth: await growthFor(user.userId, manager), issued: await issueTokens(user, 'EMAIL', manager) });
+      });
     },
     async refresh(refreshToken) {
       const payload = refreshClaims(refreshToken);

@@ -18,7 +18,7 @@ function repository(dataSource) {
       lock: { mode: 'pessimistic_write' },
     }),
     revoke: (id, reason = 'LOGOUT', manager) => repoFor(manager).update({ sessionId: id }, { revokedAt: new Date(), revokeReason: reason }),
-    revokeAll: (userId, manager) => repoFor(manager).update({ userId, revokedAt: IsNull() }, { revokedAt: new Date(), revokeReason: 'LOGOUT' }),
+    revokeAll: (userId, manager, reason = 'LOGOUT') => repoFor(manager).update({ userId, revokedAt: IsNull() }, { revokedAt: new Date(), revokeReason: reason }),
   };
 }
 

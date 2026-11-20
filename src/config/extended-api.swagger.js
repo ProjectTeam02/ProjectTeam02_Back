@@ -17,6 +17,11 @@ const studyPlanBody = required => ({ required: true, content: { 'application/jso
   description: required.length ? 'Stage 또는 Concept 중 하나 이상 필요' : '보내지 않은 필드는 유지. 최종적으로 Stage 또는 Concept 하나 이상 남아야 함',
 } } } });
 const success = (description = '성공') => ({ description, content: { 'application/json': { schema: { $ref: '#/components/schemas/ExtendedSuccess' } } } });
+const resetResponse = (description, flag) => ({ description, content: { 'application/json': { schema: {
+  type: 'object', required: ['success', 'data'], properties: {
+    success: { type: 'boolean', enum: [true] }, data: { type: 'object', required: [flag], properties: { [flag]: { type: 'boolean', enum: [true] } } },
+  },
+} } } });
 const secure = (summary, parameters = [], requestBody, responses = {}) => ({ tags: ['Extended API'], security: auth, summary, parameters, ...(requestBody ? { requestBody } : {}), responses: { 200: success(), 201: success('생성 성공'), 401: error, 403: error, 404: error, 409: error, 422: error, 503: error, ...responses } });
 
 const bossCombatProperties = {
@@ -181,8 +186,16 @@ module.exports = {
       patch: { ...secure('학습 일정 변경 (호환 경로)', [uuid('planId')], studyPlanBody([])), deprecated: true, description: '앱은 /api/v1/calendar/plans/{planId}를 사용합니다. 보내지 않은 필드는 유지합니다.' },
       delete: { ...secure('학습 일정 삭제 (호환 경로)', [uuid('planId')]), deprecated: true },
     },
-    '/api/v1/auth/password-reset/request': { post: { tags: ['Auth'], summary: '비밀번호 재설정 요청', requestBody: body({ email: { type: 'string', format: 'email' } }), responses: { 200: { description: '접수됨' }, 422: error } } },
-    '/api/v1/auth/password-reset/confirm': { post: { tags: ['Auth'], summary: '비밀번호 재설정 확정', requestBody: body({ resetToken: { type: 'string', minLength: 1, maxLength: 4096 }, newPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 } }), responses: { 200: { description: '변경됨' }, 401: error, 422: error } } },
+    '/api/v1/auth/password-reset/request': { post: { tags: ['Auth'], security: [], summary: '비밀번호 재설정 요청',
+      description: '등록 여부와 관계없이 접수 응답을 반환합니다. 메일 설정이 비활성화된 환경은 503을 반환합니다.',
+      requestBody: body({ email: { type: 'string', format: 'email', maxLength: 255 } }),
+      responses: { 200: resetResponse('접수 확인', 'accepted'), 422: error, 503: error },
+    } },
+    '/api/v1/auth/password-reset/confirm': { post: { tags: ['Auth'], security: [], summary: '비밀번호 재설정 확정',
+      description: '유효한 일회성 토큰으로 비밀번호를 변경하고 기존 로그인 세션을 폐기합니다.',
+      requestBody: body({ resetToken: { type: 'string', minLength: 1, maxLength: 4096 }, newPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 } }),
+      responses: { 200: resetResponse('변경 완료', 'reset'), 401: error, 422: error, 503: error },
+    } },
     '/api/v1/auth/refresh': { post: { tags: ['Auth'], summary: 'Cookie 또는 Body Refresh Token 재발급', parameters: [{ name: 'refreshToken', in: 'cookie', schema: { type: 'string' } }], responses: { 200: { description: '재발급 성공' }, 401: error } } },
     '/api/v1/auth/logout': { post: { tags: ['Auth'], summary: 'Cookie 또는 Bearer 로그아웃', security: auth, parameters: [{ name: 'refreshToken', in: 'cookie', schema: { type: 'string' } }], responses: { 200: { description: '로그아웃 성공' }, 401: error } } },
   },
