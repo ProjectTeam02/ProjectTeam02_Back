@@ -45,7 +45,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   const [database] = await admin.query('SELECT current_database() AS name');
   assert.equal(database.name, 'leren_calendar_it');
   assert.equal((await admin.query("SELECT to_regclass('account.users') AS existing"))[0].existing, null);
-  await admin.query('CREATE SCHEMA app');
+  await admin.query(fs.readFileSync(path.join(root, 'database/sql/init/01_app_schema.sql'), 'utf8'));
   await admin.runMigrations();
   E.AppDataSource.setOptions({ ...options, migrations: [] });
   await E.AppDataSource.initialize();
@@ -659,21 +659,17 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
     assert.equal((await quizRequest('POST', `/quizzes/stages/${boss.stageId}/attempts`)).status, 422);
   });
 
-  await t.test('legacy approved-question GET keeps the frontend fields and hides the pre-answer explanation', async () => {
+  await t.test('legacy published-question GET keeps frontend fields and hides the pre-answer explanation', async () => {
     const questionRepo = db.getRepository(E.Question);
-    const questionId = answers[0].questionId;
-    const question = await questionRepo.findOneByOrFail({ questionId });
-    await questionRepo.update({ questionId }, { status: 'APPROVED' });
-    try {
-      const generated = await quizRequest('GET', `/quizzes/generate?conceptId=${question.conceptId}`);
-      assert.equal(generated.status, 200);
-      assert.equal(generated.body.data.id, questionId);
-      assert.equal(generated.body.data.title, question.questionText);
-      assert.equal(generated.body.data.explanation, null);
-      assert.equal(generated.body.data.choices.length, 4);
-      assert.equal('isCorrect' in generated.body.data.choices[0], false);
-    } finally {
-      await questionRepo.update({ questionId }, { status: question.status });
-    }
+    const sample = await questionRepo.findOneByOrFail({ questionId: answers[0].questionId });
+    const generated = await quizRequest('GET', `/quizzes/generate?conceptId=${sample.conceptId}`);
+    assert.equal(generated.status, 200);
+    const question = await questionRepo.findOneByOrFail({ questionId: generated.body.data.id });
+    assert.equal(question.status, 'PUBLISHED');
+    assert.equal(question.conceptId, sample.conceptId);
+    assert.equal(generated.body.data.title, question.questionText);
+    assert.equal(generated.body.data.explanation, null);
+    assert.equal(generated.body.data.choices.length, 4);
+    assert.equal('isCorrect' in generated.body.data.choices[0], false);
   });
 });

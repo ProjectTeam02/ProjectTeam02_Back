@@ -51,6 +51,21 @@ jobs:
         run: npm run db:check
       - name: 5. 엔티티 연동 테스트 21개 (app_user)
         run: npm run db:test
+      - name: MVP 콘텐츠 사전 검사와 퀴즈·알림 HTTP 계약 (격리 PostgreSQL)
+        env:
+          PGPASSWORD: admin_ci
+          LEREN_PREFLIGHT_PG_TEST_CONFIG: '{"port":5432,"password":"app_local"}'
+          LEREN_MVP_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren_mvp_verify","password":"app_local"}'
+        run: |
+          for fixture in mvp_preflight_fresh mvp_preflight_fixture leren_mvp_verify; do
+            createdb -h localhost -U leren_admin "$fixture"
+          done
+          for fixture in mvp_preflight_fixture leren_mvp_verify; do
+            psql -h localhost -U leren_admin -d "$fixture" -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+            DB_NAME="$fixture" npm run db:migrate
+          done
+          PGPASSWORD=app_local psql -h localhost -U app_user -d leren_mvp_verify -v ON_ERROR_STOP=1 -f database/sql/seed/01_master_data.sql
+          node --test test/integration/mvp-content-preflight-postgres.test.js test/integration/mvp-quiz-content-notification-postgres.test.js
       - name: 5-1. 일반 Stage와 Boss Quiz HTTP 계약 (실제 Express·PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'

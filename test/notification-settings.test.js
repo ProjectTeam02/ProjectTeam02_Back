@@ -58,13 +58,14 @@ async function call(method, path, body) {
   return { status: response.status, body: await response.json() };
 }
 
-test('GET은 설정이 없으면 기본값으로 만들고 알림 필드만 응답한다', async () => {
+test('GET은 설정이 없으면 저장하지 않고 기본 알림 필드만 응답한다', async () => {
   const result = await call('GET', '/notification-settings');
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.deepEqual(Object.keys(result.body.data).sort(), ['reminderEnabled', 'reminderTime', 'timezone', 'updatedAt']);
   assert.equal(result.body.data.reminderEnabled, false);
   assert.equal(result.body.data.reminderTime, null);
-  assert.equal(settings.length, 1);
+  assert.equal(result.body.data.updatedAt, null);
+  assert.equal(settings.length, 0);
 });
 
 test('PATCH는 보낸 필드만 바꾸고 나머지는 유지한다 (HH:MM → HH:MM:SS)', async () => {

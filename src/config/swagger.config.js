@@ -78,7 +78,7 @@ module.exports = {
       } },
       '/api/v1/users/me': { get: { tags: ['Users'], security: auth, summary: '마이페이지', responses: { 200: { description: '사용자 정보' }, 401: errorResponse, 404: errorResponse } } },
       '/api/v1/users/me/notifications': { patch: { tags: ['Notifications'], security: auth, summary: '학습 알림 켜기·끄기 (호환 경로)', deprecated: true, description: '공식 경로는 GET/PATCH /api/v1/users/me/notification-settings입니다. 앱 전환 후 삭제됩니다.', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['learningOn'], properties: { learningOn: { type: 'boolean' } } } } } }, responses: { 200: { description: '설정 저장', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/NotificationSetting' } } } } } }, 401: errorResponse, 422: errorResponse } } },
-      '/api/v1/quizzes/generate': { get: { tags: ['Quizzes'], security: auth, summary: '승인된 문제 조회', parameters: [{ name: 'conceptId', in: 'query', schema: { type: 'string' } }], responses: { 200: { description: '정답을 제외한 문제', content: { 'application/json': { schema: { $ref: '#/components/schemas/Quiz' } } } }, 404: errorResponse } } },
+      '/api/v1/quizzes/generate': { get: { tags: ['Quizzes'], security: auth, summary: '공개된 문제 조회', parameters: [{ name: 'conceptId', in: 'query', schema: { type: 'string' } }], responses: { 200: { description: '정답을 제외한 문제', content: { 'application/json': { schema: { $ref: '#/components/schemas/Quiz' } } } }, 404: errorResponse } } },
       '/api/v1/quizzes/{id}/submit': { post: { tags: ['Quizzes'], security: auth, summary: '문제 제출 및 채점', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }, { name: 'Idempotency-Key', in: 'header', schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['choiceId'], properties: { choiceId: { type: 'string', format: 'uuid' }, attemptId: { type: 'string', format: 'uuid' } } } } } }, responses: { 201: { description: '채점 결과' }, 409: errorResponse, 422: errorResponse } } },
     },
   },
@@ -148,11 +148,11 @@ Object.assign(module.exports.definition.paths, economyContent.paths);
 
 const submit = module.exports.definition.paths['/api/v1/quizzes/{id}/submit'].post;
 module.exports.definition.components.schemas.Quiz.properties.explanation = {
-  type: 'string', nullable: true, description: '레거시 승인 문제 조회에서는 제출 전 해설을 숨기기 위해 항상 null. 일반 Stage 채점 응답에서 해설 제공',
+  type: 'string', nullable: true, description: '레거시 공개 문제 조회에서는 제출 전 해설을 숨기기 위해 항상 null. 일반 Stage 채점 응답에서 해설 제공',
 };
 module.exports.definition.components.schemas.Quiz.properties.conceptId = { type: 'string', format: 'uuid' };
 const legacyGenerate = module.exports.definition.paths['/api/v1/quizzes/generate'].get;
-legacyGenerate.description = '기존 승인(APPROVED) 문제 조회 경로입니다. Stage 응시와 연결되지 않습니다. explanation 필드는 유지하지만 값은 null이며, 정답 여부도 반환하지 않습니다. 진행·채점·보상은 일반 Stage 응시 API를 사용하세요.';
+legacyGenerate.description = '기존 공개(PUBLISHED) 문제 조회 경로입니다. 보기 4개와 정답 1개가 있는 문항만 제공하며, 승인만 받은 미공개(APPROVED) 문항은 제공하지 않습니다. Stage 응시와 연결되지 않습니다. explanation 필드는 유지하지만 값은 null이며, 정답 여부도 반환하지 않습니다. 진행·채점·보상은 일반 Stage 응시 API를 사용하세요.';
 legacyGenerate.responses[200].content['application/json'] = {
   schema: { type: 'object', required: ['success', 'data'], properties: {
     success: { type: 'boolean' }, data: { $ref: '#/components/schemas/Quiz' },
