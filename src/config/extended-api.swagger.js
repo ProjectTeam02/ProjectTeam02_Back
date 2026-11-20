@@ -141,7 +141,8 @@ module.exports = {
       patch: { ...only(secure('직업 변경', [], body({ classCode: classCodeField })), [200, 401, 404, 409, 422, 503]), description: '직업을 처음 선택한 뒤에만 변경할 수 있습니다(아니면 409). 활성 직업만 선택할 수 있고(아니면 404), 같은 직업이면 변경 없이 현재 값을 반환합니다. 응답: userId, classId, classCode' },
     },
     '/api/v1/users/me/notification-settings': {
-      get: only(secure('알림 설정 조회', [], undefined, { 200: notificationSettingsResponse }), [200, 401, 422, 503]),
+      get: { ...only(secure('알림 설정 조회', [], undefined, { 200: notificationSettingsResponse }), [200, 401, 422, 503]),
+        description: '저장된 설정이 없으면 기본값과 updatedAt: null을 반환합니다. 조회는 설정을 저장하지 않습니다.' },
       patch: { ...only(secure('알림 설정 변경', [], { required: true, content: { 'application/json': { schema: {
         type: 'object', additionalProperties: false, minProperties: 1,
         properties: {

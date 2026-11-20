@@ -8,9 +8,9 @@ const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
 const normalStageService = require('./normal-stage.service');
 const attemptDto = require('./dto/attemptResponse.dto');
+const { PUBLIC_QUESTION_STATUS } = require('./question-pool-policy');
 
 function service(dataSource = AppDataSource) {
-  const repo = (entity, manager = dataSource.manager) => manager.getRepository(entity);
   const normalStage = normalStageService(dataSource);
   return {
     start: normalStage.start,
@@ -21,12 +21,24 @@ function service(dataSource = AppDataSource) {
     bossGet: normalStage.bossGet,
     bossSubmit: normalStage.bossSubmit,
     relearn: normalStage.relearn,
-    async generate(query = {}) {
-      const questionRepo = repo(Question);
-      const question = await questionRepo.findOne({ where: { status: 'APPROVED', ...(query.conceptId ? { conceptId: query.conceptId } : {}) }, order: { createdAt: 'ASC' } });
-      if (!question) throw AppError.notFound('승인된 문제가 없습니다.');
-      const choices = await repo(QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
-      return attemptDto.legacyQuestion(question, choices);
+    generate(query = {}) {
+      return dataSource.transaction('REPEATABLE READ', async manager => {
+        const questions = manager.getRepository(Question).createQueryBuilder('question');
+        const answerKey = questions.subQuery().select('1').from(QuestionChoice, 'choice')
+          .where('choice.questionId = question.questionId')
+          .having('COUNT(*) = 4 AND COUNT(*) FILTER (WHERE choice.isCorrect) = 1')
+          .getQuery();
+        questions.where('question.status = :status', { status: PUBLIC_QUESTION_STATUS })
+          .andWhere(`EXISTS ${answerKey}`)
+          .orderBy('question.createdAt', 'ASC').addOrderBy('question.questionId', 'ASC');
+        if (query.conceptId) questions.andWhere('question.conceptId = :conceptId', { conceptId: query.conceptId });
+        const question = await questions.getOne();
+        if (!question) throw AppError.notFound('공개된 문제가 없습니다.');
+        const choices = await manager.getRepository(QuestionChoice).find({
+          where: { questionId: question.questionId }, order: { baseOrder: 'ASC' },
+        });
+        return attemptDto.legacyQuestion(question, choices);
+      });
     },
     async submit(userId, quizId, { choiceId, attemptId, idempotencyKey, submissionId }) {
       // 레거시 서비스 단위 테스트용 어댑터. 실제 요청은 아래 TypeORM 경로를 사용한다.

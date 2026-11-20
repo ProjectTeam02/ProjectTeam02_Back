@@ -8,7 +8,7 @@ const emptyMessage = { ...text, description: '공개된 조회 결과가 비었�
 const ref = name => ({ $ref: `#/components/schemas/${name}` });
 const array = name => ({ type: 'array', items: ref(name) });
 const object = properties => ({
-  type: 'object', required: Object.keys(properties).filter(key => key !== 'emptyMessage'), properties,
+  type: 'object', required: Object.keys(properties).filter(key => !['emptyMessage', 'quizReady', 'quizUnavailableReason'].includes(key)), properties,
 });
 
 const stage = {
@@ -36,6 +36,10 @@ const schemas = {
     ...stage, maxQuestionCount: integer, requiredCorrectCount: integer, initialMonsterHp: integer,
     monsterName: nullableText, monsterImageKey: nullableText, rewardTotalExp: nullableInteger,
     rewardEconomyExp: nullableInteger, rewardCoin: nullableInteger, concepts: array('EconomyStageConcept'), emptyMessage,
+    quizReady: { ...boolean, description: '일반 Stage의 새 퀴즈 구성 준비 여부. isUnlocked와 별개이며 진행 중인 응시 재개 가능 여부를 뜻하지 않습니다.' },
+    quizUnavailableReason: { ...nullableText,
+      enum: ['INVALID_STAGE_CONFIGURATION', 'REWARD_NOT_CONFIGURED', 'INSUFFICIENT_ELIGIBLE_QUESTIONS', 'INVALID_QUESTION_POOL', null],
+      description: '일반 Stage에만 반환하는 구성 실패 사유. 준비된 경우 null; 보스 상세에는 두 필드 모두 생략합니다.' },
   }),
   EconomyConceptCard: object({
     sectionId: uuid, conceptId: uuid, pageNo: integer, sortOrder: integer,
@@ -74,7 +78,7 @@ module.exports = {
   paths: {
     '/api/v1/topics': read('경제 학습 주제 목록', '공개 주제를 topicNo 순으로 조회합니다.', 'EconomyTopicList'),
     '/api/v1/topics/{topicId}/stages': read('주제별 Stage 목록', '공개 Stage를 stageNo 순으로 조회합니다. 진행 상태와 해금 여부는 로그인한 사용자 기준입니다.', 'EconomyStageList', 'topicId'),
-    '/api/v1/stages/{stageId}': read('Stage 상세', '공개 Stage와 연결된 공개 개념을 displayOrder 순으로 조회합니다.', 'EconomyStageDetail', 'stageId'),
+    '/api/v1/stages/{stageId}': read('Stage 상세', '공개 Stage와 연결된 공개 개념을 displayOrder 순으로 조회합니다. 일반 Stage에만 새 퀴즈 준비 상태를 반환하며 시작 시 재검증합니다.', 'EconomyStageDetail', 'stageId'),
     '/api/v1/concepts/{conceptId}': read('개념 상세 및 학습 카드', '공개 개념의 카드를 pageNo, sortOrder 순으로 조회합니다. EXAMPLE과 SUMMARY 카드의 body에 각각 실생활 예시와 핵심 요약을 담습니다.', 'EconomyConceptDetail', 'conceptId'),
   },
 };

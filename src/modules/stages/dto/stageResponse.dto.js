@@ -13,9 +13,10 @@ function summary(stage, progress, isUnlocked) {
   };
 }
 
-function detail(stage, progress, isUnlocked, concepts) {
+function detail(stage, progress, isUnlocked, concepts, quizReadiness) {
   return {
     ...summary(stage, progress, isUnlocked),
+    ...quizReadiness,
     maxQuestionCount: stage.maxQuestionCount, requiredCorrectCount: stage.requiredCorrectCount,
     initialMonsterHp: stage.initialMonsterHp, monsterName: stage.monsterName,
     monsterImageKey: stage.monsterImageKey, rewardTotalExp: stage.rewardTotalExp,
