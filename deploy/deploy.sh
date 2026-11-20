@@ -3,7 +3,7 @@
 #   사용법: sudo bash /opt/leren/deploy/deploy.sh <백엔드 태그|current> <AI 태그|current>
 #   예시  : sudo bash /opt/leren/deploy/deploy.sh 1a2b3c4d5e6f current   # 백엔드만 새 버전, AI는 그대로
 #   옵션  : SKIP_MIGRATE=1  마이그레이션 건너뛰기 / API_HOST_PORT=3000  ALB가 보는 호스트 포트
-# 순서: Parameter Store → env 파일 → ECR pull → 마이그레이션 → 컨테이너 교체·헬스체크
+# 순서: Parameter Store → env 파일 → 필수 설정 검사 → ECR pull → 마이그레이션 → 컨테이너 교체·헬스체크
 #       → 실패하면 이전 버전으로 자동 복귀 → 기록(/opt/leren/deploy.log, current.env)
 set -Eeuo pipefail
 umask 077
@@ -57,6 +57,22 @@ load_env() {
 load_env /leren/prod/backend/ "$BASE/env/backend.env"
 load_env /leren/prod/migrate/ "$BASE/env/migrate.env"
 load_env /leren/prod/ai/      "$BASE/env/ai.env"
+
+# 1-1) 카카오 로그인 필수 설정 확인. 없거나 맞지 않으면 마이그레이션·컨테이너 교체 전에 중단 (기존 서버 유지)
+check_backend_env() {
+  local f=$BASE/env/backend.env key missing=()
+  for key in KAKAO_REST_API_KEY KAKAO_CLIENT_SECRET KAKAO_ALLOWED_REDIRECT_URIS KAKAO_OAUTH_CALLBACK_URL \
+             KAKAO_APP_DEEP_LINK KAKAO_ALLOWED_APP_DEEP_LINKS KAKAO_OAUTH_STORE_MODE KAKAO_WEB_RETURN_URL; do
+    grep -q "^${key}=." "$f" || missing+=("$key")
+  done
+  [ ${#missing[@]} -eq 0 ] || { log "FAIL Parameter Store /leren/prod/backend/ 필수 값 없음: ${missing[*]}"; return 1; }
+  grep -qx 'KAKAO_OAUTH_STORE_MODE=postgres' "$f" \
+    || { log "FAIL KAKAO_OAUTH_STORE_MODE는 운영에서 postgres여야 해요"; return 1; }
+  if grep -q '^KAKAO_WEB_RETURN_URL=http://' "$f" && ! grep -qx 'KAKAO_ALLOW_LOOPBACK_WEB_RETURN=true' "$f"; then
+    log "FAIL KAKAO_WEB_RETURN_URL이 http://이면 KAKAO_ALLOW_LOOPBACK_WEB_RETURN=true가 필요해요"; return 1
+  fi
+}
+check_backend_env || exit 1
 
 # 2) RDS 인증서 (없을 때만 내려받기)
 if [ ! -s "$RDS_CA" ]; then
