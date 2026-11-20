@@ -2,11 +2,20 @@ const AppError = require('../../common/errors/AppError');
 
 const loopbackHosts = ['localhost', '127.0.0.1', '[::1]'];
 
+// loopback HTTP 복귀 허용 여부
+// - 개발·테스트: localhost, 127.0.0.1, [::1] 허용 (기존 동작)
+// - 그 외(운영): KAKAO_ALLOW_LOOPBACK_WEB_RETURN=true이고 http://localhost:<포트> 형태일 때만 허용
+//   허용되는 주소는 설정된 KAKAO_WEB_RETURN_URL 하나뿐이며, 요청에서 복귀 주소를 받지 않는다.
+function loopbackHttpAllowed(config, url) {
+  if (url.protocol !== 'http:' || !loopbackHosts.includes(url.hostname)) return false;
+  if (['development', 'test'].includes(config.nodeEnv)) return true;
+  return config.kakaoAllowLoopbackWebReturn === true && url.hostname === 'localhost' && url.port !== '';
+}
+
 function webReturnUrl(config) {
   let url;
   try { url = new URL(config.kakaoWebReturnUrl); } catch (_error) { return null; }
-  const localHttp = ['development', 'test'].includes(config.nodeEnv)
-    && url.protocol === 'http:' && loopbackHosts.includes(url.hostname);
+  const localHttp = loopbackHttpAllowed(config, url);
   if (!url.hostname || (url.protocol !== 'https:' && !localHttp)
     || url.username || url.password || url.search || url.hash || url.pathname !== '/auth/callback'
     || !url.href.endsWith('/auth/callback')) return null;

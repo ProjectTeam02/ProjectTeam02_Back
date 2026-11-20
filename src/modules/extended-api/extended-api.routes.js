@@ -32,8 +32,10 @@ const bookmarkResponseDto = require('../reviews/dto/bookmarkResponse.dto');
 const reviewItems = require('../reviews/reviewItem.repository');
 const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
 const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
+const { findEquippedCostume } = require('../costumes/userCostume.repository');
 const classChangeResponseDto = require('../characters/dto/classChangeResponse.dto');
 const quizSchema = require('../quizzes/quiz.schema');
+const { hasAnswerKey } = require('../quizzes/question-pool-policy');
 const { questionCount: bossQuestionCount } = require('../quizzes/boss-question.repository');
 const bossCombat = require('../quizzes/boss-combat');
 const calendarService = require('../calendar/calendar.service')(AppDataSource);
@@ -142,15 +144,21 @@ async function createReviewAttempt(userId, missionId = null) {
     const selected = items.filter(item => (conceptCode ? item.conceptCode === conceptCode : true) && (item.wrongCount > 0 || item.isBookmarked))
       .slice(0, mission?.targetQuestionCount || 5);
     if (!selected.length) throw AppError.conflict('복습할 문항이 없습니다.');
+    const pools = await Promise.all(selected.map(async item => {
+      const question = item.latestQuestion;
+      const choices = await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
+      if (!hasAnswerKey(choices.length, choices.filter(choice => choice.isCorrect).length)) {
+        throw AppError.unavailable('복습 문항 선택지 구성이 올바르지 않습니다.');
+      }
+      return { item, question, choices };
+    }));
     const attempt = await repo(manager, ReviewAttempt).save(repo(manager, ReviewAttempt).create({
       userId, missionId: mission?.missionId || null, reviewType: mission ? 'AUTO' : 'RECOMMENDED', entryPoint: mission ? 'HOME' : 'REVIEW_NOTE',
       conceptCode, status: 'IN_PROGRESS', questionCount: selected.length, submittedCount: 0, correctCount: 0,
     }));
     const submissions = repo(manager, ReviewSubmission);
     let sequenceNo = 0;
-    for (const item of selected) {
-      const question = item.latestQuestion;
-      const choices = await repo(manager, QuestionChoice).find({ where: { questionId: question.questionId }, order: { baseOrder: 'ASC' } });
+    for (const { item, question, choices } of pools) {
       sequenceNo += 1;
       await submissions.save(submissions.create({ reviewAttemptId: attempt.reviewAttemptId, reviewItemId: item.reviewItemId,
         questionId: question.questionId, sequenceNo, displayedChoiceOrder: choices.map(choice => choice.choiceId),
@@ -356,12 +364,11 @@ function routes() {
     const user = await repo(manager, User).findOneBy({ userId: req.user.sub }); if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
     user.nickname = req.body.nickname; user.nicknameUpdatedAt = new Date(); await repo(manager, User).save(user); return userUpdateDto.response(user);
   }))));
-  // 알림 설정 (공식): 행이 없으면 기본값으로 만든다
-  router.get('/users/me/notification-settings', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    let setting = await repo(manager, UserSetting).findOneBy({ userId: req.user.sub });
-    if (!setting) setting = await repo(manager, UserSetting).save(repo(manager, UserSetting).create({ userId: req.user.sub }));
-    return notificationSetting.response(setting);
-  }))));
+  // 알림 설정 (공식): 아직 저장한 값이 없으면 기본 응답만 반환한다.
+  router.get('/users/me/notification-settings', auth, validate(requestDto.empty), asyncHandler(async (req, res) => {
+    const setting = await AppDataSource.getRepository(UserSetting).findOneBy({ userId: req.user.sub });
+    return data(res, notificationSetting.response(setting));
+  }));
   // 보낸 필드만 바꾸고 나머지는 유지한다
   router.patch('/users/me/notification-settings', auth, validate(requestDto.notificationUpdate), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     let setting = await repo(manager, UserSetting).findOne({ where: { userId: req.user.sub }, lock: { mode: 'pessimistic_write' } });
@@ -373,21 +380,38 @@ function routes() {
   router.put('/users/me/character/class', auth, validate(userSchema.characterClass), asyncHandler(async (req, res) => data(res, await characterService.select(req.user.sub, req.body.classCode))));
   router.patch('/users/me/character/class', auth, validate(requestDto.classUpdate), asyncHandler(async (req, res) => data(res, classChangeResponseDto.response(await changeClass(req.user.sub, req.body.classCode)))));
   router.get('/inventory', auth, validate(requestDto.empty), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
-    const owned = await repo(manager, UserCostume).find({ where: { userId: req.user.sub }, relations: { costume: true } }); const equipped = await repo(manager, UserEquippedCostume).findBy({ userId: req.user.sub });
-    return { items: owned.map(row => serializeCostume(row.costume, true, equipped.some(item => item.itemId === row.itemId))), equipped: equipped.map(row => ({ category: row.category, itemId: row.itemId })) };
+    const userId = req.user.sub;
+    const owned = await repo(manager, UserCostume).find({ where: { userId }, relations: { costume: true } });
+    const equipped = await findEquippedCostume(manager, userId);
+    return {
+      items: owned.map(row => serializeCostume(row.costume, true, equipped?.itemId === row.itemId)),
+      equipped: equipped ? [{ category: equipped.category, itemId: equipped.itemId }] : [],
+    };
   }))));
   router.put('/inventory/:itemId/equip', auth, validate(equipCostumeRequestDto.parse), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
-    const itemId = req.params.itemId; const owned = await repo(manager, UserCostume).findOne({ where: { userId: req.user.sub, itemId }, relations: { costume: true } }); if (!owned?.costume) throw AppError.forbidden('보유하지 않은 코스튬입니다.');
-    await repo(manager, UserEquippedCostume).upsert({ userId: req.user.sub, category: owned.costume.category, itemId, equippedAt: new Date() }, ['userId', 'category']); return { category: owned.costume.category, itemId };
+    const userId = req.user.sub;
+    const itemId = req.params.itemId;
+    // 기존 장착 행이 없어도 같은 사용자의 장착·구매 요청을 같은 사용자 행에서 직렬화한다.
+    const user = await repo(manager, User).findOne({ where: { userId }, lock: { mode: 'pessimistic_write' } });
+    if (!user) throw AppError.notFound('사용자를 찾을 수 없습니다.');
+    const owned = await repo(manager, UserCostume).findOne({ where: { userId, itemId }, relations: { costume: true } });
+    if (!owned?.costume) throw AppError.forbidden('보유하지 않은 코스튬입니다.');
+
+    const { category } = owned.costume;
+    const equipment = repo(manager, UserEquippedCostume);
+    const current = await equipment.findOneBy({ userId, category });
+    if (current?.itemId !== itemId) {
+      await equipment.upsert({ userId, category, itemId, equippedAt: new Date() }, ['userId', 'category']);
+    }
+    return { category, itemId };
   }))));
   router.get('/shop/costumes', auth, validate(requestDto.shopList), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
     const p = page(req.query);
     const userId = req.user.sub;
-    const all = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } });
-    const rows = req.query.category ? all.filter(row => row.category === req.query.category) : all;
+    const rows = await repo(manager, Costume).find({ where: { isOnSale: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } });
     const owned = new Set((await repo(manager, UserCostume).findBy({ userId })).map(row => row.itemId));
-    const equipped = new Set((await repo(manager, UserEquippedCostume).findBy({ userId })).map(row => row.itemId));
-    return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.has(row.itemId), equipped.has(row.itemId))),
+    const equipped = await findEquippedCostume(manager, userId);
+    return { items: rows.slice(p.skip, p.skip + p.size).map(row => serializeCostume(row, owned.has(row.itemId), equipped?.itemId === row.itemId)),
       page: p.page, size: p.size, total: rows.length };
   }))));
   router.get('/shop/costumes/:itemId', auth, validate(requestDto.item), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction('REPEATABLE READ', async manager => {
@@ -395,8 +419,8 @@ function routes() {
     if (!row) throw AppError.notFound('판매 중인 코스튬을 찾을 수 없습니다.');
     const userId = req.user.sub;
     const owned = await repo(manager, UserCostume).findOneBy({ userId, itemId: row.itemId });
-    const equipped = await repo(manager, UserEquippedCostume).findOneBy({ userId, category: row.category, itemId: row.itemId });
-    return serializeCostume(row, Boolean(owned), Boolean(equipped));
+    const equipped = await findEquippedCostume(manager, userId);
+    return serializeCostume(row, Boolean(owned), equipped?.itemId === row.itemId);
   }))));
   router.post('/shop/purchases', auth, validate(costumeRequestDto.parse), asyncHandler(async (req, res) => data(res, await purchase(req.user.sub, req.body), 201)));
 

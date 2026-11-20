@@ -35,17 +35,21 @@ test('three wrong answers leave HP unchanged and never negative', () => {
     [[2, 'IN_PROGRESS'], [2, 'IN_PROGRESS'], [2, 'FAILED']]);
 });
 
-test('legacy approved-question lookup keeps its field but does not reveal explanation or answer', async () => {
+test('legacy published-question lookup keeps its field but does not reveal explanation or answer', async () => {
+  const builder = { getQuery: () => '(answer key subquery)', getOne: async () => ({
+    questionId: 'q1', questionText: '문항', explanation: '비공개 해설', difficulty: 'BEGINNER', conceptId: 'c1',
+  }) };
+  for (const method of ['subQuery', 'select', 'from', 'where', 'having', 'andWhere', 'orderBy', 'addOrderBy']) {
+    builder[method] = () => builder;
+  }
   const manager = { getRepository(entity) {
-    if (entity === Question) return { findOne: async () => ({
-      questionId: 'q1', questionText: '문항', explanation: '비공개 해설', difficulty: 'BEGINNER', conceptId: 'c1',
-    }) };
+    if (entity === Question) return { createQueryBuilder: () => builder };
     if (entity === QuestionChoice) return { find: async () => [
       { choiceId: 'a1', baseOrder: 1, choiceText: '선택지', isCorrect: true },
     ] };
     throw new Error('unexpected repository');
   } };
-  const data = await quizService({ manager, getRepository: entity => manager.getRepository(entity) }).generate();
+  const data = await quizService({ transaction: async (_isolation, work) => work(manager) }).generate();
   assert.equal(data.explanation, null);
   assert.equal('isCorrect' in data.choices[0], false);
 });

@@ -45,7 +45,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   const [database] = await admin.query('SELECT current_database() AS name');
   assert.equal(database.name, 'leren_calendar_it');
   assert.equal((await admin.query("SELECT to_regclass('account.users') AS existing"))[0].existing, null);
-  await admin.query('CREATE SCHEMA app');
+  await admin.query(fs.readFileSync(path.join(root, 'database/sql/init/01_app_schema.sql'), 'utf8'));
   await admin.runMigrations();
   E.AppDataSource.setOptions({ ...options, migrations: [] });
   await E.AppDataSource.initialize();
@@ -507,6 +507,38 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
     assert.deepEqual(await rewardSnapshot(fixture, attemptId), committed);
   });
 
+  await t.test('a first-clear reward and a concurrent costume purchase share one consistent wallet ledger', async () => {
+    const fixture = await rewardFixture();
+    const { attemptId, before } = await startedReward(fixture, 'official');
+    const product = await db.getRepository(E.Costume).save({ costumeCode: 'CALENDAR-REWARD-OUTFIT',
+      name: '공용 코스튬', category: 'OUTFIT', priceCoin: 5, isOnSale: true });
+    const requestId = crypto.randomUUID();
+    const [clear, purchase] = await Promise.all([
+      rewardAnswer(fixture, 'official', attemptId, 1),
+      quizRequest('POST', '/shop/purchases', { itemId: product.itemId, requestId }, fixture.bearer),
+    ]);
+    assert.equal(clear.status, 201);
+    assert.equal(clear.body.data.rewardGranted, true);
+    assert.equal(purchase.status, 201);
+
+    const after = await rewardSnapshot(fixture, attemptId);
+    assert.equal(after.coin.length, 2);
+    assert.equal(after.exp.length, 1);
+    const earn = after.coin.find(entry => entry.reason === 'STAGE_FIRST_CLEAR');
+    const spend = after.coin.find(entry => entry.reason === 'COSTUME_PURCHASE');
+    assert.equal(earn?.amount, quizStage.rewardCoin);
+    assert.equal(spend?.amount, -product.priceCoin);
+    assert.equal(spend.coinLedgerId, purchase.body.data.purchaseId);
+    const [first, second] = earn.balanceBefore === before.wallet.coinBalance ? [earn, spend] : [spend, earn];
+    assert.equal(first.balanceBefore, before.wallet.coinBalance);
+    assert.equal(first.balanceAfter, second.balanceBefore);
+    assert.equal(second.balanceAfter, after.wallet.coinBalance);
+    assert.equal(after.wallet.coinBalance, before.wallet.coinBalance + quizStage.rewardCoin - product.priceCoin);
+    assert.equal(after.wallet.version, before.wallet.version + 2);
+    const owned = await db.getRepository(E.UserCostume).findOneByOrFail({ userId: fixture.userId, itemId: product.itemId });
+    assert.equal(owned.coinLedgerId, spend.coinLedgerId);
+  });
+
   await t.test('a fresh failed Stage attempt leaves growth, wallet and ledgers unchanged', async () => {
     const fixture = await rewardFixture();
     const { attemptId, before } = await startedReward(fixture, 'official');
@@ -627,21 +659,17 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
     assert.equal((await quizRequest('POST', `/quizzes/stages/${boss.stageId}/attempts`)).status, 422);
   });
 
-  await t.test('legacy approved-question GET keeps the frontend fields and hides the pre-answer explanation', async () => {
+  await t.test('legacy published-question GET keeps frontend fields and hides the pre-answer explanation', async () => {
     const questionRepo = db.getRepository(E.Question);
-    const questionId = answers[0].questionId;
-    const question = await questionRepo.findOneByOrFail({ questionId });
-    await questionRepo.update({ questionId }, { status: 'APPROVED' });
-    try {
-      const generated = await quizRequest('GET', `/quizzes/generate?conceptId=${question.conceptId}`);
-      assert.equal(generated.status, 200);
-      assert.equal(generated.body.data.id, questionId);
-      assert.equal(generated.body.data.title, question.questionText);
-      assert.equal(generated.body.data.explanation, null);
-      assert.equal(generated.body.data.choices.length, 4);
-      assert.equal('isCorrect' in generated.body.data.choices[0], false);
-    } finally {
-      await questionRepo.update({ questionId }, { status: question.status });
-    }
+    const sample = await questionRepo.findOneByOrFail({ questionId: answers[0].questionId });
+    const generated = await quizRequest('GET', `/quizzes/generate?conceptId=${sample.conceptId}`);
+    assert.equal(generated.status, 200);
+    const question = await questionRepo.findOneByOrFail({ questionId: generated.body.data.id });
+    assert.equal(question.status, 'PUBLISHED');
+    assert.equal(question.conceptId, sample.conceptId);
+    assert.equal(generated.body.data.title, question.questionText);
+    assert.equal(generated.body.data.explanation, null);
+    assert.equal(generated.body.data.choices.length, 4);
+    assert.equal('isCorrect' in generated.body.data.choices[0], false);
   });
 });

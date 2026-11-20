@@ -2,7 +2,7 @@
 import { Check, Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { CostumeCategory } from '../common/enums';
 
-/** 코스튬 상품. 직업과 무관하게 부위(TOP 상의 / BOTTOM 하의)로 나눕니다. */
+/** 모든 직업이 사용할 수 있는 한벌옷 상품. */
 @Unique('costumes_costume_code_key', ['costumeCode'])
 @Index('costumes_category_sort_order_idx', ['category', 'sortOrder'])
 @Index('costumes_item_id_category_idx', ['itemId', 'category'], { unique: true })
@@ -30,7 +30,7 @@ export class Costume {
   @Column({ name: 'flavor_text', type: 'varchar', length: 255, nullable: true })
   flavorText!: string | null;
 
-  /** 부위 (TOP 상의 / BOTTOM 하의). API category */
+  /** 공용 한벌옷 분류. API category */
   @Column({ name: 'category', type: 'enum', enum: CostumeCategory, enumName: 'costume_category' })
   category!: CostumeCategory;
 
@@ -46,7 +46,7 @@ export class Costume {
   @Column({ name: 'thumbnail_key', type: 'varchar', length: 255, nullable: true })
   thumbnailKey!: string | null;
 
-  /** 가입 시 기본 지급 여부 (부위별 1개씩) */
+  /** 가입 시 기본 지급 대상 여부 */
   @Column({ name: 'is_default', type: 'boolean', default: false })
   isDefault!: boolean;
 
