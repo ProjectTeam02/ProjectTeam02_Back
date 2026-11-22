@@ -96,6 +96,17 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test test/integration/learning-history-accuracy-postgres.test.js
+      - name: 판매 한벌옷 시드 2회 적용 (빈 PostgreSQL)
+        env:
+          PGPASSWORD: admin_ci
+        run: |
+          createdb -h localhost -U leren_admin leren_shop_seed
+          psql -h localhost -U leren_admin -d leren_shop_seed -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+          DB_NAME=leren_shop_seed npm run db:migrate
+          for f in 01_master_data 02_shop_costumes 02_shop_costumes; do
+            PGPASSWORD=app_local psql -h localhost -U app_user -d leren_shop_seed -v ON_ERROR_STOP=1 -f "database/sql/seed/$f.sql"
+          done
+          test "$(PGPASSWORD=app_local psql -h localhost -U app_user -d leren_shop_seed -tAc 'SELECT count(*) FROM character.costumes WHERE is_on_sale')" -ge 1
       - name: 7. ai 스키마 검증 8개 (pgvector·권한 분리, ai_user로 실행)
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_schema_test.sql | tee ai-test.log
