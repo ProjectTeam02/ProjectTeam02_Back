@@ -119,6 +119,12 @@ module.exports = {
       ...secure('복습 문항 목록', [query('source', { type: 'string', enum: ['BOOKMARK', 'WRONG'] }), query('conceptId', { type: 'string', format: 'uuid' }), query('topicId', { type: 'string', format: 'uuid' }), query('page', { type: 'integer', minimum: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100 }), query('limit', { type: 'integer', minimum: 1, maximum: 100 })]),
       description: '본인의 PUBLISHED 문항만 조회합니다. WRONG에는 일반 Stage와 Boss에서 실제 제출한 오답이 자동으로 반영됩니다. 북마크와 오답 이력은 같은 항목에 함께 존재할 수 있습니다.',
     } },
+    '/api/v1/reviews/attempts': {
+      post: {
+        ...secure('복습 노트에서 바로 복습 시작'),
+        description: '로그인한 사용자의 오답·북마크 문항 중 PUBLISHED 문항을 최대 5개 선택해 복습 응시를 생성합니다. missionId는 필요하지 않으며, 복습할 문항이 없으면 409를 반환합니다.',
+      },
+    },
     '/api/v1/reviews/missions/{missionId}': { get: secure('복습 임무 상세', [uuid('missionId')]) },
     '/api/v1/reviews/missions/{missionId}/attempts': { post: { ...secure('복습 임무 응시 시작', [uuid('missionId')]),
       description: 'PUBLISHED 문항으로만 복습 응시를 생성합니다. 복습할 공개 문항이 없으면 409입니다.',

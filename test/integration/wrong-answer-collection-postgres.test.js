@@ -95,6 +95,46 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
   const legacy = (actor, state, answer) => http('POST', `/quizzes/${answer.questionId}/submit`, actor,
     { attemptId: state.attemptId, choiceId: answer.choiceId }, { 'Idempotency-Key': answer.submissionId });
 
+  await t.test('review note starts an attempt without a mission', async () => {
+    const actor = await user('복습노트');
+
+    // 복습 대상이 없으면 시작할 수 없다.
+    const empty = await http('POST', '/reviews/attempts', actor);
+    assert.equal(empty.status, 409);
+
+    // 공개 문항을 북마크하여 복습 대상을 만든다.
+    const question = questions[8];
+    data(await bookmark(actor, 'PUT', question.questionId));
+
+    // 복습 임무 없이 바로 응시를 시작한다.
+    const started = data(
+      await http('POST', '/reviews/attempts', actor),
+      201
+    );
+
+    assert.equal(started.missionId, null);
+    assert.equal(started.reviewType, 'RECOMMENDED');
+    assert.equal(started.entryPoint, 'REVIEW_NOTE');
+    assert.equal(started.questionCount, 1);
+    assert.equal(started.answers.length, 1);
+    assert.equal(started.answers[0].questionId, question.questionId);
+
+    // 실제 PostgreSQL에 응시와 제출 기록이 저장됐는지 확인한다.
+    const savedAttempt = await db.getRepository(E.ReviewAttempt)
+      .findOneByOrFail({
+        reviewAttemptId: started.reviewAttemptId,
+        userId: actor.id,
+      });
+
+    assert.equal(savedAttempt.status, 'IN_PROGRESS');
+
+    const savedCount = await db.getRepository(E.ReviewSubmission)
+      .countBy({ reviewAttemptId: started.reviewAttemptId });
+
+    assert.equal(savedCount, 1);
+    assert.equal(await missions.countBy({ userId: actor.id }), 0);
+  });
+
   await t.test('Normal collects only saved wrong answers, replays once, and merges with manual bookmarks', async () => {
     const actor = await user('오답일반');
     const other = await user('다른사용자');
