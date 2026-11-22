@@ -82,6 +82,10 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: npm run test:attempt-abandon:pg
+      - name: 5-4. 승인 문항 공개·Stage 배정 도구 (실제 PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/publish-stage-questions-postgres.test.js
       - name: 6. SQL 제약 테스트 105개 (빈 DB에 마이그레이션 후 app_user로 실행)
         run: |
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -c "CREATE DATABASE leren_sql"
