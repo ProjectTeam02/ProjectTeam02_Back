@@ -124,11 +124,13 @@ AI 서버 설정: `DATABASE_URL`은 `ai_user` 계정, `VECTOR_STORE_SCHEMA=ai` (
 | #98 | `SplitAppSchema` + `01_app_schema.sql` | app 스키마를 영역별 스키마 7개로 분리 (`ALTER TABLE/TYPE ... SET SCHEMA`, 데이터·권한 보존). 테이블·컬럼·제약 이름은 그대로. 적용 전 `01_app_schema.sql`을 다시 실행해 스키마를 먼저 만듦 |
 | E-1 | `NotificationLogs` | 알림 발송 기록 `account.notification_logs` 추가 (사용자·종류·날짜 UNIQUE로 하루 1회 발송, Enum `notification_type`·`notification_status`). 새 테이블만 추가 |
 | — | `03_ai_tables.sql` + `sql/ai/drop_chunk_embedding.sql` | ai 스키마 `rag_document_chunks.embedding`(항상 null) 제거. 벡터는 `data_projectteam02`에만 저장 |
+| #139 | `SharedCostumeOutfit` | 코스튬 분류를 공용 한벌옷 `OUTFIT` 하나로 통일, 사용자당 장착 1벌. 두 번째 장착 행은 `legacy_equipped_costumes`에 보관 |
+| — | `ClassDefaultCostume` | 직업 기본 한벌옷: `character_classes.default_item_id`(필수, FK) 추가, 기본 한벌옷 3개(`WARRIOR/MAGE/ARCHER_DEFAULT_OUTFIT`, 판매 안 함) 생성, 기존 사용자 지급·빈 장착 채움, `costumes.is_default` 삭제 |
 
 ## 서비스 코드에서 지킬 규칙 (DB 제약으로 강제 불가)
 
 - `user_growth`·`user_wallets`, `review_items.wrong_count`·`last_answer_result`는 원장·제출 기록과 **같은 트랜잭션**에서만 갱신
-- 온보딩 DB 연동 테스트: `user_characters` → 기본 코스튬 `user_costumes`(DEFAULT) → 공용 한벌옷 한 건 `user_equipped_costumes` 순서
+- 직업 선택(온보딩)·직업 변경: 같은 트랜잭션에서 그 직업의 `default_item_id`를 `user_costumes`(DEFAULT)에 지급(이미 있으면 무시) → `user_equipped_costumes`가 비어 있을 때만 장착 (이미 장착한 옷은 유지)
 - 장착: `upsert({ userId, category, itemId }, ['userId', 'category'])` → 이전에 장착한 한벌옷 자동 교체 (사용자당 1행)
 - 응시 시작 전 남은 `IN_PROGRESS` 응시를 `ABANDONED`로 끝내거나 이어서 반환
 - 퀴즈 `submissionId`(UUID 형식 검증)는 `insert`, PK 중복이면 기존 채점 결과 반환. 복습은 시작 시 답안 행을 미리 만들고 제출 때 `update`

@@ -77,11 +77,12 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
     firstRegisteredAt: new Date(), dueDate: new Date().toISOString().slice(0, 10), status: 'AVAILABLE', targetQuestionCount: 1 });
   for (const [classCode, name, sortOrder] of [['WARRIOR', '전사', 1], ['MAGE', '마법사', 2]]) {
     const found = await db.getRepository(CharacterClass).findOneBy({ classCode });
-    if (!found) await db.getRepository(CharacterClass).save({ classCode, name, isActive: true, sortOrder });
+    const defaultItemId = (await db.getRepository(Costume).findOneByOrFail({ costumeCode: `${classCode}_DEFAULT_OUTFIT` })).itemId;
+    if (!found) await db.getRepository(CharacterClass).save({ classCode, name, isActive: true, sortOrder, defaultItemId });
     else if (!found.isActive) await db.getRepository(CharacterClass).update({ classId: found.classId }, { isActive: true });
   }
-  const ownedCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-OWN-${suffix}`, name: '보유 코스튬', category: 'OUTFIT', isOnSale: false, isDefault: false });
-  const saleCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-SALE-${suffix}`, name: '판매 코스튬', category: 'OUTFIT', priceCoin: 10, isOnSale: true, isDefault: false });
+  const ownedCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-OWN-${suffix}`, name: '보유 코스튬', category: 'OUTFIT', isOnSale: false });
+  const saleCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-SALE-${suffix}`, name: '판매 코스튬', category: 'OUTFIT', priceCoin: 10, isOnSale: true });
   await db.getRepository(UserCostume).save({ userId: user.userId, itemId: ownedCostume.itemId, acquireType: 'DEFAULT' });
   await db.getRepository(UserWallet).save({ userId: user.userId, coinBalance: 100, version: 0 });
 
