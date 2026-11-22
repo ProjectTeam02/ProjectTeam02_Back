@@ -193,7 +193,7 @@ async function main() {
     return `원장 ${before}건 → ${after}건 (변화 없음)`;
   });
 
-  await check(12, '코스튬 구매 → 같은 requestId 재요청 → 구매한 상의로 교체 장착', '부족 시 거부, 구매 성공, 재요청 거부, 상의 행 1개 유지', async () => {
+  await check(12, '코스튬 구매 → 같은 requestId 재요청 → 구매한 한벌옷으로 교체 장착', '부족 시 거부, 구매 성공, 재요청 거부, 장착 행 1개 유지', async () => {
     const robe = await ds.getRepository(Costume).findOneByOrFail({ costumeCode: 'BLUE_DAWN_ROBE' });
     const requestId = randomUUID();
     const buy = () => ds.transaction(async (tx) => {
