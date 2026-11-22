@@ -55,7 +55,10 @@ module.exports = {
       OR e.category::text <> 'OUTFIT') AS invalid_equipment,
     (SELECT count(*)::int FROM character.user_costumes o LEFT JOIN reward.coin_ledger l USING(coin_ledger_id)
       WHERE o.acquire_type::text='PURCHASE' AND (l.user_id IS DISTINCT FROM o.user_id OR l.ref_id IS DISTINCT FROM o.item_id
-        OR l.reason::text IS DISTINCT FROM 'COSTUME_PURCHASE' OR l.amount > 0)) AS invalid_purchases`,
+        OR l.reason::text IS DISTINCT FROM 'COSTUME_PURCHASE' OR l.amount > 0)) AS invalid_purchases,
+    (SELECT count(*)::int FROM character.user_characters uc JOIN character.character_classes cc USING(class_id)
+      LEFT JOIN character.user_costumes o ON o.user_id = uc.user_id AND o.item_id = cc.default_item_id
+      WHERE o.item_id IS NULL) AS missing_class_default_outfit`,
   ledgers: `SELECT count(*)::int AS bad FROM (
       SELECT e.attempt_id,
         l.attempt_id AS coin_attempt FROM (SELECT * FROM reward.exp_ledger WHERE source_type='STAGE_FIRST_CLEAR') e

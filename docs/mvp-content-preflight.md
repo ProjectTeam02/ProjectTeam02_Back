@@ -68,4 +68,6 @@ PGHOST=127.0.0.1 PGPORT=55432 PGDATABASE=leren_validation PGUSER=app_user \
 psql -X -v ON_ERROR_STOP=1 -f docs/mvp-stage-and-shop-diagnostics.sql
 ```
 
+부족한 슬롯은 검수 담당이 승인한 문항으로 [승인 문항 공개·Stage 배정 도구](publish-stage-questions.md)를 써서 채웁니다.
+
 `stage_id`가 비어 있으면 해당 제목의 일반 Stage를 찾지 못한 것이며 부족 수는 `null`입니다. `eligible_slots`는 1~3번에 배정된 게시 문항 중 보기 조건을 만족하는 수입니다. 슬롯이 초과 배정되면 `assigned_slots`를 확인합니다.

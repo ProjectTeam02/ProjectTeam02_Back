@@ -1,6 +1,7 @@
 // 자동 생성: leren_erd.dbml (rev.5) 기준 (character.character_classes)
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm';
 import { ClassCode } from '../common/enums';
+import { Costume } from './costumes.entity';
 
 /** 직업 마스터 (검사·마법사·궁수). "class"는 예약어라 테이블명은 character_classes입니다. */
 @Unique('character_classes_class_code_key', ['classCode'])
@@ -41,6 +42,15 @@ export class CharacterClass {
   /** 사용 여부 */
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
+
+  /** 직업 선택 시 지급·장착하는 기본 한벌옷 (상점 판매 안 함). API 응답에는 넣지 않음 */
+  @Column({ name: 'default_item_id', type: 'uuid' })
+  defaultItemId!: string;
+
+  /** 관계: default_item_id → costumes.item_id */
+  @ManyToOne(() => Costume, { nullable: false })
+  @JoinColumn({ name: 'default_item_id', foreignKeyConstraintName: 'character_classes_default_item_id_fkey' })
+  defaultCostume?: Costume;
 
   /** 생성 시각 */
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })

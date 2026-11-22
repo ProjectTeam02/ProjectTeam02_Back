@@ -103,6 +103,29 @@ WARRIOR·MAGE·ARCHER는 같은 판매 상품을 조회하고 각각 `itemId` �
 
 최초 선택은 `PATCH /api/v1/users/me/character-class`, 변경은 `PATCH /api/v1/users/me/character/class`입니다. 두 경로 모두 `{"classCode":"MAGE"}` 형식의 본문을 받습니다. 직업 변경의 성공 `data`는 `userId`, `classId`, `classCode`입니다. 변경 후 보유 상품, 한벌옷 장착, 잔액 및 거래 원장은 유지됩니다.
 
+### 직업 기본 한벌옷
+
+직업마다 기본 한벌옷이 하나씩 있습니다(`WARRIOR_DEFAULT_OUTFIT`, `MAGE_DEFAULT_OUTFIT`, `ARCHER_DEFAULT_OUTFIT`). 기본 한벌옷은 판매하지 않으므로 상점 목록과 상세(404)에 나오지 않습니다.
+
+- 최초 직업 선택: 선택한 직업의 기본 한벌옷을 보관함에 지급(`acquireType` DEFAULT)하고 바로 장착합니다. 응답 형식은 바뀌지 않으며, 보관함(`GET /inventory`)과 프로필(`GET /users/me`의 `equippedCostumes`)에서 확인합니다.
+- 직업 변경: 바꾼 직업의 기본 한벌옷을 보관함에 추가합니다. 장착 중인 옷은 바꾸지 않습니다.
+- 이미 보유한 옷은 다시 지급하지 않고, 이미 장착한 옷이 있으면 그대로 둡니다.
+- 이미지 키(`imageKey`, `thumbnailKey`)는 아직 `null`입니다. 확정되면 `database/sql/seed/01_master_data.sql`에서 채웁니다.
+
+### 판매 상품 (임시)
+
+판매 상품은 `database/sql/seed/02_shop_costumes.sql`로 등록합니다. 지금 값은 확정 전 임시값이며, 확정되면 파일의 `VALUES`만 고쳐 다시 실행합니다(같은 `costumeCode`는 값만 갱신).
+
+| `costumeCode` | `name` | `priceCoin` | `imageKey` / `thumbnailKey` |
+| --- | --- | --- | --- |
+| `BLUE_DAWN_ROBE` | 푸른 새벽 로브 | 50 | `costumes/blue_dawn_robe.png` |
+| `STARLIGHT_ROBE` | 별빛 로브 | 100 | `costumes/starlight_robe.png` |
+| `GOLDEN_GUARDIAN` | 황금 수호자 | 150 | `costumes/golden_guardian.png` |
+
+- 이미지 키는 앱에 포함된 이미지 파일 경로(`frontend/assets/<imageKey>`)와 같은 값입니다. 프론트는 지금 `costumeCode` 또는 `name`으로 번들 이미지를 찾으므로 세 상품은 바로 표시됩니다. 나중에 S3·CloudFront로 옮기면 같은 키를 객체 경로로 씁니다.
+- 판매 중지는 그 상품의 `is_on_sale`만 `false`로 바꿔 다시 실행합니다. 구매 원장과 보유 기록이 상품 ID를 참조하므로 행을 지우거나 코드를 바꾸지 않습니다.
+- 직업 기본 한벌옷은 판매할 수 없습니다(시드 검증에서 오류).
+
 ## 프론트 담당자 확인
 
 `feat/add-features`의 `frontend/src/screens/mypage/CostumeShopScreen.tsx`에서 직업 탭, `filteredItems`의 분류 비교, `분류` 표시를 제거합니다. 서버의 `items`와 페이지 수를 사용합니다. `frontend/src/screens/mypage/WardrobeScreen.tsx`는 `itemId` 또는 상품의 `equipped`를 기준으로 표시하고, 장착 후 보관함과 프로필을 다시 조회합니다. `frontend/src/services/costumeApi.ts`의 현재 디코더는 호환됩니다. `frontend/src/services/apiConfig.ts`의 `EXPO_PUBLIC_API_URL`을 확인할 개발 서버로 지정합니다.
@@ -110,8 +133,9 @@ WARRIOR·MAGE·ARCHER는 같은 판매 상품을 조회하고 각각 `itemId` �
 1. 세 직업 계정에서 같은 상점 상품 ID와 가격을 확인합니다.
 2. 구매한 직후 잔액과 보유 표시를 확인하고, 장착 전에도 보관함에 표시되는지 확인합니다.
 3. 두 상품을 순서대로 장착해 마지막 상품만 장착 중인지 확인합니다. 같은 상품을 다시 장착하거나 앱을 다시 열어도 한 개만 표시되는지 확인합니다.
-4. 직업을 바꾼 뒤 같은 보관함과 장착 상품, 잔액이 보이는지 확인합니다.
+4. 직업을 바꾼 뒤 같은 장착 상품과 잔액이 보이고, 보관함에 바꾼 직업의 기본 한벌옷이 추가됐는지 확인합니다.
 5. 승인된 한벌옷 이미지를 확인합니다. `frontend/src/constants/costumeImages.ts`의 이름 기반 매핑과 상품 이미지 키의 관계도 프론트에서 확인합니다.
+6. 새 계정으로 직업을 고른 직후 그 직업의 기본 한벌옷이 장착되어 있는지 확인합니다.
 
 ## 기존 DB 전환
 

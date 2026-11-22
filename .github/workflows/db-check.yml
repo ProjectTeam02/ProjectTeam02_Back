@@ -1,5 +1,5 @@
 # PR·push마다 임시 PostgreSQL 18에서 database/ 패키지를 자동 검증
-# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 + Stage Quiz HTTP → SQL 제약 테스트 103개 → ai 스키마(pgvector) 8개 → ai RAG·벡터 테이블 21개
+# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 + Stage Quiz HTTP → SQL 제약 테스트 105개 → ai 스키마(pgvector) 8개 → ai RAG·벡터 테이블 21개
 name: db-check
 on:
   pull_request:
@@ -82,7 +82,11 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: npm run test:attempt-abandon:pg
-      - name: 6. SQL 제약 테스트 103개 (빈 DB에 마이그레이션 후 app_user로 실행)
+      - name: 5-4. 승인 문항 공개·Stage 배정 도구 (실제 PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/publish-stage-questions-postgres.test.js
+      - name: 6. SQL 제약 테스트 105개 (빈 DB에 마이그레이션 후 app_user로 실행)
         run: |
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -c "CREATE DATABASE leren_sql"
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
@@ -91,11 +95,22 @@ jobs:
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/04_ai_vector_table.sql
           DB_NAME=leren_sql npm run db:migrate
           PGPASSWORD=app_local psql -h localhost -U app_user -d leren_sql -f database/sql/test/constraint_test.sql | tee sql-test.log
-          grep -q "TOTAL 103/103" sql-test.log
+          grep -q "TOTAL 105/105" sql-test.log
       - name: 학습 이력 날짜 필터와 개념별 정답률 (실제 PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test test/integration/learning-history-accuracy-postgres.test.js
+      - name: 판매 한벌옷 시드 2회 적용 (빈 PostgreSQL)
+        env:
+          PGPASSWORD: admin_ci
+        run: |
+          createdb -h localhost -U leren_admin leren_shop_seed
+          psql -h localhost -U leren_admin -d leren_shop_seed -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+          DB_NAME=leren_shop_seed npm run db:migrate
+          for f in 01_master_data 02_shop_costumes 02_shop_costumes; do
+            PGPASSWORD=app_local psql -h localhost -U app_user -d leren_shop_seed -v ON_ERROR_STOP=1 -f "database/sql/seed/$f.sql"
+          done
+          test "$(PGPASSWORD=app_local psql -h localhost -U app_user -d leren_shop_seed -tAc 'SELECT count(*) FROM character.costumes WHERE is_on_sale')" -ge 1
       - name: 7. ai 스키마 검증 8개 (pgvector·권한 분리, ai_user로 실행)
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_schema_test.sql | tee ai-test.log
@@ -104,6 +119,21 @@ jobs:
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_tables_test.sql | tee ai-tables-test.log
           grep -q "TOTAL 21/21" ai-tables-test.log
+      - name: 직업 선택 온보딩·기본 한벌옷 (실제 Express·빈 PostgreSQL)
+        env:
+          PGPASSWORD: admin_ci
+          LEREN_CHARACTER_ONBOARDING_PG_TEST_CONFIG: '{"name":"ci","port":5432,"username":"leren_admin","password":"admin_ci"}'
+        run: |
+          createdb -h localhost -U leren_admin leren_character_it
+          node --test test/integration/character-onboarding-postgres.test.js
+      - name: 퀴즈 흐름·최초 통과 보상 중복 방지·달력·학습 이력 (실제 Express·빈 PostgreSQL)
+        env:
+          PGPASSWORD: admin_ci
+          LEREN_CALENDAR_HISTORY_PG_TEST_CONFIG: ${{ runner.temp }}/calendar-history.json
+        run: |
+          createdb -h localhost -U leren_admin leren_calendar_it
+          echo '{"name":"ci","host":"127.0.0.1","port":5432,"database":"leren_calendar_it","username":"leren_admin","password":"admin_ci"}' > "$LEREN_CALENDAR_HISTORY_PG_TEST_CONFIG"
+          node --test test/integration/calendar-history-postgres.test.js
       - name: 상점 구매·재화·장착 정합성 (실제 PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
@@ -116,5 +146,13 @@ jobs:
           createdb -h localhost -U leren_admin leren_costume_upgrade
           psql -h localhost -U leren_admin -d leren_costume_upgrade -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
           node --test test/integration/costume-outfit-migration-postgres.test.js
+      - name: 기존 사용자에게 직업 기본 한벌옷 지급
+        env:
+          PGPASSWORD: admin_ci
+          LEREN_CLASS_DEFAULT_COSTUME_PG_TEST_CONFIG: '{"port":5432,"database":"leren_class_default_upgrade","password":"migrator_local"}'
+        run: |
+          createdb -h localhost -U leren_admin leren_class_default_upgrade
+          psql -h localhost -U leren_admin -d leren_class_default_upgrade -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
+          node --test test/integration/class-default-costume-migration-postgres.test.js
       - name: 8. 서버가 database 패키지를 불러오는지 확인
         run: node -e "const db=require('@leren/database'); if(db.entities.length!==49 || !db.entities.includes(db.KakaoOAuthEntry) || !db.entities.includes(db.BossAttemptQuestion)) throw new Error('Unexpected entity registration'); console.log('entities', db.entities.length)"

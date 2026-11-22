@@ -35,6 +35,9 @@ module.exports = (dataSource = AppDataSource) => ({
         if (existing) throw AppError.conflict('이미 다른 직업을 선택했습니다.');
         firstSelectedAt = new Date();
         await jobs.insertSelection(userId, characterClass.classId, firstSelectedAt);
+        // 직업별 기본 한벌옷: 같은 트랜잭션에서 지급하고, 장착한 옷이 없으면 장착
+        await jobs.grantDefaultCostume(userId, characterClass.defaultItemId);
+        await jobs.equipIfEmpty(userId, characterClass.defaultItemId);
       }
 
       if (!user.onboardingCompletedAt) {

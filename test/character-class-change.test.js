@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const crypto = require('node:crypto');
-const { UserSession, CharacterClass, UserCharacter } = require('@leren/database');
+const { UserSession, CharacterClass, UserCharacter, UserCostume, UserEquippedCostume } = require('@leren/database');
 const app = require('../src/app');
 const env = require('../src/config/env');
 const { AppDataSource } = require('../src/config/database');
@@ -9,25 +9,28 @@ const { issueAccessToken } = require('../src/common/utils/token.util');
 const listenTestServer = require('./helpers/listen-test-server');
 
 // 직업 변경(PATCH /users/me/character/class): classCode로 지정, 활성 직업만, 최초 선택 이후에만 가능
-const ids = Object.fromEntries(['user', 'session', 'warrior', 'mage', 'archer'].map(name => [name, crypto.randomUUID()]));
+const ids = Object.fromEntries(['user', 'session', 'warrior', 'mage', 'archer', 'warriorOutfit', 'mageOutfit', 'archerOutfit']
+  .map(name => [name, crypto.randomUUID()]));
 const originalSecret = env.jwtAccessSecret;
 let server;
 let base;
 let token;
 let tables;
 let saves;
+let inserts;
 
 function database() {
   tables = new Map([
     [UserSession, [{ userId: ids.user, sessionId: ids.session, revokedAt: null, expiresAt: new Date(Date.now() + 60000) }]],
     [CharacterClass, [
-      { classId: ids.warrior, classCode: 'WARRIOR', isActive: true },
-      { classId: ids.mage, classCode: 'MAGE', isActive: true },
-      { classId: ids.archer, classCode: 'ARCHER', isActive: false },
+      { classId: ids.warrior, classCode: 'WARRIOR', isActive: true, defaultItemId: ids.warriorOutfit },
+      { classId: ids.mage, classCode: 'MAGE', isActive: true, defaultItemId: ids.mageOutfit },
+      { classId: ids.archer, classCode: 'ARCHER', isActive: false, defaultItemId: ids.archerOutfit },
     ]],
     [UserCharacter, []],
   ]);
   saves = [];
+  inserts = [];
   const matches = (row, where) => Object.entries(where).every(([key, value]) => (value?.type ? true : row[key] === value));
   const getRepository = entity => {
     assert.ok(tables.has(entity), 'unexpected entity');
@@ -43,7 +46,15 @@ function database() {
       },
     };
   };
-  return { manager: { getRepository }, transaction: async callback => callback({ getRepository }) };
+  // 기본 한벌옷 지급·장착(INSERT … ON CONFLICT DO NOTHING) 기록
+  const createQueryBuilder = () => {
+    const query = {
+      insert: () => query, into: entity => Object.assign(query, { entity }), values: values => Object.assign(query, { values }),
+      orIgnore: () => query, execute: async () => { inserts.push([query.entity, query.values]); return {}; },
+    };
+    return query;
+  };
+  return { manager: { getRepository, createQueryBuilder }, transaction: async callback => callback({ getRepository, createQueryBuilder }) };
 }
 
 test.beforeEach(async () => {
@@ -101,9 +112,15 @@ test('다른 활성 직업으로 변경하면 classChangedAt을 기록하고, �
   assert.equal(row.classId, ids.mage);
   assert.ok(row.classChangedAt);
   assert.equal(saves.length, 1);
+  // 바꾼 직업의 기본 한벌옷 지급, 장착이 비어 있을 때만 장착
+  assert.deepEqual(inserts, [
+    [UserCostume, { userId: ids.user, itemId: ids.mageOutfit, acquireType: 'DEFAULT' }],
+    [UserEquippedCostume, { userId: ids.user, category: 'OUTFIT', itemId: ids.mageOutfit }],
+  ]);
   const same = await change({ classCode: 'MAGE' });
   assert.equal(same.status, 200);
   assert.equal(saves.length, 1);
+  assert.equal(inserts.length, 2);
 });
 
 test('PUT 호환 경로는 최초 선택 API와 같은 검증(classCode만)을 쓰고, Swagger는 classCode로 안내한다', async () => {
