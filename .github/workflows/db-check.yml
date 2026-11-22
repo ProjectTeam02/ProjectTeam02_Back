@@ -104,6 +104,21 @@ jobs:
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_tables_test.sql | tee ai-tables-test.log
           grep -q "TOTAL 21/21" ai-tables-test.log
+      - name: 직업 선택 온보딩·기본 한벌옷 (실제 Express·빈 PostgreSQL)
+        env:
+          PGPASSWORD: admin_ci
+          LEREN_CHARACTER_ONBOARDING_PG_TEST_CONFIG: '{"name":"ci","port":5432,"username":"leren_admin","password":"admin_ci"}'
+        run: |
+          createdb -h localhost -U leren_admin leren_character_it
+          node --test test/integration/character-onboarding-postgres.test.js
+      - name: 퀴즈 흐름·최초 통과 보상 중복 방지·달력·학습 이력 (실제 Express·빈 PostgreSQL)
+        env:
+          PGPASSWORD: admin_ci
+          LEREN_CALENDAR_HISTORY_PG_TEST_CONFIG: ${{ runner.temp }}/calendar-history.json
+        run: |
+          createdb -h localhost -U leren_admin leren_calendar_it
+          echo '{"name":"ci","host":"127.0.0.1","port":5432,"database":"leren_calendar_it","username":"leren_admin","password":"admin_ci"}' > "$LEREN_CALENDAR_HISTORY_PG_TEST_CONFIG"
+          node --test test/integration/calendar-history-postgres.test.js
       - name: 상점 구매·재화·장착 정합성 (실제 PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'

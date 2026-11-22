@@ -13,13 +13,16 @@ const selectPath = '/api/v1/users/me/character-class';
 const profilePath = '/api/v1/users/me';
 
 test('character onboarding API against isolated PostgreSQL', { skip: !config, timeout: 120000 }, async t => {
-  const { name, port, password } = JSON.parse(config);
-  assert.match(name, /^leren-character-it-[0-9a-f]{8}$/);
-  const [container] = JSON.parse(execFileSync('docker', ['inspect', name], { encoding: 'utf8' }));
-  assert.equal(container.Config.Labels['codex.purpose'], 'leren-character-onboarding-integration');
-  assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
-  assert.equal(container.HostConfig.AutoRemove, true);
-  assert.deepEqual(container.NetworkSettings.Ports['5432/tcp'], [{ HostIp: '127.0.0.1', HostPort: String(port) }]);
+  const { name, port, password, username = 'postgres' } = JSON.parse(config);
+  // 로컬(run-character-onboarding-postgres.ps1)은 전용 임시 컨테이너인지 확인. GitHub Actions(CI=true)는 job 전용 PostgreSQL 서비스라 생략
+  if (process.env.CI !== 'true') {
+    assert.match(name, /^leren-character-it-[0-9a-f]{8}$/);
+    const [container] = JSON.parse(execFileSync('docker', ['inspect', name], { encoding: 'utf8' }));
+    assert.equal(container.Config.Labels['codex.purpose'], 'leren-character-onboarding-integration');
+    assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
+    assert.equal(container.HostConfig.AutoRemove, true);
+    assert.deepEqual(container.NetworkSettings.Ports['5432/tcp'], [{ HostIp: '127.0.0.1', HostPort: String(port) }]);
+  }
 
   const {
     AppDataSource: db, CharacterClass, Costume, User, UserCharacter, UserCostume, UserEquippedCostume, UserSession,
@@ -35,7 +38,7 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
     Object.assign(env, secrets);
   });
   db.setOptions({
-    host: '127.0.0.1', port, username: 'postgres', password, database: 'leren_character_it',
+    host: '127.0.0.1', port, username, password, database: 'leren_character_it',
     ssl: false, synchronize: false, migrationsRun: false, logging: false,
     migrations: [path.resolve(__dirname, '../../database/dist/migrations/*.js')],
     extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public' },
@@ -45,7 +48,8 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
   assert.equal(database.name, 'leren_character_it');
   assert.equal(database.users, null);
   t.diagnostic(database.version);
-  await db.query('CREATE SCHEMA app');
+  // #98 이후 마이그레이션은 영역별 스키마가 먼저 있어야 함 (운영·CI와 같은 초기화 SQL)
+  await db.query(readFileSync(path.resolve(__dirname, '../../database/sql/init/01_app_schema.sql'), 'utf8'));
   await db.runMigrations();
 
   env.jwtAccessSecret = randomBytes(32).toString('hex');

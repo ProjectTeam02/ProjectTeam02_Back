@@ -10,16 +10,19 @@ const configPath = process.env.LEREN_CALENDAR_HISTORY_PG_TEST_CONFIG;
 // Explicit opt-in: ordinary npm test never writes to a database.
 test('calendar and learning history against isolated PostgreSQL', { skip: !configPath, timeout: 120000 }, async t => {
   const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, ''));
-  assert.match(cfg.name, /^leren-calendar-it-[0-9a-f]{8}$/);
   assert.equal(cfg.host, '127.0.0.1');
   assert.equal(cfg.database, 'leren_calendar_it');
   assert.ok(Number.isInteger(cfg.port) && cfg.port !== 5433);
-  const [container] = JSON.parse(execFileSync('docker', ['inspect', cfg.name], { encoding: 'utf8' }));
-  assert.equal(container.Config.Labels['codex.purpose'], 'leren-calendar-history-integration');
-  assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
-  const binding = container.NetworkSettings.Ports['5432/tcp'][0];
-  assert.equal(binding.HostIp, '127.0.0.1');
-  assert.equal(Number(binding.HostPort), cfg.port);
+  // 로컬은 전용 임시 컨테이너인지 확인. GitHub Actions(CI=true)는 job 전용 PostgreSQL 서비스라 생략
+  if (process.env.CI !== 'true') {
+    assert.match(cfg.name, /^leren-calendar-it-[0-9a-f]{8}$/);
+    const [container] = JSON.parse(execFileSync('docker', ['inspect', cfg.name], { encoding: 'utf8' }));
+    assert.equal(container.Config.Labels['codex.purpose'], 'leren-calendar-history-integration');
+    assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
+    const binding = container.NetworkSettings.Ports['5432/tcp'][0];
+    assert.equal(binding.HostIp, '127.0.0.1');
+    assert.equal(Number(binding.HostPort), cfg.port);
+  }
 
   const E = require('@leren/database');
   const { DataSource } = require('typeorm');
@@ -28,7 +31,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   const oldSecret = env.jwtAccessSecret;
   const oldOptions = { ...E.AppDataSource.options };
   const options = { ...oldOptions, host: cfg.host, port: cfg.port, database: cfg.database,
-    username: 'postgres', password: cfg.password, ssl: false, synchronize: false, migrationsRun: false,
+    username: cfg.username || 'postgres', password: cfg.password, ssl: false, synchronize: false, migrationsRun: false,
     migrations: [root + '/database/dist/migrations/*.js'], logging: false,
     extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public', max: 12, application_name: 'leren-calendar-it' } };
   let admin, server;
