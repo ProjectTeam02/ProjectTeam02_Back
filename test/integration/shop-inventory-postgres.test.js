@@ -57,7 +57,8 @@ test('shop, wallet and inventory against isolated PostgreSQL', { skip: !config, 
   const classes = repo(E.CharacterClass);
   for (const [classCode, name, sortOrder] of [['WARRIOR', '전사', 1], ['MAGE', '마법사', 2], ['ARCHER', '궁수', 3]]) {
     const existing = await classes.findOneBy({ classCode });
-    if (!existing) await classes.save({ classCode, name, isActive: true, sortOrder });
+    const defaultItemId = (await repo(E.Costume).findOneByOrFail({ costumeCode: `${classCode}_DEFAULT_OUTFIT` })).itemId;
+    if (!existing) await classes.save({ classCode, name, isActive: true, sortOrder, defaultItemId });
     else if (!existing.isActive) await classes.update(existing.classId, { isActive: true });
   }
   await repo(E.UserWallet).update(legacyUser.userId, { coinBalance: 100 - robe.priceCoin, version: 1 });
@@ -93,18 +94,27 @@ test('shop, wallet and inventory against isolated PostgreSQL', { skip: !config, 
   const wallet = async user => (await repo(E.UserWallet).findOneByOrFail({ userId: user.userId })).coinBalance;
   const equippedRows = user => repo(E.UserEquippedCostume).findBy({ userId: user.userId });
   const equippedItem = item => ({ category: item.category, itemId: item.itemId });
+  const classDefault = async classCode => (await classes.findOneByOrFail({ classCode })).defaultItemId;
 
   await t.test('all three classes see the same sale catalog without a category filter', async () => {
     const results = [];
     for (const [user, classCode] of [[owner, 'WARRIOR'], [other, 'MAGE'], [buyer, 'ARCHER']]) {
       data(await request('/users/me/character-class', { method: 'PATCH', user, body: { classCode } }));
       assert.equal(data(await request('/users/me', { user })).characterClass.classCode, classCode);
+      // 직업 선택 시 그 직업의 기본 한벌옷을 지급·장착 (상점 목록에는 없음)
+      const outfit = await classDefault(classCode);
+      assert.deepEqual((await inventory(user)).equipped, [{ category: 'OUTFIT', itemId: outfit }]);
       results.push(data(await request('/shop/costumes?size=100', { user })));
     }
     assert.deepEqual(results[0], results[1]);
     assert.deepEqual(results[0], results[2]);
     assert.ok([robe, armor].every(product => results[0].items.some(item => item.itemId === product.itemId)));
     assert.ok(results[0].items.every(item => item.isOnSale && item.category === 'OUTFIT'));
+    for (const classCode of ['WARRIOR', 'MAGE', 'ARCHER']) {
+      const outfit = await classDefault(classCode);
+      assert.equal(results[0].items.some(item => item.itemId === outfit), false);
+      assert.equal((await request(`/shop/costumes/${outfit}`)).status, 404);
+    }
     assert.equal((await request('/shop/costumes?category=WARRIOR')).status, 422);
   });
 
@@ -117,7 +127,8 @@ test('shop, wallet and inventory against isolated PostgreSQL', { skip: !config, 
     assert.equal((await buy(other, expensive, 'too-expensive')).status, 409);
     assert.equal(await wallet(other), 20);
     assert.equal(await repo(E.CoinLedger).countBy({ userId: other.userId }), 0);
-    assert.equal(await repo(E.UserCostume).countBy({ userId: other.userId }), 0);
+    const mageOutfit = await classDefault('MAGE');
+    assert.deepEqual((await repo(E.UserCostume).findBy({ userId: other.userId })).map(row => row.itemId), [mageOutfit]);
     const purchase = data(await buy(owner, robe, 'first'), 201);
     assert.deepEqual([purchase.itemId, purchase.coinBalance, await wallet(owner)], [robe.itemId, 70, 70]);
     const ledger = await repo(E.CoinLedger).findOneByOrFail({ coinLedgerId: purchase.purchaseId });
@@ -136,7 +147,9 @@ test('shop, wallet and inventory against isolated PostgreSQL', { skip: !config, 
     assert.equal((await request('/inventory', { user: null })).status, 401);
     assert.equal((await request(`/inventory?userId=${owner.userId}`, { user: other })).status, 422);
     assert.ok((await inventory(owner)).items.some(item => item.itemId === robe.itemId));
-    assert.deepEqual(await inventory(other), { items: [], equipped: [] });
+    const otherInventory = await inventory(other);
+    assert.deepEqual(otherInventory.items.map(item => item.itemId), [mageOutfit]);
+    assert.deepEqual(otherInventory.equipped, [{ category: 'OUTFIT', itemId: mageOutfit }]);
     assert.equal(data(await request(`/shop/costumes/${robe.itemId}`, { user: other })).owned, false);
   });
 
@@ -207,9 +220,18 @@ test('shop, wallet and inventory against isolated PostgreSQL', { skip: !config, 
     const profile = data(await request('/users/me', { user: returning }));
     assert.equal(profile.characterClass.classCode, 'MAGE');
     assert.deepEqual(profile.equippedCostumes.map(row => row.itemId), [armor.itemId]);
-    assert.deepEqual(await inventory(returning), current);
+    // 직업 변경: 바꾼 직업의 기본 한벌옷만 추가 지급되고, 장착·구매 기록은 그대로
+    const mageOutfit = await classDefault('MAGE');
+    const afterChange = await inventory(returning);
+    assert.deepEqual(afterChange.equipped, current.equipped);
+    assert.deepEqual(afterChange.items.filter(item => item.itemId !== mageOutfit), current.items);
+    assert.deepEqual(afterChange.items.filter(item => item.itemId === mageOutfit).map(item => [item.owned, item.equipped]), [[true, false]]);
     assert.deepEqual(data(await request('/shop/costumes?size=100', { user: returning })), shopBefore);
-    assert.deepEqual(await repo(E.UserCostume).find({ where: { userId: owner.userId }, order: { itemId: 'ASC' } }), ownedBefore);
+    const ownedAfter = await repo(E.UserCostume).find({ where: { userId: owner.userId }, order: { itemId: 'ASC' } });
+    assert.deepEqual(ownedAfter.filter(row => row.itemId !== mageOutfit), ownedBefore);
+    assert.deepEqual(ownedAfter.filter(row => row.itemId === mageOutfit).map(row => [row.acquireType, row.coinLedgerId]), [['DEFAULT', null]]);
+    assert.equal(data(await request('/users/me/character/class', { method: 'PATCH', body: { classCode: 'MAGE' } })).classCode, 'MAGE');
+    assert.equal(await repo(E.UserCostume).countBy({ userId: owner.userId }), ownedAfter.length);
     assert.deepEqual(await repo(E.CoinLedger).find({ where: { userId: owner.userId }, order: { coinLedgerId: 'ASC' } }), ledgerBefore);
     assert.equal(await wallet(owner), walletBefore);
   });

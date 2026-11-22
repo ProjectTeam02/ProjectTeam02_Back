@@ -34,6 +34,7 @@ const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
 const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
 const { findEquippedCostume } = require('../costumes/userCostume.repository');
 const classChangeResponseDto = require('../characters/dto/classChangeResponse.dto');
+const jobRepository = require('../characters/job.repository');
 const quizSchema = require('../quizzes/quiz.schema');
 const { hasAnswerKey } = require('../quizzes/question-pool-policy');
 const { questionCount: bossQuestionCount } = require('../quizzes/boss-question.repository');
@@ -470,6 +471,10 @@ async function changeClass(userId, classCode) {
       character.classId = classRow.classId;
       character.classChangedAt = new Date();
       await repo(manager, UserCharacter).save(character);
+      // 바꾼 직업의 기본 한벌옷 지급. 장착 중인 옷은 그대로 두고, 장착이 비어 있을 때만 장착
+      const jobs = jobRepository(manager);
+      await jobs.grantDefaultCostume(userId, classRow.defaultItemId);
+      await jobs.equipIfEmpty(userId, classRow.defaultItemId);
     }
     return { userId, classId: classRow.classId, classCode: classRow.classCode };
   });

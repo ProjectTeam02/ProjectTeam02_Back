@@ -64,9 +64,10 @@ export async function seedMinimal() {
     }
 
     for (const [classCode, name, sortOrder] of [[ClassCode.Warrior, '전사', 1], [ClassCode.Mage, '마법사', 2], [ClassCode.Archer, '궁수', 3]] as const) {
-      await tx.save(CharacterClass, { classCode, name, sortOrder });
+      // 직업별 기본 한벌옷 상품은 ClassDefaultCostume 마이그레이션이 만듦
+      const outfit = await tx.findOneByOrFail(Costume, { costumeCode: `${classCode}_DEFAULT_OUTFIT` });
+      await tx.save(CharacterClass, { classCode, name, sortOrder, defaultItemId: outfit.itemId });
     }
-    await tx.save(Costume, { costumeCode: 'BASIC_OUTFIT', name: '기본 한벌옷', category: CostumeCategory.Outfit, isDefault: true, sortOrder: 1 });
     await tx.save(Costume, { costumeCode: 'BLUE_DAWN_ROBE', name: '푸른 새벽 로브', category: CostumeCategory.Outfit, priceCoin: 300, isOnSale: true, sortOrder: 3 });
 
     for (const [scope, level, exp] of [[LevelScope.Account, 1, 0], [LevelScope.Account, 2, 100], [LevelScope.Economy, 1, 0], [LevelScope.Economy, 2, 100]] as const) {

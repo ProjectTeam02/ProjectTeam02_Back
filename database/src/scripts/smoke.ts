@@ -59,18 +59,19 @@ async function main() {
     return `user_id=${userId.slice(0, 8)}…, 동의 ${n}건, 시간대 ${s.timezone}`;
   });
 
-  await check(2, '온보딩: 직업 선택 → 기본 코스튬 지급 → 한벌옷 장착', '공용 한벌옷 1개 장착', async () => {
+  await check(2, '온보딩: 직업 선택 → 직업 기본 한벌옷 지급 → 장착', '선택한 직업의 기본 한벌옷 1개 장착', async () => {
+    let mageOutfitId = '';
     await ds.transaction(async (tx) => {
       const mage = await tx.findOneByOrFail(CharacterClass, { classCode: ClassCode.Mage });
+      mageOutfitId = mage.defaultItemId;
       await tx.save(UserCharacter, { userId, classId: mage.classId });
-      const defaults = await tx.find(Costume, { where: { isDefault: true }, order: { sortOrder: 'ASC', itemId: 'ASC' } });
-      await tx.save(UserCostume, defaults.map((c) => ({ userId, itemId: c.itemId, acquireType: CostumeAcquireType.Default })));
-      await tx.save(UserEquippedCostume, { userId, category: CostumeCategory.Outfit, itemId: defaults[0].itemId });
+      await tx.save(UserCostume, { userId, itemId: mage.defaultItemId, acquireType: CostumeAcquireType.Default });
+      await tx.save(UserEquippedCostume, { userId, category: CostumeCategory.Outfit, itemId: mage.defaultItemId });
       await tx.update(User, { userId }, { onboardingCompletedAt: new Date() });
     });
     const ch = await ds.getRepository(UserCharacter).findOneOrFail({ where: { userId }, relations: { characterClass: true } });
     const eq = await ds.getRepository(UserEquippedCostume).find({ where: { userId }, relations: { costume: true, ownedCostume: true }, order: { category: 'DESC' } });
-    assert(eq.length === 1 && eq[0].ownedCostume && eq[0].costume?.category === CostumeCategory.Outfit, '장착 관계 조회 오류');
+    assert(eq.length === 1 && eq[0].ownedCostume && eq[0].itemId === mageOutfitId && eq[0].costume?.costumeCode === 'MAGE_DEFAULT_OUTFIT', '장착 관계 조회 오류');
     return `직업=${ch.characterClass?.name}, 장착=${eq.map((e) => `${e.category}:${e.costume?.name}`).join(', ')}`;
   });
 

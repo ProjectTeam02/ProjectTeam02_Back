@@ -175,7 +175,10 @@ test('MVP quiz, shop and notifications through Express and isolated PostgreSQL',
 
   await t.test('unseeded OUTFIT store is empty; actual sale flag controls discovery', async () => {
     const shop = '/shop/costumes';
-    assert.equal(await db.getRepository(E.Costume).count(), 0);
+    // 마이그레이션이 만드는 직업별 기본 한벌옷만 있고, 모두 판매하지 않음
+    assert.deepEqual((await db.getRepository(E.Costume).find({ order: { costumeCode: 'ASC' } }))
+      .map(costume => [costume.costumeCode, costume.isOnSale]),
+    [['ARCHER_DEFAULT_OUTFIT', false], ['MAGE_DEFAULT_OUTFIT', false], ['WARRIOR_DEFAULT_OUTFIT', false]]);
     assert.deepEqual((await expect(200, 'GET', shop)).items, []);
     const base = { name: '테스트 전용 의상', category: 'OUTFIT', priceCoin: 3, imageKey: 'fixture-only' };
     const available = await save(E.Costume, { ...base, costumeCode: 'MVP-SALE', isOnSale: true });

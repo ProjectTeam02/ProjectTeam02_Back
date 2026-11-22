@@ -1,4 +1,4 @@
--- 제약 검증 rev.8 + #97 + #98 + E-1 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+-- 제약 검증 rev.8 + #97 + #98 + E-1 + 직업 기본 한벌옷 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -44,8 +44,10 @@ INSERT INTO question_choices (choice_id, question_id, base_order, choice_text, i
   ('00000000-0000-0000-0000-0000000000e2','00000000-0000-0000-0000-0000000000d2',1,'하락',true);
 
 -- 1~5 Enum 대문자·용어
-SELECT pg_temp.expect_ok (1, 'Enum 대문자 WARRIOR 저장 (API와 동일)', $q$INSERT INTO character_classes (class_code, name) VALUES ('WARRIOR','검사')$q$);
-SELECT pg_temp.expect_err(2, 'Enum 소문자 warrior 거부', $q$INSERT INTO character_classes (class_code, name) VALUES ('warrior','검사2')$q$, '22P02');
+SELECT pg_temp.expect_ok (1, 'Enum 대문자 WARRIOR 저장 (API와 동일)', $q$INSERT INTO character_classes (class_code, name, default_item_id) SELECT 'WARRIOR','검사', item_id FROM costumes WHERE costume_code = 'WARRIOR_DEFAULT_OUTFIT'$q$);
+SELECT pg_temp.expect_err(2, 'Enum 소문자 warrior 거부', $q$INSERT INTO character_classes (class_code, name, default_item_id) SELECT 'warrior','검사2', item_id FROM costumes WHERE costume_code = 'WARRIOR_DEFAULT_OUTFIT'$q$, '22P02');
+SELECT pg_temp.expect_err(106, '기본 한벌옷 없이 직업 등록 거부', $q$INSERT INTO character_classes (class_code, name) VALUES ('MAGE','마법사')$q$, '23502');
+SELECT pg_temp.expect_err(107, '없는 코스튬을 직업 기본 한벌옷으로 지정 거부', $q$INSERT INTO character_classes (class_code, name, default_item_id) VALUES ('MAGE','마법사','00000000-0000-0000-0000-0000000000ff')$q$, '23503');
 SELECT pg_temp.expect_ok (3, 'AI 대화 생성: entry_point 없이 conceptId만', $q$INSERT INTO ai_conversations (user_id, context_concept_id) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000c1')$q$);
 SELECT pg_temp.expect_ok (4, '응시 mode = RETRY (API mode), 재학습 RELEARN', $q$INSERT INTO learning_attempts (attempt_id, user_id, stage_id, attempt_no, attempt_type, mode, max_question_count, required_correct_count, initial_hp) VALUES ('00000000-0000-0000-0000-000000000041','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000b1',1,'RELEARN','RETRY',3,2,2)$q$);
 SELECT pg_temp.expect_err(5, '옛 값 replay 거부', $q$INSERT INTO learning_attempts (user_id, stage_id, attempt_no, attempt_type, max_question_count, required_correct_count, initial_hp) VALUES ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-0000000000b1',2,'REPLAY',3,2,2)$q$, '22P02');

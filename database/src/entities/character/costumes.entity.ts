@@ -46,10 +46,6 @@ export class Costume {
   @Column({ name: 'thumbnail_key', type: 'varchar', length: 255, nullable: true })
   thumbnailKey!: string | null;
 
-  /** 가입 시 기본 지급 대상 여부 */
-  @Column({ name: 'is_default', type: 'boolean', default: false })
-  isDefault!: boolean;
-
   /** 판매 여부 */
   @Column({ name: 'is_on_sale', type: 'boolean', default: false })
   isOnSale!: boolean;
