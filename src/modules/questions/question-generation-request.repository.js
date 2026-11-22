@@ -43,10 +43,11 @@ module.exports = function repository(dataSource) {
       });
       if (result.affected !== 1) throw conflict('QUESTION_GENERATION_STATE_CHANGED', '작업 상태가 변경되어 생성 결과를 저장하지 않았습니다.');
     },
-    async fail(job, snapshot, elapsed) {
+    async fail(job, snapshot, elapsed, failure = {}) {
       const result = await repo(dataSource.manager).update({ requestId: job.requestId, requestType: 'QUESTION_GEN', status: 'RESERVED' }, {
-        status: 'FAILED', completedAt: new Date(), latencyMs: elapsed, errorCode: snapshot.body.code,
+        status: 'FAILED', completedAt: new Date(), latencyMs: elapsed, errorCode: failure.reason || snapshot.body.code,
         knowledgeScope: { ...job.knowledgeScope,
+          ...(failure.reason ? { failure: { reason: failure.reason, aiError: failure.aiError ?? null } } : {}),
           idempotency: { ...job.knowledgeScope.idempotency, response: snapshot } },
       });
       return result.affected === 1;
