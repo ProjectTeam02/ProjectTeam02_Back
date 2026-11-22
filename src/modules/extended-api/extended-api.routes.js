@@ -311,6 +311,14 @@ function routes() {
   }))));
   router.get('/reviews/due', auth, validate(requestDto.due), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const date = req.query.date;
+    await repo(manager, ReviewMission)
+  .createQueryBuilder()
+  .update()
+  .set({ status: 'AVAILABLE' })
+  .where('user_id = :userId', { userId: req.user.sub })
+  .andWhere('status = :status', { status: 'SCHEDULED' })
+  .andWhere('due_date <= :date', { date })
+  .execute();
     const rows = await repo(manager, ReviewMission).find({ where: { userId: req.user.sub }, order: { dueDate: 'ASC' } });
     return { date, items: rows.filter(row => String(row.dueDate).slice(0, 10) <= date).map(publicMission) };
   }))));
