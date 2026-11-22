@@ -14,7 +14,7 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
   assert.match(name, /^leren-question-it-[0-9a-f]{8}$/);
   const dockerEnv = { ...process.env };
   for (const key of ['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']) delete dockerEnv[key];
-  const [container] = JSON.parse(execFileSync('docker', ['--host=unix:///var/run/docker.sock', 'inspect', name], { env: dockerEnv, encoding: 'utf8' }));
+  const [container] = JSON.parse(execFileSync('docker', ['inspect', name], { env: dockerEnv, encoding: 'utf8' }));
   assert.equal(container.Config.Labels['codex.purpose'], 'leren-question-generation-integration');
   assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
   assert.equal(container.HostConfig.AutoRemove, true);
