@@ -10,6 +10,7 @@ const aiRequestDto = require('../src/modules/tutor/dto/aiInternalRequest.dto');
 const aiResponseDto = require('../src/modules/tutor/dto/aiInternalResponse.dto');
 const schema = require('../src/modules/tutor/tutor.schema');
 const tutorService = require('../src/modules/tutor/tutor.service');
+const { aiAnswer, fakeDataSource } = require('./helpers/tutor-fakes');
 
 const isValidation = error => error.statusCode === 422 && error.code === 'VALIDATION_ERROR';
 const isUnavailable = error => error.statusCode === 503 && error.code === 'SERVICE_UNAVAILABLE';
@@ -102,15 +103,6 @@ test('tutor message response hides internal AI fields and orders sources by rank
 
 /* ---------- 내부 AI 요청·응답 DTO ---------- */
 
-function aiAnswer(requestId, overrides = {}) {
-  return {
-    requestId, answer: '기회비용은 포기한 것 중 가장 큰 가치입니다.', rewrittenQuery: '기회비용 정의',
-    groundingStatus: 'GROUNDED', historyFromSeq: 1,
-    sources: [{ documentId: 'doc-1', documentVersion: 'v1', chunkId: 'chunk-1', titleSnapshot: '기회비용', conceptCode: 'ECO-01', rank: 1, relevanceScore: 0.82 }],
-    usage: { modelId: 'model-a', embeddingModelId: 'embed-a', inputTokens: 100, outputTokens: 50, latencyMs: 900, cacheHit: false, retrievalStrategy: 'hybrid', estimatedCost: 0.0012, currency: 'USD' },
-    ...overrides,
-  };
-}
 
 test('AI internal response is checked against DB column lengths before saving', () => {
   const requestId = id(7);
@@ -143,46 +135,6 @@ test('AI internal request keeps the latest 50 history items and sends summary on
 
 /* ---------- Service가 DTO 형식으로 응답하는지 (가짜 저장소) ---------- */
 
-function fakeDataSource() {
-  const tables = new Map([[AiConversation, []], [AiMessage, []], [AiMessageSource, []], [AiRequest, []]]);
-  const keyOf = new Map([[AiConversation, 'conversationId'], [AiMessage, 'messageId'], [AiMessageSource, 'messageSourceId'], [AiRequest, 'requestId']]);
-  const matches = (row, where = {}) => Object.entries(where).every(([key, value]) => {
-    if (value && typeof value === 'object' && 'type' in value && 'value' in value) {
-      if (value.type === 'in') return value.value.includes(row[key]);
-      return true; // 날짜·Not 조건은 이 테스트에서 따지지 않는다
-    }
-    return row[key] === value;
-  });
-  const sortRows = (rows, order = {}) => {
-    const [[key, direction] = []] = Object.entries(order);
-    return key ? [...rows].sort((a, b) => (a[key] > b[key] ? 1 : -1) * (direction === 'DESC' ? -1 : 1)) : rows;
-  };
-  const repo = entity => {
-    const rows = tables.get(entity);
-    return {
-      create: value => ({ ...value }),
-      async save(value) {
-        const key = keyOf.get(entity);
-        const existing = rows.find(row => value[key] && row[key] === value[key]);
-        if (existing) return Object.assign(existing, value);
-        const row = { [key]: crypto.randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...value };
-        rows.push(row);
-        return row;
-      },
-      findOneBy: async where => rows.find(row => matches(row, where)) || null,
-      findBy: async where => rows.filter(row => matches(row, where)),
-      async find({ where, order, take }) { return sortRows(rows.filter(row => matches(row, where)), order).slice(0, take); },
-      async findAndCount({ where, order, skip, take }) {
-        const found = sortRows(rows.filter(row => matches(row, where)), order);
-        return [found.slice(skip, skip + take), found.length];
-      },
-      async update(where, patch) { rows.filter(row => matches(row, where)).forEach(row => Object.assign(row, patch)); },
-      count: async ({ where }) => rows.filter(row => row.userId === where.userId).length,
-    };
-  };
-  const manager = { getRepository: repo };
-  return { tables, manager, transaction: async fn => fn(manager) };
-}
 
 test('tutor service returns DTO shapes and never exposes AI usage or cost', async () => {
   const dataSource = fakeDataSource();

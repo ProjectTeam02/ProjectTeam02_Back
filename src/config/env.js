@@ -24,6 +24,8 @@ module.exports = {
     Number(process.env.QUESTION_GENERATION_MAX_COUNT || 20)),
   fastapiTimeoutMs: Number(process.env.FASTAPI_TIMEOUT_MS || 5000),
   aiDailyLimit: Number(process.env.AI_DAILY_LIMIT || 20),
+  // #171 개인화 튜터: true일 때만 personalizedContext를 AI 서버로 보낸다 (운영 AI 서버가 이 필드를 받는 버전인지 확인 후 켜기)
+  tutorPersonalizationEnabled: process.env.TUTOR_PERSONALIZATION_ENABLED === 'true',
   kakaoRestApiKey: process.env.KAKAO_REST_API_KEY,
   kakaoClientSecret: process.env.KAKAO_CLIENT_SECRET,
   kakaoAllowedRedirectUris: (process.env.KAKAO_ALLOWED_REDIRECT_URIS || '')
