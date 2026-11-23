@@ -28,11 +28,13 @@ CREATE TABLE IF NOT EXISTS ai.rag_documents (
   published_at   timestamptz,
   updated_at     timestamptz,
   license        varchar(255),
+  license_review_status varchar(30) NOT NULL DEFAULT 'PENDING',
   content_hash   varchar(64)   NOT NULL,
   metadata_json  jsonb         NOT NULL DEFAULT '{}'::jsonb,
   created_at     timestamptz   NOT NULL DEFAULT now(),
   CONSTRAINT rag_documents_pkey PRIMARY KEY (document_id),
-  CONSTRAINT chk_rag_documents_content_hash CHECK (char_length(content_hash) = 64)
+  CONSTRAINT chk_rag_documents_content_hash CHECK (char_length(content_hash) = 64),
+  CONSTRAINT chk_rag_documents_license_review_status CHECK (license_review_status IN ('PENDING', 'APPROVED', 'REJECTED'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ix_rag_documents_content_hash ON ai.rag_documents (content_hash);
 CREATE INDEX IF NOT EXISTS ix_rag_documents_source_id     ON ai.rag_documents (source_id);
@@ -71,6 +73,9 @@ CREATE TABLE IF NOT EXISTS ai.rag_index_configurations (
 ALTER TABLE ai.rag_document_chunks ALTER COLUMN id SET DEFAULT gen_random_uuid();
 ALTER TABLE ai.rag_document_chunks ALTER COLUMN metadata_json SET DEFAULT '{}'::jsonb;
 ALTER TABLE ai.rag_documents ALTER COLUMN metadata_json SET DEFAULT '{}'::jsonb;
+-- #164 라이선스 승인 상태: 기존 테이블에도 컬럼·CHECK·인덱스를 맞춘다 (기존 행은 PENDING)
+ALTER TABLE ai.rag_documents ADD COLUMN IF NOT EXISTS license_review_status varchar(30) NOT NULL DEFAULT 'PENDING';
+CREATE INDEX IF NOT EXISTS ix_rag_documents_license_review_status ON ai.rag_documents (license_review_status);
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_rag_documents_content_hash' AND conrelid = 'ai.rag_documents'::regclass) THEN
@@ -78,6 +83,10 @@ BEGIN
       RAISE EXCEPTION 'ai.rag_documents에 content_hash가 64자가 아닌 행이 있습니다. 확인 후 다시 실행하세요.';
     END IF;
     ALTER TABLE ai.rag_documents ADD CONSTRAINT chk_rag_documents_content_hash CHECK (char_length(content_hash) = 64);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_rag_documents_license_review_status' AND conrelid = 'ai.rag_documents'::regclass) THEN
+    ALTER TABLE ai.rag_documents ADD CONSTRAINT chk_rag_documents_license_review_status
+      CHECK (license_review_status IN ('PENDING', 'APPROVED', 'REJECTED'));
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_rag_index_dimension' AND conrelid = 'ai.rag_index_configurations'::regclass) THEN
     IF EXISTS (SELECT 1 FROM ai.rag_index_configurations WHERE embedding_dimension <= 0) THEN
@@ -89,6 +98,7 @@ END $$;
 
 COMMENT ON TABLE  ai.rag_documents IS 'RAG 원문 문서 메타. tutor.ai_message_sources.document_id가 논리 참조';
 COMMENT ON COLUMN ai.rag_documents.review_status IS '검수 상태. AI 설정 approved_review_status(기본 approved)인 문서만 검색';
+COMMENT ON COLUMN ai.rag_documents.license_review_status IS '원문 이용 조건(라이선스) 승인 상태 PENDING/APPROVED/REJECTED. review_status(출처·내용 검수)와 별도 (#164, 운영 DB는 sql/ai/add_license_review_status.sql)';
 COMMENT ON COLUMN ai.rag_documents.concept_id IS '연결된 학습 개념 (현재 BOK 문서는 null, knowledge_scope=global)';
 COMMENT ON TABLE  ai.rag_document_chunks IS '청크 메타·본문 기록. 벡터는 ai.data_projectteam02에만 저장 (항상 비어 있던 embedding 컬럼은 2026-11 제거, sql/ai/drop_chunk_embedding.sql)';
 COMMENT ON COLUMN ai.rag_document_chunks.chunk_id IS '{documentId}:{hash12}:{순번}. tutor.ai_message_sources.chunk_id가 논리 참조';

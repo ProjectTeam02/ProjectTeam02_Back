@@ -4,6 +4,7 @@ const test = require('node:test');
 const { randomBytes, randomUUID } = require('node:crypto');
 const path = require('node:path');
 const listenTestServer = require('../helpers/listen-test-server');
+const { In } = require('typeorm');
 
 const config = process.env.LEREN_EXTENDED_API_PG_TEST_CONFIG;
 
@@ -246,21 +247,15 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   assert.equal(otherUserSameRequestId.status, 409, JSON.stringify(otherUserSameRequestId.body));
 
   await t.test('job changes are scoped to the signed-in account and preserve outfit, rewards and history', async () => {
-    const route = '/api/v1/users/me/character/class';
-    const change = (body, options = {}) => request(route, { method: 'PATCH', body, ...options });
-
-    // 직업 변경 시 기본 코스튬은 추가될 수 있으므로
-    // 성장, 지갑, 보상 및 학습 기록만 이전 상태와 비교한다.
-    const snapshot = () => Promise.all([
-      UserGrowth,
-      UserWallet,
-      CoinLedger,
-      LearningAttempt,
-      UserStageProgress
-    ].map(entity => db.getRepository(entity).findBy({ userId: user.userId })));
-
+    const path = '/api/v1/users/me/character/class';
+    const change = (body, options = {}) => request(path, { method: 'PATCH', body, ...options });
+    // 보유 코스튬은 직업 변경 시 기본 한벌옷이 추가되므로(#147) 따로 비교한다
+    const snapshot = () => Promise.all([UserGrowth, UserWallet, CoinLedger, UserEquippedCostume, LearningAttempt, UserStageProgress]
+      .map(entity => db.getRepository(entity).findBy({ userId: user.userId })));
+    const ownedCostumes = async () => (await db.getRepository(UserCostume).findBy({ userId: user.userId }))
+      .sort((a, b) => a.itemId.localeCompare(b.itemId));
     const before = await snapshot();
-
+    const costumesBefore = await ownedCostumes();
     assert.equal((await change({ classCode: 'MAGE' }, { auth: false })).status, 401);
 
     for (const payload of [
@@ -303,5 +298,20 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
 
     // 기본 코스튬 지급은 허용하되 보상과 학습 기록은 그대로 유지
     assert.deepEqual(await snapshot(), before);
+
+    // 기존 보유 코스튬은 그대로, 새로 생긴 것은 거쳐 간 직업의 기본 한벌옷(DEFAULT, 코인 사용 없음)만
+    const defaultItemIds = new Set((await db.getRepository(CharacterClass).findBy({ classCode: In(['MAGE', 'ARCHER', 'WARRIOR']) }))
+      .map(row => row.defaultItemId));
+    const beforeItemIds = new Set(costumesBefore.map(row => row.itemId));
+    const costumesAfter = await ownedCostumes();
+    assert.deepEqual(costumesAfter.filter(row => beforeItemIds.has(row.itemId)), costumesBefore);
+    const added = costumesAfter.filter(row => !beforeItemIds.has(row.itemId));
+    assert.ok(added.length > 0, '직업 변경으로 지급된 기본 한벌옷이 있어야 합니다.');
+    for (const row of added) {
+      assert.ok(defaultItemIds.has(row.itemId), `직업 기본 한벌옷이 아닌 코스튬이 지급됨: ${row.itemId}`);
+      assert.equal(row.acquireType, 'DEFAULT');
+      assert.equal(row.coinLedgerId, null);
+    }
+    for (const itemId of defaultItemIds) assert.ok(costumesAfter.some(row => row.itemId === itemId), `기본 한벌옷 미보유: ${itemId}`);
   });
 });

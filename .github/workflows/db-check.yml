@@ -1,5 +1,5 @@
 # PR·push마다 임시 PostgreSQL 18에서 database/ 패키지를 자동 검증
-# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 + Stage Quiz HTTP → SQL 제약 테스트 105개 → ai 스키마(pgvector) 8개 → ai RAG·벡터 테이블 21개
+# 엔티티 컴파일 → 마이그레이션 → 엔티티-DB 차이 없음 → 연동 테스트 21개 + Stage Quiz HTTP → SQL 제약 테스트 118개 → ai 스키마(pgvector) 8개 → ai RAG·벡터 테이블 25개
 name: db-check
 on:
   pull_request:
@@ -86,20 +86,29 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test test/integration/publish-stage-questions-postgres.test.js
-      - name: 6. SQL 제약 테스트 105개 (빈 DB에 마이그레이션 후 app_user로 실행)
+      - name: 6. SQL 제약 테스트 118개 (빈 DB에 마이그레이션 후 app_user로 실행)
         run: |
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren -c "CREATE DATABASE leren_sql"
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/02_ai_schema.sql
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/03_ai_tables.sql
           PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/init/04_ai_vector_table.sql
+          PGPASSWORD=admin_ci psql -h localhost -U leren_admin -d leren_sql -v ON_ERROR_STOP=1 -f database/sql/ai/add_license_review_status.sql
           DB_NAME=leren_sql npm run db:migrate
           PGPASSWORD=app_local psql -h localhost -U app_user -d leren_sql -f database/sql/test/constraint_test.sql | tee sql-test.log
-          grep -q "TOTAL 105/105" sql-test.log
+          grep -q "TOTAL 118/118" sql-test.log
       - name: 학습 이력 날짜 필터와 개념별 정답률 (실제 PostgreSQL)
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test test/integration/learning-history-accuracy-postgres.test.js
+      - name: AI 튜터 학습자 프로필 집계·개인화 전달 (BE-04, 실제 PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/tutor-learner-profile-postgres.test.js
+      - name: AI 튜터 선수 관계·오개념 가설·최근 평가 전달 (BE-05, 실제 PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/tutor-concept-context-postgres.test.js
       - name: 판매 한벌옷 시드 2회 적용 (빈 PostgreSQL)
         env:
           PGPASSWORD: admin_ci
@@ -115,10 +124,10 @@ jobs:
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_schema_test.sql | tee ai-test.log
           grep -q "TOTAL 8/8" ai-test.log
-      - name: 7-1. ai RAG·벡터 테이블 검증 21개 (03·04, ai_user로 실행)
+      - name: 7-1. ai RAG·벡터 테이블 검증 25개 (03·04, ai_user로 실행)
         run: |
           PGPASSWORD=ai_local psql -h localhost -U ai_user -d leren_sql -f database/sql/test/ai_tables_test.sql | tee ai-tables-test.log
-          grep -q "TOTAL 21/21" ai-tables-test.log
+          grep -q "TOTAL 25/25" ai-tables-test.log
       - name: 직업 선택 온보딩·기본 한벌옷 (실제 Express·빈 PostgreSQL)
         env:
           PGPASSWORD: admin_ci
@@ -159,4 +168,4 @@ jobs:
           psql -h localhost -U leren_admin -d leren_class_default_upgrade -v ON_ERROR_STOP=1 -f database/sql/init/01_app_schema.sql
           node --test test/integration/class-default-costume-migration-postgres.test.js
       - name: 8. 서버가 database 패키지를 불러오는지 확인
-        run: node -e "const db=require('@leren/database'); if(db.entities.length!==49 || !db.entities.includes(db.KakaoOAuthEntry) || !db.entities.includes(db.BossAttemptQuestion)) throw new Error('Unexpected entity registration'); console.log('entities', db.entities.length)"
+        run: node -e "const db=require('@leren/database'); if(db.entities.length!==50 || !db.entities.includes(db.KakaoOAuthEntry) || !db.entities.includes(db.BossAttemptQuestion)) throw new Error('Unexpected entity registration'); console.log('entities', db.entities.length)"

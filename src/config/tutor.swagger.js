@@ -105,12 +105,16 @@ const paths = {
   '/api/v1/tutor/messages': {
     post: {
       tags: ['AI Tutor'], security: bearer, summary: 'AI 튜터 질문',
+      description: 'context.conceptCode와 knowledgeScope.conceptCodes는 공개(PUBLISHED)된 개념 코드만 허용합니다. '
+        + 'context.conceptId와 context.conceptCode를 함께 보내면 같은 개념이어야 합니다. '
+        + '서버 설정(TUTOR_PERSONALIZATION_ENABLED)이 켜져 있으면 학습 기록 기반 개인화 정보를 AI 서버에 함께 보냅니다 (앱 요청 형식은 같음).',
       parameters: [{ name: 'Idempotency-Key', in: 'header', schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'clientMessageId가 없을 때 중복 방지 키로 사용' }],
       requestBody: { required: true, content: { 'application/json': { schema: ref('TutorMessageRequest') } } },
       responses: {
         201: ok('답변 저장', ref('TutorSendResult')), 401: error, 404: error,
         409: { ...error, description: '같은 키로 다른 질문을 보냈거나 같은 요청이 처리 중' },
-        422: error, 429: { ...error, description: '오늘 사용량 초과' },
+        422: { ...error, description: '요청 형식 오류, 공개되지 않은 개념 코드(details.unknownConceptCodes), conceptId·conceptCode 불일치' },
+        429: { ...error, description: '오늘 사용량 초과' },
         503: { ...error, description: 'AI 서버 연결 실패·시간 초과 또는 잘못된 응답' },
       },
     },

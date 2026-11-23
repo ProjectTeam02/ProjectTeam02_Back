@@ -368,3 +368,23 @@ export enum NotificationStatus {
   Sent = 'SENT',
   Failed = 'FAILED',
 }
+
+/** 개념 관계 검수 상태 (#164) — DB 타입: relation_review_status. APPROVED인 관계만 확정된 학습 근거로 사용 */
+export enum RelationReviewStatus {
+  Pending = 'PENDING',
+  Approved = 'APPROVED',
+  Rejected = 'REJECTED',
+}
+
+/** 오개념 가설 상태 (#164) — DB 타입: misconception_status. 단일 오답으로 CONFIRMED가 되지 않도록 근거 2개 이상 필요 */
+export enum MisconceptionStatus {
+  Unconfirmed = 'UNCONFIRMED',
+  Confirmed = 'CONFIRMED',
+  Rejected = 'REJECTED',
+}
+
+/** 오개념 가설을 만든 주체 (#164) — DB 타입: misconception_source. RULE = 백엔드 규칙, AI = AI 진단 */
+export enum MisconceptionSource {
+  Rule = 'RULE',
+  Ai = 'AI',
+}
