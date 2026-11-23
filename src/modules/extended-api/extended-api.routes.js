@@ -311,12 +311,29 @@ function routes() {
   }))));
   router.get('/reviews/due', auth, validate(requestDto.due), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const date = req.query.date;
+    await repo(manager, ReviewMission)
+  .createQueryBuilder()
+  .update()
+  .set({ status: 'AVAILABLE' })
+  .where('user_id = :userId', { userId: req.user.sub })
+  .andWhere('status = :status', { status: 'SCHEDULED' })
+  .andWhere('due_date <= :date', { date })
+  .execute();
     const rows = await repo(manager, ReviewMission).find({ where: { userId: req.user.sub }, order: { dueDate: 'ASC' } });
     return { date, items: rows.filter(row => String(row.dueDate).slice(0, 10) <= date).map(publicMission) };
   }))));
   router.get('/reviews/missions/:missionId', auth, validate(requestDto.mission), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const row = await repo(manager, ReviewMission).findOneBy({ missionId: req.params.missionId, userId: req.user.sub }); if (!row) throw AppError.notFound('복습 임무를 찾을 수 없습니다.'); return publicMission(row);
   }))));
+// 복습 노트에서 오답·북마크 문항 바로 풀기
+router.post(
+  '/reviews/attempts',
+  auth,
+  validate(requestDto.empty),
+  asyncHandler(async (req, res) =>
+    data(res, await createReviewAttempt(req.user.sub), 201)
+  )
+);
   router.post('/reviews/missions/:missionId/attempts', auth, validate(requestDto.mission), asyncHandler(async (req, res) => data(res, await createReviewAttempt(req.user.sub, req.params.missionId), 201)));
   router.get('/review-attempts/:reviewAttemptId', auth, validate(requestDto.reviewAttempt), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const attempt = await repo(manager, ReviewAttempt).findOneBy({ reviewAttemptId: req.params.reviewAttemptId, userId: req.user.sub }); if (!attempt) throw AppError.notFound('복습 응시를 찾을 수 없습니다.'); return reviewAttemptResponse(manager, attempt);
