@@ -85,4 +85,4 @@ async function buildLearnerProfile(manager, userId, input) {
   return Object.fromEntries(Object.entries(profile).filter(([, value]) => value !== null && value !== undefined));
 }
 
-module.exports = { buildLearnerProfile, RECENT_WINDOW };
+module.exports = { buildLearnerProfile, targetConceptCode, RECENT_WINDOW };

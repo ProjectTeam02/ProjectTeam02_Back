@@ -105,6 +105,10 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test test/integration/tutor-learner-profile-postgres.test.js
+      - name: AI 튜터 선수 관계·오개념 가설·최근 평가 전달 (BE-05, 실제 PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/tutor-concept-context-postgres.test.js
       - name: 판매 한벌옷 시드 2회 적용 (빈 PostgreSQL)
         env:
           PGPASSWORD: admin_ci
