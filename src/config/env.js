@@ -19,6 +19,9 @@ module.exports = {
   questionGenerationEnabled: process.env.QUESTION_GENERATION_ENABLED === 'true',
   questionGenerationEvidencePath: process.env.QUESTION_GENERATION_EVIDENCE_PATH,
   questionGenerationTimeoutMs: Number(process.env.QUESTION_GENERATION_TIMEOUT_MS || 120000),
+  // AI 서버 QUESTION_MAX_COUNT(기본 20)와 같은 값. 1~100 밖이거나 숫자가 아니면 20
+  questionGenerationMaxCount: (value => (Number.isInteger(value) && value >= 1 && value <= 100 ? value : 20))(
+    Number(process.env.QUESTION_GENERATION_MAX_COUNT || 20)),
   fastapiTimeoutMs: Number(process.env.FASTAPI_TIMEOUT_MS || 5000),
   aiDailyLimit: Number(process.env.AI_DAILY_LIMIT || 20),
   kakaoRestApiKey: process.env.KAKAO_REST_API_KEY,

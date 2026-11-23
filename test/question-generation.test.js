@@ -113,3 +113,37 @@ test('real HTTP client sends FastAPI contract and handles HTTP, JSON, timeout an
   }
   assert.equal(calls, 5);
 });
+
+test('questionCount above the configured AI limit is rejected before any reservation or AI call', async () => {
+  const db = { getRepository() { throw Error('unexpected DB call'); }, transaction() { throw Error('unexpected DB call'); } };
+  const client = { generateQuestions() { throw Error('unexpected AI call'); } };
+  const run = (config, count) => service(db, { client, config: { questionGenerationEnabled: true, ...config } })
+    .generate({ ...input(), questionCount: count }, `limit-test-${count}`);
+  // 설정이 없으면 AI 기본 상한 20
+  await assert.rejects(run({}, 21), { code: 'VALIDATION_ERROR' });
+  await assert.rejects(run({ questionGenerationMaxCount: 5 }, 6), { code: 'VALIDATION_ERROR' });
+});
+
+test('AI client tags each failure with a reason code and keeps the existing message and code', async t => {
+  let mode = '500';
+  const server = http.createServer((req, res) => {
+    if (mode === 'timeout') return;
+    if (mode === 'disconnect') return req.socket.destroy();
+    if (mode === 'json') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<html>bad</html>'); }
+    res.writeHead(Number(mode), { 'content-type': 'application/json' }); res.end('{}');
+  });
+  server.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const client = new FastApiClient({ baseUrl: `http://127.0.0.1:${server.address().port}`, internalToken: 'mock-only-key', timeoutMs: 100 });
+  for (const [next, reason, message] of [
+    ['422', 'AI_REQUEST_REJECTED', 'AI 서버 요청에 실패했습니다.'], ['500', 'AI_HTTP_ERROR', 'AI 서버 요청에 실패했습니다.'],
+    ['504', 'AI_TIMEOUT', '튜터가 바쁩니다.'], ['json', 'AI_INVALID_RESPONSE', 'AI 서버가 잘못된 응답을 반환했습니다.'],
+    ['timeout', 'AI_TIMEOUT', '튜터가 바쁩니다.'], ['disconnect', 'AI_UNREACHABLE', 'AI 서버에 연결할 수 없습니다.'],
+  ]) {
+    mode = next;
+    await assert.rejects(client.generateQuestions({}), error => {
+      assert.deepEqual([error.code, error.reason, error.message], ['SERVICE_UNAVAILABLE', reason, message]);
+      return true;
+    });
+  }
+});
