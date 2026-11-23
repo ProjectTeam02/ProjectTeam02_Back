@@ -31,7 +31,7 @@ test('tutor learner profile against isolated PostgreSQL', { skip: !config, timeo
   const owner = await save(E.User, { nickname: `프로필-${suffix}` });
   const other = await save(E.User, { nickname: `다른사람-${suffix}` });
   const empty = await save(E.User, { nickname: `기록없음-${suffix}` });
-  const topic = await save(E.Topic, { topicCode: `LP-${suffix}`, topicNo: 30000 + parseInt(suffix.slice(0, 3), 16), status: 'PUBLISHED', title: '프로필' });
+  const topic = await save(E.Topic, { topicCode: `LP-${suffix}`, topicNo: 24000 + (parseInt(suffix.slice(0, 4), 16) % 4000), status: 'PUBLISHED', title: '프로필' });
   const stage = await save(E.Stage, { topicId: topic.topicId, stageCode: `LP-S-${suffix}`, stageNo: 1, stageType: 'NORMAL', status: 'PUBLISHED',
     title: '물가', maxQuestionCount: 3, requiredCorrectCount: 2, initialMonsterHp: 2, rewardTotalExp: 0, rewardEconomyExp: 0, rewardCoin: 0 });
 
@@ -112,8 +112,8 @@ test('tutor learner profile against isolated PostgreSQL', { skip: !config, timeo
     const result = await service.sendMessage(owner.userId, { conversationId: conversation.conversationId, question: '물가상승률이 뭐야?', modelTier: 'BASIC',
       clientMessageId: `lp-${suffix}`, context: { conceptCode: codeX }, knowledgeScope: null }, null);
     assert.equal(result.assistantMessage.status, 'COMPLETED');
-    assert.deepEqual(sent.personalizedContext, { learnerProfile: {
-      conceptCode: codeX, accuracyRate: 0.75, recentIncorrectCount: 1, lastStudiedAt: lastAt, currentStageId: stage.stageId } });
+    assert.deepEqual(sent.personalizedContext.learnerProfile, {
+      conceptCode: codeX, accuracyRate: 0.75, recentIncorrectCount: 1, lastStudiedAt: lastAt, currentStageId: stage.stageId });
 
     const off = tutorService(db, aiClient, { personalizationEnabled: false });
     await off.sendMessage(owner.userId, { conversationId: conversation.conversationId, question: '구매력은?', modelTier: 'BASIC',
