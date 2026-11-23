@@ -17,6 +17,7 @@ const aiRequestDto = require('./dto/aiInternalRequest.dto');
 const aiResponseDto = require('./dto/aiInternalResponse.dto');
 const personalizedDto = require('./dto/aiPersonalizedContext.dto');
 const { assertKnownConcepts } = require('./conceptScope');
+const { personalizationProvider } = require('./personalization');
 
 // #99 같은 대화방·같은 사용자 요청을 트랜잭션 안에서 순서대로 처리 (트랜잭션이 끝나면 자동 해제)
 async function advisoryLock(manager, key) {
@@ -37,12 +38,13 @@ function uniqueViolation(error) {
   return code === '23505' ? (error?.driverError?.constraint ?? error?.constraint ?? null) : null;
 }
 
-// options.personalization: { build(userId, input, manager) → PersonalizedTutorContext | null } (#171, BE-04·05에서 구현)
+// options.personalization: { build(userId, input, manager) → PersonalizedTutorContext | null }
+//   기본값은 학습 기록 기반 provider (personalization/index.js). null을 넘기면 개인화 정보를 만들지 않는다
 // options.personalizationEnabled: 기본값은 환경변수 TUTOR_PERSONALIZATION_ENABLED (꺼져 있으면 개인화 정보를 만들지도 보내지도 않음)
 function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient(), options = {}) {
   const quota = quotaService(dataSource);
   const repoFor = (entity, manager = dataSource.manager) => manager.getRepository(entity);
-  const personalization = options.personalization || null;
+  const personalization = options.personalization === undefined ? personalizationProvider() : options.personalization;
   const personalizationEnabled = options.personalizationEnabled ?? env.tutorPersonalizationEnabled;
 
   // #171 개인화 정보는 선택 사항: 못 만들거나 계약에 맞지 않으면 개인화 없이 기본 튜터 흐름으로 보낸다
