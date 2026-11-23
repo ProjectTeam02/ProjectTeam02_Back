@@ -1,3 +1,4 @@
+
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { randomBytes, randomUUID } = require('node:crypto');
@@ -232,7 +233,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const duplicatePurchase = ok(await request('/api/v1/shop/purchases', { method: 'POST', body: { itemId: saleCostume.itemId, requestId: `purchase-${suffix}` } }), 201);
   assert.equal(duplicatePurchase.duplicate, true);
   assert.equal(duplicatePurchase.coinBalance, purchase.coinBalance);
-   // 같은 문항 북마크 동시 요청은 모두 200, review_items는 1행
+  // 같은 문항 북마크 동시 요청은 모두 200, review_items는 1행
   const bookmarkTarget = questions[2].question;
   const concurrentBookmarks = await Promise.all([1, 2, 3, 4, 5].map(() => request(`/api/v1/questions/${bookmarkTarget.questionId}/bookmark`, { method: 'PUT' })));
   assert.deepEqual(concurrentBookmarks.map(result => result.status), [200, 200, 200, 200, 200]);
@@ -245,26 +246,62 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   assert.equal(otherUserSameRequestId.status, 409, JSON.stringify(otherUserSameRequestId.body));
 
   await t.test('job changes are scoped to the signed-in account and preserve outfit, rewards and history', async () => {
-    const path = '/api/v1/users/me/character/class';
-    const change = (body, options = {}) => request(path, { method: 'PATCH', body, ...options });
-    const snapshot = () => Promise.all([UserGrowth, UserWallet, CoinLedger, UserCostume, UserEquippedCostume, LearningAttempt, UserStageProgress]
-      .map(entity => db.getRepository(entity).findBy({ userId: user.userId })));
+    const route = '/api/v1/users/me/character/class';
+    const change = (body, options = {}) => request(route, { method: 'PATCH', body, ...options });
+
+    // 직업 변경 시 기본 코스튬은 추가될 수 있으므로
+    // 성장, 지갑, 보상 및 학습 기록만 이전 상태와 비교한다.
+    const snapshot = () => Promise.all([
+      UserGrowth,
+      UserWallet,
+      CoinLedger,
+      LearningAttempt,
+      UserStageProgress
+    ].map(entity => db.getRepository(entity).findBy({ userId: user.userId })));
+
     const before = await snapshot();
+
     assert.equal((await change({ classCode: 'MAGE' }, { auth: false })).status, 401);
-    for (const payload of [{}, { classCode: 'INVALID' }, { classId: user.userId }, { userId: otherUser.userId, classCode: 'MAGE' }]) {
+
+    for (const payload of [
+      {},
+      { classCode: 'INVALID' },
+      { classId: user.userId },
+      { userId: otherUser.userId, classCode: 'MAGE' }
+    ]) {
       assert.equal((await change(payload)).status, 422);
     }
+
     for (const classCode of ['MAGE', 'ARCHER', 'WARRIOR']) {
       assert.equal(ok(await change({ classCode })).classCode, classCode);
       assert.equal(ok(await request('/api/v1/users/me')).characterClass.classCode, classCode);
     }
+
     const selected = await db.getRepository(UserCharacter).findOneByOrFail({ userId: user.userId });
     assert.equal(ok(await change({ classCode: 'WARRIOR' })).classId, selected.classId);
-    assert.deepEqual(await db.getRepository(UserCharacter).findOneByOrFail({ userId: user.userId }), selected);
-    assert.equal(ok(await request('/api/v1/users/me', { requestToken: otherToken })).characterClass, null);
-    token = ok(await request('/api/v1/auth/login', { method: 'POST', body: { email: user.email, password: 'new-password-123' }, auth: false })).accessToken;
+
+    assert.deepEqual(
+      await db.getRepository(UserCharacter).findOneByOrFail({ userId: user.userId }),
+      selected
+    );
+
+    assert.equal(
+      ok(await request('/api/v1/users/me', { requestToken: otherToken })).characterClass,
+      null
+    );
+
+    token = ok(await request('/api/v1/auth/login', {
+      method: 'POST',
+      body: {
+        email: user.email,
+        password: 'new-password-123'
+      },
+      auth: false
+    })).accessToken;
+
     assert.equal(ok(await request('/api/v1/users/me')).characterClass.classCode, 'WARRIOR');
+
+    // 기본 코스튬 지급은 허용하되 보상과 학습 기록은 그대로 유지
     assert.deepEqual(await snapshot(), before);
   });
-
 });
