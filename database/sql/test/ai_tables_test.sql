@@ -51,10 +51,15 @@ INSERT INTO result SELECT 20, 'app_user는 벡터 테이블 접근 불가',
   NOT has_table_privilege('app_user', 'ai.data_projectteam02', 'SELECT') AND NOT has_table_privilege('app_user', 'ai.data_projectteam02', 'INSERT'), 'privileges';
 INSERT INTO result SELECT 21, '청크 기록에 벡터 컬럼 없음 (벡터는 data_projectteam02에만)', count(*) = 0, coalesce(string_agg(column_name, ','), '없음')
   FROM information_schema.columns WHERE table_schema = 'ai' AND table_name = 'rag_document_chunks' AND column_name = 'embedding';
+-- #164 라이선스 승인 상태 (review_status와 별도)
+SELECT pg_temp.expect_ok (22, '라이선스 상태 없이 문서 저장 (AI 적재 코드는 이 컬럼을 모름)', $q$INSERT INTO ai.rag_documents (document_id, source_id, title, source, content_hash) VALUES ('zz-license', 'zz', '라이선스', 'x', repeat('c', 64))$q$);
+INSERT INTO result SELECT 23, '라이선스 상태 기본값 PENDING', license_review_status = 'PENDING', license_review_status FROM ai.rag_documents WHERE document_id = 'zz-license';
+SELECT pg_temp.expect_err(24, '정의되지 않은 라이선스 상태 거부', $q$UPDATE ai.rag_documents SET license_review_status = 'approved' WHERE document_id = 'zz-license'$q$, '23514');
+SELECT pg_temp.expect_ok (25, '라이선스 APPROVED로 변경', $q$UPDATE ai.rag_documents SET license_review_status = 'APPROVED' WHERE document_id = 'zz-license'$q$);
 -- 테스트 데이터 정리
 DELETE FROM ai.data_projectteam02 WHERE node_id = 'zz_test';
 DELETE FROM ai.rag_index_configurations WHERE collection_name = 'zz_test';
-DELETE FROM ai.rag_documents WHERE document_id IN ('bok800-154', 'bok800-155', 'bad-hash');
+DELETE FROM ai.rag_documents WHERE document_id IN ('bok800-154', 'bok800-155', 'bad-hash', 'zz-license');
 
 SELECT no || ' | ' || CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END || ' | ' || name || ' | ' || left(detail, 70) FROM result ORDER BY no;
 SELECT 'TOTAL ' || count(*) FILTER (WHERE ok) || '/' || count(*) FROM result;

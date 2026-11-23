@@ -30,6 +30,7 @@ import { UserStageProgress } from './progress/user-stage-progress.entity';
 import { LearningAttempt } from './progress/learning-attempts.entity';
 import { BossAttemptQuestion } from './progress/boss-attempt-questions.entity';
 import { QuestionSubmission } from './progress/question-submissions.entity';
+import { MisconceptionHypothesis } from './progress/misconception-hypotheses.entity';
 import { UserGrowth } from './reward/user-growth.entity';
 import { UserWallet } from './reward/user-wallets.entity';
 import { ExpLedger } from './reward/exp-ledger.entity';
@@ -81,6 +82,7 @@ export const entities = [
   LearningAttempt,
   BossAttemptQuestion,
   QuestionSubmission,
+  MisconceptionHypothesis,
   UserGrowth,
   UserWallet,
   ExpLedger,
@@ -133,6 +135,7 @@ export {
   LearningAttempt,
   BossAttemptQuestion,
   QuestionSubmission,
+  MisconceptionHypothesis,
   UserGrowth,
   UserWallet,
   ExpLedger,

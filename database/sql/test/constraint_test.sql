@@ -1,4 +1,4 @@
--- 제약 검증 rev.8 + #97 + #98 + E-1 + 직업 기본 한벌옷 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
+-- 제약 검증 rev.8 + #97 + #98 + E-1 + 직업 기본 한벌옷 + #164 (app_user 계정으로 실행, 빈 DB에 마이그레이션 적용 후)
 \set ON_ERROR_STOP 1
 \set QUIET 1
 \pset format unaligned
@@ -212,7 +212,7 @@ SELECT pg_temp.expect_err(96, '정의되지 않은 문제 분류 거부', $q$INS
 
 -- 97~98 #98 영역별 스키마
 INSERT INTO result SELECT 97, '영역별 스키마 테이블 수 및 장착 이관 보관함 권한',
-  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:10,character:6,content:12,learning:4,review:5,reward:7,tutor:6'
+  string_agg(schemaname || ':' || n, ',' ORDER BY schemaname) = 'account:10,character:6,content:12,learning:5,review:5,reward:7,tutor:6'
     AND to_regclass('learning.boss_attempt_questions') IS NOT NULL
     AND NOT has_table_privilege(current_user, 'character.legacy_equipped_costumes', 'SELECT'),
   string_agg(schemaname || ':' || n, ',' ORDER BY schemaname)
@@ -228,6 +228,22 @@ SELECT pg_temp.expect_ok (101, '다음 날 기록은 허용', $q$INSERT INTO not
 SELECT pg_temp.expect_err(102, '정의되지 않은 알림 종류 거부', $q$INSERT INTO notification_logs (user_id, notification_type, target_date) VALUES ('00000000-0000-0000-0000-000000000001','MARKETING','2026-11-17')$q$, '22P02');
 SELECT pg_temp.expect_err(103, '성공 수가 기기 수보다 많으면 거부', $q$INSERT INTO notification_logs (user_id, notification_type, target_date, device_count, success_count) VALUES ('00000000-0000-0000-0000-000000000001','LEARNING_REMINDER','2026-11-18',1,2)$q$, '23514');
 SELECT pg_temp.expect_err(104, '없는 사용자 기록 거부 (FK)', $q$INSERT INTO notification_logs (user_id, notification_type, target_date) VALUES ('00000000-0000-0000-0000-0000000000ff','LEARNING_REMINDER','2026-11-15')$q$, '23503');
+
+-- 108~120 #164 선수 관계 검수 상태·오개념 가설
+INSERT INTO result SELECT 108, '선수 관계 기본 검수 상태 PENDING (검수 전에는 확정 근거 아님)', review_status = 'PENDING' AND reviewed_at IS NULL, review_status::text
+  FROM concept_prerequisites WHERE concept_code = 'C-SUPPLY' AND prerequisite_concept_code = 'C-DEMAND';
+SELECT pg_temp.expect_err(109, '검수 시각 없이 APPROVED 거부', $q$UPDATE concept_prerequisites SET review_status = 'APPROVED' WHERE concept_code = 'C-SUPPLY'$q$, '23514');
+SELECT pg_temp.expect_ok (110, '검수자·검수 시각과 함께 APPROVED', $q$UPDATE concept_prerequisites SET review_status = 'APPROVED', reviewed_by = '00000000-0000-0000-0000-000000000001', reviewed_at = now() WHERE concept_code = 'C-SUPPLY'$q$);
+SELECT pg_temp.expect_err(111, '정의되지 않은 검수 상태 거부', $q$UPDATE concept_prerequisites SET review_status = 'OK', reviewed_at = now() WHERE concept_code = 'C-SUPPLY'$q$, '22P02');
+SELECT pg_temp.expect_ok (112, '오개념 가설 저장 (기본 UNCONFIRMED, 근거 1개)', $q$INSERT INTO misconception_hypotheses (hypothesis_id, user_id, concept_code, hypothesis_type, source, evidence_submission_ids) VALUES ('00000000-0000-0000-0000-000000000061','00000000-0000-0000-0000-000000000001','C-DEMAND','CAUSALITY_REVERSED','RULE',ARRAY['00000000-0000-0000-0000-000000000051']::uuid[])$q$);
+SELECT pg_temp.expect_err(113, '같은 사용자·개념·유형의 UNCONFIRMED 가설 중복 거부', $q$INSERT INTO misconception_hypotheses (user_id, concept_code, hypothesis_type, source) VALUES ('00000000-0000-0000-0000-000000000001','C-DEMAND','CAUSALITY_REVERSED','AI')$q$, '23505');
+SELECT pg_temp.expect_err(114, '근거 1개로 CONFIRMED 거부 (단일 오답 확정 금지)', $q$UPDATE misconception_hypotheses SET status = 'CONFIRMED', resolved_at = now() WHERE hypothesis_id = '00000000-0000-0000-0000-000000000061'$q$, '23514');
+SELECT pg_temp.expect_err(115, 'UNCONFIRMED인데 확정 시각이 있으면 거부', $q$UPDATE misconception_hypotheses SET resolved_at = now() WHERE hypothesis_id = '00000000-0000-0000-0000-000000000061'$q$, '23514');
+SELECT pg_temp.expect_ok (116, '근거 2개와 확정 시각으로 CONFIRMED', $q$UPDATE misconception_hypotheses SET status = 'CONFIRMED', resolved_at = now(), evidence_submission_ids = ARRAY['00000000-0000-0000-0000-000000000051','00000000-0000-0000-0000-000000000052']::uuid[] WHERE hypothesis_id = '00000000-0000-0000-0000-000000000061'$q$);
+SELECT pg_temp.expect_ok (117, '확정된 뒤 같은 유형의 새 가설은 허용', $q$INSERT INTO misconception_hypotheses (user_id, concept_code, hypothesis_type, source) VALUES ('00000000-0000-0000-0000-000000000001','C-DEMAND','CAUSALITY_REVERSED','AI')$q$);
+SELECT pg_temp.expect_err(118, '근거 21개 거부 (AI 계약 최대 20개)', $q$INSERT INTO misconception_hypotheses (user_id, concept_code, hypothesis_type, source, evidence_submission_ids) SELECT '00000000-0000-0000-0000-000000000001','C-SUPPLY','OVER_LIMIT','AI', array_agg(gen_random_uuid()) FROM generate_series(1,21)$q$, '23514');
+SELECT pg_temp.expect_err(119, '공백뿐인 오개념 유형 거부', $q$INSERT INTO misconception_hypotheses (user_id, concept_code, hypothesis_type, source) VALUES ('00000000-0000-0000-0000-000000000001','C-SUPPLY','   ','RULE')$q$, '23514');
+SELECT pg_temp.expect_err(120, '없는 사용자의 가설 거부 (FK)', $q$INSERT INTO misconception_hypotheses (user_id, concept_code, hypothesis_type, source) VALUES ('00000000-0000-0000-0000-0000000000ff','C-SUPPLY','FK_TEST','RULE')$q$, '23503');
 
 -- 44 권한
 SELECT pg_temp.expect_err(44, 'app_user로 DROP TABLE 거부', 'DROP TABLE study_plans', '42501');
