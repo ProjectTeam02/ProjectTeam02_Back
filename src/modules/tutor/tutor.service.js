@@ -15,6 +15,7 @@ const conversationDto = require('./dto/conversationResponse.dto');
 const messageDto = require('./dto/tutorResponse.dto');
 const aiRequestDto = require('./dto/aiInternalRequest.dto');
 const aiResponseDto = require('./dto/aiInternalResponse.dto');
+const verifiedContextRepository = require('./verified-context.repository');
 
 // #99 같은 대화방·같은 사용자 요청을 트랜잭션 안에서 순서대로 처리 (트랜잭션이 끝나면 자동 해제)
 async function advisoryLock(manager, key) {
@@ -103,7 +104,12 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           const sequenceNo = last ? last.sequenceNo + 1 : 1;
           // 이전 대화는 완료된 메시지만 보낸다 (실패·처리 중 메시지 제외). 최근 50개를 가져와 오래된 순으로 되돌린다
           const historyRows = (await messages.find({ where: { conversationId: conversation.conversationId, status: 'COMPLETED' }, order: { sequenceNo: 'DESC' }, take: aiRequestDto.MAX_HISTORY })).reverse();
-          aiRequest = aiRequestDto.build({ requestId, conversation, userId, input, historyRows });
+          const conceptId = input.context?.conceptId || null;
+          const conceptCode = input.context?.conceptCode || null;
+          const verifiedContext = conceptId || conceptCode
+            ? await verifiedContextRepository.verifiedContext(manager, { conceptId, conceptCode })
+            : null;
+          aiRequest = aiRequestDto.build({ requestId, conversation, userId, input, historyRows, verifiedContext });
           userMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, sequenceNo, role: 'USER', content: input.question, clientMessageId, requestId, status: 'PENDING', contextStageId: input.context?.stageId || null, contextConceptId: input.context?.conceptId || null }));
           assistantMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, parentMessageId: userMessage.messageId, sequenceNo: sequenceNo + 1, role: 'ASSISTANT', content: '', requestId, status: 'PENDING' }));
         });
