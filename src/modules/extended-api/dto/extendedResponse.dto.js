@@ -116,14 +116,19 @@ function reviewAttempt(attempt, submissions = []) {
     correctCount: attempt.correctCount,
     startedAt: iso(attempt.startedAt),
     completedAt: iso(attempt.completedAt),
-    answers: submissions.map(row => ({
-      submissionId: row.submissionId,
-      questionId: row.questionId,
-      sequenceNo: row.sequenceNo,
-      choiceId: row.choiceId,
-      isCorrect: row.isCorrect,
-      explanation: row.submittedAt ? row.question?.explanation : null,
-    })),
+    answers: submissions.map(row => {
+      const isSubmitted = Boolean(row.submittedAt);
+      return {
+        submissionId: row.submissionId,
+        questionId: row.questionId,
+        sequenceNo: row.sequenceNo,
+        question: question(row.question, row.displayedChoices),
+        isSubmitted,
+        choiceId: isSubmitted ? row.choiceId : null,
+        isCorrect: isSubmitted ? row.isCorrect : null,
+        explanation: isSubmitted ? row.question.explanation : null,
+      };
+    }),
   };
 }
 

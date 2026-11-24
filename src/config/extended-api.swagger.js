@@ -58,6 +58,22 @@ const notificationSettingsResponse = { description: '알림 설정', content: { 
 // 실제로 나오는 응답 코드만 남긴다 (secure()는 공통 코드를 모두 붙이므로)
 const only = (operation, codes) => ({ ...operation, responses: Object.fromEntries(Object.entries(operation.responses).filter(([code]) => codes.includes(Number(code)))) });
 
+const reviewObject = properties => ({ type: 'object', required: Object.keys(properties), properties });
+const reviewRef = name => ({ $ref: `#/components/schemas/${name}` });
+const reviewResponse = (description, data) => ({
+  description,
+  content: { 'application/json': { schema: reviewObject({ success: { type: 'boolean', enum: [true] }, data }) } },
+});
+const reviewId = { type: 'string', format: 'uuid' };
+const reviewTimestamp = { type: 'string', format: 'date-time' };
+const reviewCount = { type: 'integer', minimum: 0 };
+const reviewStartResponses = {
+  200: reviewResponse('진행 중 응시 재개. 저장한 문항·보기 순서와 기존 답안 유지', reviewRef('ReviewAttempt')),
+  201: reviewResponse('새 복습 응시 생성', reviewRef('ReviewAttempt')),
+  404: { ...error, description: '본인 임무 또는 저장된 공개 문항을 찾을 수 없음' },
+  503: { ...error, description: '공개 문항 또는 저장된 보기의 구성이 올바르지 않음, 또는 서비스 사용 불가' },
+};
+
 module.exports = {
   schemas: {
     ShopCostumeItem: costumeObject({
@@ -82,6 +98,56 @@ module.exports = {
       },
     },
     ExtendedSuccess: { type: 'object', required: ['success', 'data'], properties: { success: { type: 'boolean', example: true }, data: { type: 'object', additionalProperties: true } } },
+    ReviewMission: reviewObject({
+      missionId: reviewId,
+      conceptCode: { type: 'string' },
+      firstRegisteredAt: reviewTimestamp,
+      dueDate: { type: 'string', format: 'date' },
+      status: { type: 'string', enum: ['SCHEDULED', 'AVAILABLE', 'IN_PROGRESS', 'COMPLETED'] },
+      targetQuestionCount: reviewCount,
+      notifiedAt: { ...reviewTimestamp, nullable: true },
+      completedAt: { ...reviewTimestamp, nullable: true },
+    }),
+    ReviewAttempt: reviewObject({
+      reviewAttemptId: reviewId,
+      missionId: { ...reviewId, nullable: true },
+      status: { type: 'string', enum: ['IN_PROGRESS', 'COMPLETED', 'ABANDONED'] },
+      reviewType: { type: 'string', enum: ['AUTO', 'RECOMMENDED', 'SINGLE'] },
+      entryPoint: { type: 'string', enum: ['HOME', 'REVIEW_NOTE', 'RESULT', 'CALENDAR'] },
+      conceptCode: { type: 'string', nullable: true },
+      questionCount: reviewCount,
+      submittedCount: reviewCount,
+      correctCount: reviewCount,
+      startedAt: reviewTimestamp,
+      completedAt: { ...reviewTimestamp, nullable: true },
+      answers: { type: 'array', items: reviewRef('ReviewAttemptSlot'), description: 'sequenceNo 오름차순' },
+    }),
+    ReviewAttemptSlot: reviewObject({
+      submissionId: { ...reviewId, description: '서버 발급. 답안 제출 시 이 값을 재사용' },
+      questionId: reviewId,
+      sequenceNo: { type: 'integer', minimum: 1 },
+      question: reviewRef('ReviewAttemptQuestion'),
+      isSubmitted: { type: 'boolean' },
+      choiceId: { ...reviewId, nullable: true },
+      isCorrect: { type: 'boolean', nullable: true, description: '미제출이면 null' },
+      explanation: { type: 'string', nullable: true, description: '미제출이면 null' },
+    }),
+    ReviewAttemptQuestion: reviewObject({
+      questionId: reviewId,
+      questionCode: { type: 'string' },
+      question: { type: 'string' },
+      difficulty: { type: 'string', nullable: true, enum: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', null] },
+      conceptId: reviewId,
+      choices: { type: 'array', description: '응시에 저장된 선택지 순서. 정답 플래그는 포함하지 않음',
+        items: reviewObject({ choiceId: reviewId, label: { type: 'string' }, content: { type: 'string' } }) },
+    }),
+    ReviewAnswerResult: { allOf: [
+      reviewRef('ReviewAttempt'),
+      reviewObject({ result: { type: 'object', required: ['isCorrect', 'explanation'], properties: {
+        isCorrect: { type: 'boolean' }, explanation: { type: 'string', nullable: true },
+        duplicate: { type: 'boolean', enum: [true], description: '동일 답안 재전송에만 포함' },
+      } } }),
+    ] },
     BossAttempt: { allOf: [{ $ref: '#/components/schemas/NormalStageAttempt' }, { type: 'object', properties: {
       bossCombat: bossCombatSchema(bossCombatProperties),
     } }] },
@@ -114,25 +180,46 @@ module.exports = {
     '/api/v1/attempts/{attemptId}/current-question': { get: secure('현재 문항', [uuid('attemptId')]) },
     '/api/v1/attempts/{attemptId}/answers': { post: secure('일반 Stage 답안 제출', [uuid('attemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid' } })) },
     '/api/v1/attempts/{attemptId}': { get: secure('응시 결과 상세', [uuid('attemptId')]) },
-    '/api/v1/reviews/due': { get: secure('복습 예정 임무', [query('date', { type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' })]) },
+    '/api/v1/reviews/due': { get: {
+      ...only(secure('복습 예정 임무', [query('date', { type: 'string', format: 'date', pattern: '^\\d{4}-\\d{2}-\\d{2}$' })], undefined, {
+        200: reviewResponse('지정일 이하의 본인 임무', reviewObject({
+          date: { type: 'string', format: 'date' }, items: { type: 'array', items: reviewRef('ReviewMission') },
+        })),
+      }), [200, 401, 422, 503]),
+      description: 'date 기본값은 서울의 오늘입니다. 미래 날짜까지 조회할 수 있으며 AVAILABLE 상태 전이는 서울의 오늘을 넘지 않습니다.',
+    } },
     '/api/v1/reviews/items': { get: {
       ...secure('복습 문항 목록', [query('source', { type: 'string', enum: ['BOOKMARK', 'WRONG'] }), query('conceptId', { type: 'string', format: 'uuid' }), query('topicId', { type: 'string', format: 'uuid' }), query('page', { type: 'integer', minimum: 1 }), query('size', { type: 'integer', minimum: 1, maximum: 100 }), query('limit', { type: 'integer', minimum: 1, maximum: 100 })]),
       description: '본인의 PUBLISHED 문항만 조회합니다. WRONG에는 일반 Stage와 Boss에서 실제 제출한 오답이 자동으로 반영됩니다. 북마크와 오답 이력은 같은 항목에 함께 존재할 수 있습니다.',
     } },
     '/api/v1/reviews/attempts': {
       post: {
-        ...secure('복습 노트에서 바로 복습 시작'),
-        description: '로그인한 사용자의 오답·북마크 문항 중 PUBLISHED 문항을 최대 5개 선택해 복습 응시를 생성합니다. missionId는 필요하지 않으며, 복습할 문항이 없으면 409를 반환합니다.',
+        ...only(secure('복습 노트에서 바로 복습 시작', [], undefined, {
+          ...reviewStartResponses, 409: { ...error, description: '복습할 공개 문항이 없음' },
+        }), [200, 201, 401, 404, 409, 422, 503]),
+        description: '사용자의 진행 중인 직접 복습 응시가 있으면 재개합니다. 신규 응시는 오답·북마크의 PUBLISHED 문항을 최대 5개 선택합니다. 요청 본문과 query는 필요하지 않습니다.',
       },
     },
     '/api/v1/reviews/missions/{missionId}': { get: secure('복습 임무 상세', [uuid('missionId')]) },
-    '/api/v1/reviews/missions/{missionId}/attempts': { post: { ...secure('복습 임무 응시 시작', [uuid('missionId')]),
-      description: 'PUBLISHED 문항으로만 복습 응시를 생성합니다. 복습할 공개 문항이 없으면 409입니다.',
+    '/api/v1/reviews/missions/{missionId}/attempts': { post: {
+      ...only(secure('복습 임무 응시 시작', [uuid('missionId')], undefined, {
+        ...reviewStartResponses, 409: { ...error, description: '예정일 전, 완료된 임무 또는 복습할 공개 문항이 없음' },
+      }), [200, 201, 401, 404, 409, 422, 503]),
+      description: '서울 날짜로 예정일 당일부터 시작할 수 있습니다. 같은 임무의 진행 중 응시가 있으면 재개합니다. 완료된 자동 복습 임무는 다시 시작할 수 없습니다.',
     } },
-    '/api/v1/review-attempts/{reviewAttemptId}': { get: { ...secure('복습 응시 상세', [uuid('reviewAttemptId')]),
-      description: '이 응시에 공개가 철회된 문항이 있으면 404입니다.',
+    '/api/v1/review-attempts/{reviewAttemptId}': { get: {
+      ...only(secure('복습 응시 상세', [uuid('reviewAttemptId')], undefined, {
+        200: reviewResponse('저장된 문항·보기 및 슬롯별 제출 상태', reviewRef('ReviewAttempt')),
+      }), [200, 401, 404, 422, 503]),
+      description: '본인의 응시만 조회됩니다. 이 응시에 공개가 철회된 문항이 있으면 404, 저장된 보기 구성이 유효하지 않으면 503입니다.',
     } },
-    '/api/v1/review-attempts/{reviewAttemptId}/answers': { post: { ...secure('복습 답안 제출', [uuid('reviewAttemptId')], body({ questionId: { type: 'string', format: 'uuid' }, choiceId: { type: 'string', format: 'uuid' }, submissionId: { type: 'string', format: 'uuid', description: '복습 응시 시작·조회 응답의 문항별 submissionId를 그대로 보냄 (앱이 새로 만들지 않음)' } })), description: '퀴즈 답안 제출과 달리 submissionId는 서버가 복습 시작 때 문항마다 미리 만든 값입니다. 같은 submissionId·같은 선택지 재요청은 duplicate=true로 처리합니다. 이 응시에 공개가 철회된 문항이 있으면 404입니다.' } },
+    '/api/v1/review-attempts/{reviewAttemptId}/answers': { post: {
+      ...only(secure('복습 답안 제출', [uuid('reviewAttemptId')], body({
+        questionId: reviewId, choiceId: { ...reviewId, description: '해당 슬롯에 저장된 보기 ID' },
+        submissionId: { ...reviewId, description: '복습 응시에서 서버가 발급한 해당 슬롯의 ID' },
+      }), { 200: reviewResponse('채점 결과와 갱신된 응시 상태', reviewRef('ReviewAnswerResult')) }), [200, 401, 404, 409, 422, 503]),
+      description: '같은 submissionId와 같은 선택지의 재전송은 result.duplicate=true입니다. 다른 답으로 재전송하면 409, 저장된 슬롯에 없는 선택지는 422입니다. 미제출 슬롯은 정답과 해설을 반환하지 않습니다.',
+    } },
     '/api/v1/questions/{questionId}/bookmark': {
       put: { ...secure('문항 북마크 등록', [uuid('questionId')]), description: 'PUBLISHED 문항만 북마크할 수 있습니다. 문항의 정오답과 관계없이 등록할 수 있습니다.' },
       delete: { ...secure('문항 북마크 해제', [uuid('questionId')]), description: '북마크 표시를 해제하며 오답 이력은 보존합니다.' },

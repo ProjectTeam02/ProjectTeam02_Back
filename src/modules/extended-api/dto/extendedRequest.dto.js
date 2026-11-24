@@ -8,6 +8,7 @@ const f = require('../../../common/dto/fields');
 const authFields = require('../../auth/dto/authFields');
 const { ClassCode } = require('@leren/database');
 const notificationSetting = require('../../notifications/dto/notificationSetting.dto');
+const { seoulDatePlusDays } = require('../../reviews/autoReview.repository');
 
 function noQuery(query, name = 'query') {
   if (Object.keys(f.object(query, name)).length) throw AppError.validation('지원하지 않는 조회 조건입니다.');
@@ -52,13 +53,9 @@ function reviewItems({ query }) {
   return { query: result };
 }
 
-function todayKst() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
-}
-
 function due({ query }) {
   const value = f.onlyKeys(f.object(query, 'query'), ['date'], 'query');
-  return { query: { date: value.date === undefined ? todayKst() : f.dateOnly(value.date, 'date') } };
+  return { query: { date: value.date === undefined ? seoulDatePlusDays(new Date(), 0) : f.dateOnly(value.date, 'date') } };
 }
 
 
