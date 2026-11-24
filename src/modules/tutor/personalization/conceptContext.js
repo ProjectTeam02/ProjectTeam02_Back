@@ -96,14 +96,25 @@ async function misconceptionContext(manager, userId, conceptCode) {
 
 async function recentAssessments(manager, userId, conceptCode) {
   if (!conceptCode) return [];
+  // 일반 학습과 복습의 제출 기록을 합쳐 최신 10건을 AI Context에 전달한다.
+  // 복습 응시를 시작하기만 한 미제출 행은 제외하고, 양쪽 모두 요청 사용자만 조회한다.
   const rows = await manager.query(`
     SELECT s.submission_id::text AS submission_id, s.question_id::text AS question_id, s.is_correct, s.submitted_at
-    FROM learning.question_submissions s
-    JOIN learning.learning_attempts a ON a.attempt_id = s.attempt_id
-    JOIN content.questions q          ON q.question_id = s.question_id
-    JOIN content.concepts c           ON c.concept_id = q.concept_id
-    WHERE a.user_id = $1 AND c.concept_code = $2
-    ORDER BY s.submitted_at DESC
+    FROM (
+      SELECT s.submission_id, s.question_id, s.is_correct, s.submitted_at
+      FROM learning.question_submissions s
+      JOIN learning.learning_attempts a ON a.attempt_id = s.attempt_id
+      WHERE a.user_id = $1 AND s.submitted_at IS NOT NULL
+      UNION ALL
+      SELECT s.submission_id, s.question_id, s.is_correct, s.submitted_at
+      FROM review.review_submissions s
+      JOIN review.review_attempts a ON a.review_attempt_id = s.review_attempt_id
+      WHERE a.user_id = $1 AND s.submitted_at IS NOT NULL
+    ) s
+    JOIN content.questions q ON q.question_id = s.question_id
+    JOIN content.concepts c ON c.concept_id = q.concept_id
+    WHERE c.concept_code = $2
+    ORDER BY s.submitted_at DESC, s.submission_id DESC
     LIMIT $3`, [userId, conceptCode, MAX_ASSESSMENTS]);
   return rows.map(row => ({ assessmentId: row.submission_id, questionId: row.question_id, conceptCode, isCorrect: row.is_correct, assessedAt: row.submitted_at }));
 }

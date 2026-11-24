@@ -113,6 +113,46 @@ test('tutor concept graph and misconception context against isolated PostgreSQL'
     assert.deepEqual(await recentAssessments(db.manager, owner.userId, null), []);
   });
 
+  let reviewSubmissionId;
+  await t.test('최근 평가: 복습 제출 포함, 다른 사용자 및 미제출 복습 제외, 최신 10건 유지', async () => {
+    const reviewItem = user => save(E.ReviewItem, {
+      userId: user.userId, questionCode: q.questionCode, latestQuestionId: q.questionId,
+      conceptCode: code('A'), firstReason: 'WRONG', wrongCount: 1, isBookmarked: true,
+    });
+    const ownItem = await reviewItem(owner);
+    const otherItem = await reviewItem(other);
+    const makeReview = async (user, item, submittedAt, isCorrect = false) => {
+      const answered = submittedAt !== null;
+      const attempt = await save(E.ReviewAttempt, {
+        userId: user.userId, reviewType: 'RECOMMENDED', entryPoint: 'REVIEW_NOTE', conceptCode: code('A'),
+        status: answered ? 'COMPLETED' : 'IN_PROGRESS', questionCount: 1,
+        submittedCount: answered ? 1 : 0, correctCount: answered && isCorrect ? 1 : 0,
+        completedAt: submittedAt,
+      });
+      const submission = await save(E.ReviewSubmission, {
+        reviewAttemptId: attempt.reviewAttemptId, reviewItemId: item.reviewItemId,
+        questionId: q.questionId, sequenceNo: 1,
+        displayedChoiceOrder: choices.map(choice => choice.choiceId),
+        choiceId: answered ? choices[isCorrect ? 0 : 1].choiceId : null,
+        isCorrect: answered ? isCorrect : null, submittedAt,
+      });
+      return submission.submissionId;
+    };
+
+    reviewSubmissionId = await makeReview(owner, ownItem, new Date(base + 60 * 60000));
+    const otherReviewId = await makeReview(other, otherItem, new Date(base + 70 * 60000), true);
+    const pendingReviewId = await makeReview(owner, ownItem, null);
+
+    const recent = await recentAssessments(db.manager, owner.userId, code('A'));
+    assert.equal(recent.length, 10);
+    assert.equal(recent[0].assessmentId, reviewSubmissionId);
+    assert.equal(recent[0].isCorrect, false);
+    assert.equal(recent[0].conceptCode, code('A'));
+    assert.equal(recent[1].assessmentId, ownSubs[11]);
+    assert.equal(recent.some(row => row.assessmentId === otherReviewId), false);
+    assert.equal(recent.some(row => row.assessmentId === pendingReviewId), false);
+  });
+
   await t.test('튜터 서비스가 AI 계약에 맞는 personalizedContext 전체를 보낸다', async () => {
     let sent;
     const aiClient = { answer: async body => { sent = body; return {
