@@ -5,7 +5,7 @@
  */
 const crypto = require('node:crypto');
 const { In } = require('typeorm');
-const { AiConversation, AiMessage, AiMessageSource, AiRequest } = require('@leren/database');
+const { AiConversation, AiMessage, AiMessageSource, AiRequest, LearningAttempt } = require('@leren/database');
 const { AppDataSource } = require('../../config/database');
 const AppError = require('../../common/errors/AppError');
 const FastApiClient = require('../../clients/fastapi.client');
@@ -93,6 +93,10 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
       const conversation = await ownedConversation(userId, input.conversationId);
       // #171 개념 코드·ID가 공개된 개념인지 먼저 확인 (사용량 차감·AI 호출 전에 422)
       await assertKnownConcepts(dataSource.manager, input);
+      const attemptId = input.context?.attemptId;
+      if (attemptId && !(await repoFor(LearningAttempt).existsBy({ attemptId, userId }))) {
+        throw AppError.notFound('학습 응시를 찾을 수 없습니다.');
+      }
       const clientMessageId = input.clientMessageId || idempotencyKey || null;
       const messageRepo = repoFor(AiMessage);
       if (clientMessageId) {
