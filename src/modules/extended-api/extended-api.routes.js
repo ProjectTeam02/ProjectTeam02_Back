@@ -8,6 +8,7 @@ const validate = require('../../common/middleware/validate.middleware');
 const asyncHandler = require('../../common/utils/asyncHandler');
 const AppError = require('../../common/errors/AppError');
 const { AppDataSource } = require('../../config/database');
+const { In, IsNull, Not } = require('typeorm');
 const {
   User, UserSetting, CharacterClass, UserCharacter, Topic, Stage, Concept, ConceptSection,
   StageQuestion, Question, QuestionChoice, LearningAttempt, QuestionSubmission,
@@ -26,6 +27,7 @@ const reviewSubmitDto = require('../reviews/dto/reviewSubmitRequest.dto');
 const reviewResultDto = require('../reviews/dto/reviewResultResponse.dto');
 const bookmarkResponseDto = require('../reviews/dto/bookmarkResponse.dto');
 const reviewItems = require('../reviews/reviewItem.repository');
+const { seoulDatePlusDays } = require('../reviews/autoReview.repository');
 const costumeRequestDto = require('../costumes/dto/purchaseCostumeRequest.dto');
 const equipCostumeRequestDto = require('../costumes/dto/equipCostumeRequest.dto');
 const { findEquippedCostume } = require('../costumes/userCostume.repository');
@@ -121,20 +123,50 @@ async function reviewItemResponse(manager, item) {
 
 async function reviewAttemptResponse(manager, attempt) {
   const submissions = await repo(manager, ReviewSubmission).find({
-    where: { reviewAttemptId: attempt.reviewAttemptId }, relations: { question: true, choice: true }, order: { sequenceNo: 'ASC' },
+    where: { reviewAttemptId: attempt.reviewAttemptId }, relations: { question: true }, order: { sequenceNo: 'ASC' },
   });
   if (submissions.some(row => row.question?.status !== 'PUBLISHED')) throw AppError.notFound('공개 복습 문항을 찾을 수 없습니다.');
-  return responseDto.reviewAttempt(attempt, submissions);
+  const choiceIds = [...new Set(submissions.flatMap(row => row.displayedChoiceOrder))];
+  const choices = await repo(manager, QuestionChoice).findBy({ choiceId: In(choiceIds) });
+  const byId = new Map(choices.map(choice => [choice.choiceId, choice]));
+  const slots = submissions.map(row => {
+    const displayedChoices = row.displayedChoiceOrder.map(choiceId => byId.get(choiceId));
+    if (displayedChoices.some(choice => choice?.questionId !== row.questionId)
+      || new Set(row.displayedChoiceOrder).size !== displayedChoices.length
+      || !hasAnswerKey(displayedChoices.length, displayedChoices.filter(choice => choice.isCorrect).length)) {
+      throw AppError.unavailable('복습 응시의 저장된 선택지 구성이 올바르지 않습니다.');
+    }
+    return { ...row, displayedChoices };
+  });
+  return responseDto.reviewAttempt(attempt, slots);
 }
 
-async function createReviewAttempt(userId, missionId = null) {
+async function startReviewAttempt(userId, missionId) {
   return AppDataSource.transaction(async manager => {
+    // 시작과 채점은 모두 사용자 단위 복습 잠금을 먼저 얻는다.
+    await lockKey(manager, `review-attempt:${userId}`);
     let mission = null;
     if (missionId) {
-      mission = await repo(manager, ReviewMission).findOne({ where: { missionId: id(missionId, 'missionId'), userId }, lock: { mode: 'pessimistic_write' } });
+      mission = await repo(manager, ReviewMission).findOne({ where: { missionId, userId }, lock: { mode: 'pessimistic_write' } });
       if (!mission) throw AppError.notFound('복습 임무를 찾을 수 없습니다.');
       if (mission.status === 'COMPLETED') throw AppError.conflict('이미 완료한 복습 임무입니다.');
+      if (mission.dueDate > seoulDatePlusDays(new Date(), 0)) {
+        throw AppError.conflict('복습 예정일 당일부터 응시할 수 있습니다.');
+      }
     }
+
+    const reviewType = mission ? 'AUTO' : 'RECOMMENDED';
+    const entryPoint = mission ? 'HOME' : 'REVIEW_NOTE';
+    const attemptRepo = repo(manager, ReviewAttempt);
+    const active = await attemptRepo.findOne({
+      where: mission
+        ? { userId, missionId: mission.missionId, status: 'IN_PROGRESS' }
+        : { userId, missionId: IsNull(), reviewType, entryPoint, status: 'IN_PROGRESS' },
+      // 이전에 생긴 중복 행은 보존하고 동일한 응시를 다시 선택한다.
+      order: { startedAt: 'ASC', reviewAttemptId: 'ASC' },
+    });
+    if (active) return { attempt: await reviewAttemptResponse(manager, active), resumed: true };
+
     const conceptCode = mission?.conceptCode || null;
     const items = await repo(manager, ReviewItem).find({ where: { userId, latestQuestion: { status: 'PUBLISHED' } },
       relations: { latestQuestion: true }, order: { lastAnsweredAt: 'ASC', firstRegisteredAt: 'ASC' } });
@@ -149,8 +181,8 @@ async function createReviewAttempt(userId, missionId = null) {
       }
       return { item, question, choices };
     }));
-    const attempt = await repo(manager, ReviewAttempt).save(repo(manager, ReviewAttempt).create({
-      userId, missionId: mission?.missionId || null, reviewType: mission ? 'AUTO' : 'RECOMMENDED', entryPoint: mission ? 'HOME' : 'REVIEW_NOTE',
+    const attempt = await attemptRepo.save(attemptRepo.create({
+      userId, missionId: mission?.missionId ?? null, reviewType, entryPoint,
       conceptCode, status: 'IN_PROGRESS', questionCount: selected.length, submittedCount: 0, correctCount: 0,
     }));
     const submissions = repo(manager, ReviewSubmission);
@@ -161,27 +193,26 @@ async function createReviewAttempt(userId, missionId = null) {
         questionId: question.questionId, sequenceNo, displayedChoiceOrder: choices.map(choice => choice.choiceId),
         choiceId: null, isCorrect: null, bookmarkChecked: item.isBookmarked, submittedAt: null }));
     }
-    if (!sequenceNo) throw AppError.conflict('복습할 수 있는 공개 문항이 없습니다.');
-    attempt.questionCount = sequenceNo;
-    await repo(manager, ReviewAttempt).save(attempt);
     if (mission) { mission.status = 'IN_PROGRESS'; await repo(manager, ReviewMission).save(mission); }
-    return reviewAttemptResponse(manager, attempt);
+    return { attempt: await reviewAttemptResponse(manager, attempt), resumed: false };
   });
 }
 
 async function answerReview(userId, reviewAttemptId, input) {
   return AppDataSource.transaction(async manager => {
-    const attempt = await repo(manager, ReviewAttempt).findOne({ where: { reviewAttemptId: id(reviewAttemptId, 'reviewAttemptId'), userId }, lock: { mode: 'pessimistic_write' } });
+    await lockKey(manager, `review-attempt:${userId}`);
+    const attempt = await repo(manager, ReviewAttempt).findOne({ where: { reviewAttemptId, userId }, lock: { mode: 'pessimistic_write' } });
     if (!attempt) throw AppError.notFound('복습 응시를 찾을 수 없습니다.');
-    const submissionId = id(input?.submissionId, 'submissionId');
-    const questionId = id(input?.questionId, 'questionId');
-    const choiceId = id(input?.choiceId, 'choiceId');
+    const { submissionId, questionId, choiceId } = input;
     const submission = await repo(manager, ReviewSubmission).findOne({ where: { reviewAttemptId: attempt.reviewAttemptId, submissionId, questionId }, lock: { mode: 'pessimistic_write' } });
     if (!submission) throw AppError.conflict('현재 복습 응시의 문항이 아닙니다.');
     const question = await repo(manager, Question).findOneBy({ questionId: submission.questionId });
     if (question?.status !== 'PUBLISHED') throw AppError.notFound('공개 복습 문항을 찾을 수 없습니다.');
+    if (submission.submittedAt && submission.choiceId !== choiceId) throw AppError.conflict('이미 제출한 문항입니다.');
+    if (!submission.displayedChoiceOrder.includes(choiceId)) {
+      throw AppError.validation('해당 복습 슬롯의 선택지가 아닙니다.');
+    }
     if (submission.submittedAt) {
-      if (submission.choiceId !== choiceId) throw AppError.conflict('이미 제출한 문항입니다.');
       return { ...(await reviewAttemptResponse(manager, attempt)), result: { isCorrect: Boolean(submission.isCorrect), explanation: question?.explanation || null, duplicate: true } };
     }
     if (attempt.status !== 'IN_PROGRESS') throw AppError.conflict('종료된 복습 응시에는 제출할 수 없습니다.');
@@ -197,7 +228,12 @@ async function answerReview(userId, reviewAttemptId, input) {
       reviewItems.recordAnswer(item, submission.isCorrect);
       await repo(manager, ReviewItem).save(item);
     }
-    if (attempt.status === 'COMPLETED' && attempt.missionId) await repo(manager, ReviewMission).update({ missionId: attempt.missionId, userId }, { status: 'COMPLETED', completedAt: new Date() });
+    if (attempt.status === 'COMPLETED' && attempt.missionId) {
+      await repo(manager, ReviewMission).update(
+        { missionId: attempt.missionId, userId, status: Not('COMPLETED') },
+        { status: 'COMPLETED', completedAt: attempt.completedAt },
+      );
+    }
     return { ...(await reviewAttemptResponse(manager, attempt)), result: { isCorrect: Boolean(choice.isCorrect), explanation: question?.explanation || null } };
   });
 }
@@ -206,6 +242,11 @@ async function answerReview(userId, reviewAttemptId, input) {
 async function lockKey(manager, key) {
   await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
 }
+
+const sendReviewStart = asyncHandler(async (req, res) => {
+  const { attempt, resumed } = await startReviewAttempt(req.user.sub, req.params.missionId);
+  return data(res, attempt, resumed ? 200 : 201);
+});
 
 async function upsertBookmark(userId, questionId, bookmarked) {
   return AppDataSource.transaction(async manager => {
@@ -311,30 +352,23 @@ function routes() {
   }))));
   router.get('/reviews/due', auth, validate(requestDto.due), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const date = req.query.date;
-    await repo(manager, ReviewMission)
-  .createQueryBuilder()
-  .update()
-  .set({ status: 'AVAILABLE' })
-  .where('user_id = :userId', { userId: req.user.sub })
-  .andWhere('status = :status', { status: 'SCHEDULED' })
-  .andWhere('due_date <= :date', { date })
-  .execute();
+    const today = seoulDatePlusDays(new Date(), 0);
+    const transitionCutoff = date < today ? date : today;
+    await repo(manager, ReviewMission).createQueryBuilder()
+      .update()
+      .set({ status: 'AVAILABLE' })
+      .where('user_id = :userId', { userId: req.user.sub })
+      .andWhere('status = :status', { status: 'SCHEDULED' })
+      .andWhere('due_date <= :transitionCutoff', { transitionCutoff })
+      .execute();
     const rows = await repo(manager, ReviewMission).find({ where: { userId: req.user.sub }, order: { dueDate: 'ASC' } });
     return { date, items: rows.filter(row => String(row.dueDate).slice(0, 10) <= date).map(publicMission) };
   }))));
   router.get('/reviews/missions/:missionId', auth, validate(requestDto.mission), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const row = await repo(manager, ReviewMission).findOneBy({ missionId: req.params.missionId, userId: req.user.sub }); if (!row) throw AppError.notFound('복습 임무를 찾을 수 없습니다.'); return publicMission(row);
   }))));
-// 복습 노트에서 오답·북마크 문항 바로 풀기
-router.post(
-  '/reviews/attempts',
-  auth,
-  validate(requestDto.empty),
-  asyncHandler(async (req, res) =>
-    data(res, await createReviewAttempt(req.user.sub), 201)
-  )
-);
-  router.post('/reviews/missions/:missionId/attempts', auth, validate(requestDto.mission), asyncHandler(async (req, res) => data(res, await createReviewAttempt(req.user.sub, req.params.missionId), 201)));
+  router.post('/reviews/attempts', auth, validate(requestDto.empty), sendReviewStart);
+  router.post('/reviews/missions/:missionId/attempts', auth, validate(requestDto.mission), sendReviewStart);
   router.get('/review-attempts/:reviewAttemptId', auth, validate(requestDto.reviewAttempt), asyncHandler(async (req, res) => data(res, await AppDataSource.transaction(async manager => {
     const attempt = await repo(manager, ReviewAttempt).findOneBy({ reviewAttemptId: req.params.reviewAttemptId, userId: req.user.sub }); if (!attempt) throw AppError.notFound('복습 응시를 찾을 수 없습니다.'); return reviewAttemptResponse(manager, attempt);
   }))));

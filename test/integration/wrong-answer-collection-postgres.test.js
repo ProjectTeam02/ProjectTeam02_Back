@@ -292,7 +292,7 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
   // Review note without a mission
   // --------------------------------------------------
 
-  await t.test('review note starts an attempt without a mission', async () => {
+  await t.test('review note reuses one active attempt and can start again after completion', async () => {
     const actor = await user('복습노트');
 
     const empty = await http('POST', '/reviews/attempts', actor);
@@ -301,10 +301,14 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
     const question = questions[8];
     data(await bookmark(actor, 'PUT', question.questionId));
 
-    const started = data(
-      await http('POST', '/reviews/attempts', actor),
-      201
-    );
+    const startPath = '/reviews/attempts';
+    const starts = await Promise.all(Array.from({ length: 3 }, () => http('POST', startPath, actor)));
+    assert.deepEqual(starts.map(response => response.status).sort(), [200, 200, 201]);
+    const started = data(starts.find(response => response.status === 201), 201);
+    for (const response of starts.filter(response => response.status === 200)) {
+      assert.deepEqual(data(response), started);
+    }
+    assert.deepEqual(data(await http('POST', startPath, actor)), started);
 
     assert.equal(started.missionId, null);
     assert.equal(started.reviewType, 'RECOMMENDED');
@@ -328,6 +332,120 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
 
     assert.equal(savedCount, 1);
     assert.equal(await missions.countBy({ userId: actor.id }), 0);
+
+    const attemptPath = `/review-attempts/${started.reviewAttemptId}`;
+    const slot = started.answers[0];
+    assert.equal(slot.question.question, question.questionText);
+    assert.equal(slot.isSubmitted, false);
+    assert.equal(slot.choiceId, null);
+    assert.equal(slot.isCorrect, null);
+    assert.equal(slot.explanation, null);
+    assert.deepEqual(Object.keys(slot.question.choices[0]).sort(), ['choiceId', 'content', 'label']);
+
+    const choiceOrder = slot.question.choices.map(choice => choice.choiceId).reverse();
+    await db.getRepository(E.ReviewSubmission).update(slot.submissionId, { displayedChoiceOrder: choiceOrder });
+    const newVersion = await save(E.Question, {
+      questionCode: question.questionCode,
+      version: question.version + 1,
+      conceptId: concept.conceptId,
+      questionText: '새 버전의 문항',
+      explanation: '새 버전의 해설',
+      generatedBy: 'MANUAL',
+      status: 'PUBLISHED'
+    });
+    await save(E.QuestionChoice, [1, 2, 3, 4].map(baseOrder => ({
+      questionId: newVersion.questionId, baseOrder, choiceText: `새 보기 ${baseOrder}`, isCorrect: baseOrder === 1
+    })));
+    await items.update({ userId: actor.id, questionCode: question.questionCode }, { latestQuestionId: newVersion.questionId });
+
+    const resumed = data(await http('GET', attemptPath, actor));
+    assert.deepEqual(data(await http('POST', startPath, actor)), resumed);
+    assert.equal(resumed.answers[0].submissionId, slot.submissionId);
+    assert.equal(resumed.answers[0].sequenceNo, slot.sequenceNo);
+    assert.equal(resumed.answers[0].questionId, question.questionId);
+    assert.equal(resumed.answers[0].question.question, question.questionText);
+    assert.deepEqual(resumed.answers[0].question.choices.map(choice => choice.choiceId), choiceOrder);
+
+    const answer = { submissionId: slot.submissionId, questionId: slot.questionId, choiceId: slot.question.choices[0].choiceId };
+    const completed = data(await http('POST', `${attemptPath}/answers`, actor, answer));
+    assert.equal(completed.status, 'COMPLETED');
+    assert.equal(completed.answers[0].isSubmitted, true);
+    assert.equal(completed.result.isCorrect, true);
+    assert.equal(completed.result.explanation, question.explanation);
+    const duplicate = data(await http('POST', `${attemptPath}/answers`, actor, answer));
+    assert.equal(duplicate.result.duplicate, true);
+    assert.equal(duplicate.submittedCount, 1);
+    assert.equal((await http('POST', `${attemptPath}/answers`, actor, { ...answer, choiceId: choiceOrder[0] })).status, 409);
+
+    for (const q of questions.slice(0, 6)) data(await bookmark(actor, 'PUT', q.questionId));
+    const fresh = data(await http('POST', startPath, actor), 201);
+    assert.notEqual(fresh.reviewAttemptId, started.reviewAttemptId);
+    assert.equal(fresh.questionCount, 5);
+    assert.ok(fresh.answers.some(answer => answer.questionId === newVersion.questionId));
+    assert.equal(await missions.countBy({ userId: actor.id }), 0);
+  });
+
+  await t.test('a future list date cannot unlock an automatic mission before Seoul midnight', async testContext => {
+    const dueDate = seoulDatePlusDays(new Date(), 1);
+    const midnight = Date.parse(`${dueDate}T00:00:00+09:00`);
+    testContext.mock.timers.enable({ apis: ['Date'], now: midnight - 1 });
+    const actor = await user('서울예정일');
+    data(await bookmark(actor, 'PUT', questions[9].questionId));
+    const mission = await save(E.ReviewMission, {
+      userId: actor.id, conceptCode: concept.conceptCode, firstRegisteredAt: new Date(),
+      dueDate, targetQuestionCount: 1, status: 'SCHEDULED'
+    });
+    const missionPath = `/reviews/missions/${mission.missionId}`;
+    const preview = data(await http('GET', `/reviews/due?date=${dueDate}`, actor));
+    assert.equal(preview.items[0].status, 'SCHEDULED');
+    assert.equal(data(await http('GET', missionPath, actor)).status, 'SCHEDULED');
+    assert.equal((await http('POST', `${missionPath}/attempts`, actor)).status, 409);
+
+    // 이전 구현에서 미리 승격된 행도 예정일을 우회할 수 없다.
+    await missions.update(mission.missionId, { status: 'AVAILABLE' });
+    assert.equal((await http('POST', `${missionPath}/attempts`, actor)).status, 409);
+    assert.equal(await db.getRepository(E.ReviewAttempt).countBy({ userId: actor.id }), 0);
+    await missions.update(mission.missionId, { status: 'SCHEDULED' });
+
+    testContext.mock.timers.setTime(midnight);
+    const due = data(await http('GET', '/reviews/due', actor));
+    assert.equal(due.date, dueDate);
+    assert.equal(due.items[0].status, 'AVAILABLE');
+    data(await http('POST', `${missionPath}/attempts`, actor), 201);
+  });
+
+  await t.test('review rejects malformed questions and choices outside a saved slot', async () => {
+    const actor = await user('복습보기');
+    const question = await save(E.Question, {
+      questionCode: `WR-SLOT-${suffix}`, conceptId: concept.conceptId, questionText: '보기가 변경된 문항',
+      explanation: '테스트 해설',
+      generatedBy: 'MANUAL', status: 'PUBLISHED'
+    });
+    data(await bookmark(actor, 'PUT', question.questionId));
+    const attempts = db.getRepository(E.ReviewAttempt);
+    const slots = db.getRepository(E.ReviewSubmission);
+    const choices = db.getRepository(E.QuestionChoice);
+    assert.equal((await http('POST', '/reviews/attempts', actor)).status, 503);
+    assert.equal(await attempts.countBy({ userId: actor.id }), 0);
+
+    const [,,, replaced] = await choices.save([1, 2, 3, 4].map(baseOrder => ({
+      questionId: question.questionId, baseOrder, choiceText: `보기 ${baseOrder}`, isCorrect: baseOrder === 1
+    })));
+    const attempt = data(await http('POST', '/reviews/attempts', actor), 201);
+    const slot = attempt.answers[0];
+    await choices.delete(replaced.choiceId);
+    const replacement = await choices.save({
+      questionId: question.questionId, baseOrder: 4, choiceText: '바뀐 보기', isCorrect: false
+    });
+    const attemptPath = `/review-attempts/${attempt.reviewAttemptId}`;
+    const rejected = await http('POST', `${attemptPath}/answers`, actor, {
+      submissionId: slot.submissionId, questionId: slot.questionId, choiceId: replacement.choiceId
+    });
+    assert.equal(rejected.status, 422);
+    assert.equal((await slots.findOneByOrFail({ submissionId: slot.submissionId })).submittedAt, null);
+    assert.equal((await attempts.findOneByOrFail({ reviewAttemptId: attempt.reviewAttemptId })).submittedCount, 0);
+    assert.equal((await http('GET', attemptPath, actor)).status, 503);
+    await db.getRepository(E.Question).update(question.questionId, { status: 'RETIRED' });
   });
 
   // --------------------------------------------------
@@ -611,15 +729,26 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
       404
     );
 
-    const first = data(
-      await http('POST', startPath, actor),
-      201
-    );
+    const requests = await Promise.all(Array.from({ length: 3 }, () => http('POST', startPath, actor)));
+    assert.deepEqual(requests.map(response => response.status).sort(), [200, 200, 201]);
+    const first = data(requests.find(response => response.status === 201), 201);
+    for (const response of requests.filter(response => response.status === 200)) {
+      assert.deepEqual(data(response), first);
+    }
+    assert.deepEqual(data(await http('POST', startPath, actor)), first);
+    assert.equal(await db.getRepository(E.ReviewAttempt).countBy({ missionId: mission.missionId }), 1);
 
-    const unfinished = data(
-      await http('POST', startPath, actor),
-      201
-    );
+    // 이전 버전에서 이미 생성된 별도 진행 중 응시를 재현한다.
+    const unfinished = await save(E.ReviewAttempt, {
+      userId: actor.id, missionId: mission.missionId, conceptCode: concept.conceptCode,
+      reviewType: 'AUTO', entryPoint: 'HOME', status: 'IN_PROGRESS', questionCount: 1,
+    });
+    const originalSlot = await db.getRepository(E.ReviewSubmission).findOneByOrFail({ submissionId: first.answers[0].submissionId });
+    const unfinishedSlot = await save(E.ReviewSubmission, {
+      reviewAttemptId: unfinished.reviewAttemptId, reviewItemId: originalSlot.reviewItemId,
+      questionId: originalSlot.questionId, sequenceNo: originalSlot.sequenceNo,
+      displayedChoiceOrder: originalSlot.displayedChoiceOrder,
+    });
 
     const firstPath = `/review-attempts/${first.reviewAttemptId}`;
     const unfinishedPath = `/review-attempts/${unfinished.reviewAttemptId}`;
@@ -703,7 +832,7 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
       await http('POST', `${firstPath}/answers`, actor, correct),
       await http('POST', `${unfinishedPath}/answers`, actor, {
         ...baseAnswer,
-        submissionId: unfinished.answers[0].submissionId
+        submissionId: unfinishedSlot.submissionId
       })
     ]) {
       assert.equal(response.status, 404);
@@ -713,7 +842,7 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
     assert.equal(
       (await db.getRepository(E.ReviewSubmission)
         .findOneByOrFail({
-          submissionId: unfinished.answers[0].submissionId
+          submissionId: unfinishedSlot.submissionId
         })).submittedAt,
       null
     );
@@ -735,6 +864,17 @@ test('wrong answer collection with Express and isolated PostgreSQL', { skip: !co
         .countBy({ missionId: mission.missionId }),
       2
     );
+
+    await questionRepo.update(question.questionId, { status: 'PUBLISHED' });
+    const oldResult = data(await http('POST', `${unfinishedPath}/answers`, actor, {
+      ...baseAnswer, submissionId: unfinishedSlot.submissionId
+    }));
+    assert.equal(oldResult.status, 'COMPLETED');
+    assert.equal(oldResult.result.isCorrect, true);
+    assert.ok(Date.parse(oldResult.completedAt) > completedMission.completedAt.getTime());
+    const stillCompleted = await missions.findOneByOrFail({ missionId: mission.missionId });
+    assert.equal(stillCompleted.status, 'COMPLETED');
+    assert.equal(stillCompleted.completedAt.toISOString(), completedMission.completedAt.toISOString());
   });
 
   // --------------------------------------------------
