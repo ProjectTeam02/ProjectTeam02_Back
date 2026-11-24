@@ -12,6 +12,7 @@ function controller(service) {
     messages: asyncHandler(async (req, res) => res.json({ success: true, data: await service.messages(req.user.sub, req.params.id, req.pagination) })),
     sendMessage: asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await service.sendMessage(req.user.sub, req.body, req.get('idempotency-key')) })),
     usage: asyncHandler(async (req, res) => res.json({ success: true, data: await service.usage(req.user.sub) })),
+    personalization: asyncHandler(async (req, res) => res.json({ success: true, data: await service.personalization(req.user.sub, req.query) })),
   };
 }
 

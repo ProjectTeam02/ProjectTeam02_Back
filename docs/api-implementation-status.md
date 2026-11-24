@@ -14,6 +14,7 @@
 | GET | `/api/v1/tutor/conversations/{id}/messages` | IMPLEMENTED | `tutor.routes.js` | `tutor.controller.js` | 소유권 확인 후 메시지 조회 | TypeORM `ai_messages`/`ai_message_sources` | 빈 기록 조회 smoke 통과 | 없음 |
 | POST | `/api/v1/tutor/messages` | BLOCKED | `tutor.routes.js` | `tutor.controller.js` | quota 예약, History 구성, FastAPI 위임 | TypeORM `ai_*` 테이블 | 입력 검증만 통과 | OpenRouter/실제 RAG 호출 및 승인 문서 인덱스 필요 |
 | GET | `/api/v1/tutor/usage` | IMPLEMENTED | `tutor.routes.js` | `tutor.controller.js` | 서울 기준 일일 사용량 조회 | TypeORM `ai_requests` | usage smoke 통과 | 운영 동시성 부하 테스트 |
+| GET | `/api/v1/tutor/personalization` | IMPLEMENTED | `tutor.routes.js` | `tutor.controller.js` | 사용자별 취약도·미확정 오개념·승인 재평가 후보 | `learning.*`, `review.*`, `content.*` read-only query | 단위/계약 테스트 통과 | 실제 PostgreSQL 데이터 검증 필요 |
 | GET | `/api/v1/quizzes/generate` | PARTIAL | `quiz.routes.js` | `quiz.controller.js` | 승인 문제 조회, 정답 비노출 | TypeORM `questions`/`question_choices` | 승인 문제가 없는 환경에서 404 확인 | 학습 진도/AI 생성 정책과 승인 데이터 필요 |
 | POST | `/api/v1/quizzes/{id}/submit` | PARTIAL | `quiz.routes.js` | `quiz.controller.js` | 채점 트랜잭션, attempt/idempotency 중복 방지 | TypeORM `learning_attempts`/`question_submissions` | schema 및 중복 단위 테스트 통과 | EXP/Gold ledger 실제 ERD 연결 및 승인 문제 fixture 필요 |
 | PATCH | `/api/v1/users/me/notifications` | IMPLEMENTED | `user.routes.js` | `user.controller.js` | 본인 알림 설정 upsert | TypeORM `user_settings` | 설정 변경 smoke 통과 | 없음 |

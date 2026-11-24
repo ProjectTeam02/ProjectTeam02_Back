@@ -15,6 +15,7 @@
  * summaryUntilSeq  number | null    ┘
  * context          TutorLearningContext | null
  * knowledgeScope   { conceptCodes: string[] } | null
+ * personalizedContext Backend-calculated learner signals | null
  * verifiedContext  Backend-verified concept/source/prerequisite boundary | null
  */
 const MAX_HISTORY = 50;
@@ -27,7 +28,7 @@ function historyItems(rows) {
     .map(row => ({ sequenceNo: row.sequenceNo, role: row.role, content: row.content.trim().slice(0, MAX_CONTENT) }));
 }
 
-function build({ requestId, conversation, userId, input, historyRows, verifiedContext = null }) {
+function build({ requestId, conversation, userId, input, historyRows, verifiedContext = null, personalizedContext = null }) {
   const summary = conversation.summary && conversation.summaryUntilSeq ? conversation.summary : null;
   return {
     requestId,
@@ -40,6 +41,7 @@ function build({ requestId, conversation, userId, input, historyRows, verifiedCo
     summaryUntilSeq: summary ? conversation.summaryUntilSeq : null,
     context: input.context ?? null,
     knowledgeScope: input.knowledgeScope ?? null,
+    ...(personalizedContext ? { personalizedContext } : {}),
     ...(verifiedContext ? { verifiedContext } : {}),
   };
 }

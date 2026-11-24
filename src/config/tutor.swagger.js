@@ -73,6 +73,21 @@ const schemas = {
     type: 'object', required: ['dailyLimit', 'used', 'remaining'],
     properties: { dailyLimit: { type: 'integer' }, used: { type: 'integer' }, remaining: { type: 'integer' } },
   },
+  TutorPersonalization: {
+    type: 'object',
+    properties: {
+      verificationStatus: { type: 'string', nullable: true },
+      personalizedContext: { type: 'object', nullable: true, description: 'Backend가 계산한 취약도·오개념 가설·교수 전략' },
+      recommendation: {
+        type: 'object', nullable: true,
+        properties: {
+          conceptCode: { type: 'string' }, weaknessScore: { type: 'number', minimum: 0, maximum: 1 },
+          reason: { type: 'string' }, action: { type: 'string' },
+        },
+      },
+      reassessmentQuestions: { type: 'array', items: { type: 'object' } },
+    },
+  },
   TutorSendResult: {
     type: 'object', required: ['userMessage', 'assistantMessage', 'quota'],
     properties: {
@@ -117,6 +132,17 @@ const paths = {
   },
   '/api/v1/tutor/usage': {
     get: { tags: ['AI Tutor'], security: bearer, summary: '오늘 AI 사용량', responses: { 200: ok('사용량', ref('TutorUsage')), 401: error } },
+  },
+  '/api/v1/tutor/personalization': {
+    get: {
+      tags: ['AI Tutor'], security: bearer, summary: '취약도·오개념 가설·다음 복습 조회',
+      parameters: [
+        { name: 'conceptCode', in: 'query', schema: { type: 'string', maxLength: 30 } },
+        { name: 'conceptId', in: 'query', schema: uuid },
+        { name: 'stageId', in: 'query', schema: uuid },
+      ],
+      responses: { 200: ok('개인화 Context와 승인된 재평가 문항 후보', ref('TutorPersonalization')), 401: error, 422: error },
+    },
   },
 };
 

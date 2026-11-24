@@ -20,4 +20,5 @@ router.get('/conversations', validate(schema.list), paginationMiddleware, contro
 router.get('/conversations/:id/messages', validate(schema.messages), paginationMiddleware, controller.messages);
 router.post('/messages', validate(schema.message), controller.sendMessage);
 router.get('/usage', controller.usage);
+router.get('/personalization', validate(schema.personalization), controller.personalization);
 module.exports = router;

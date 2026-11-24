@@ -16,6 +16,7 @@ const messageDto = require('./dto/tutorResponse.dto');
 const aiRequestDto = require('./dto/aiInternalRequest.dto');
 const aiResponseDto = require('./dto/aiInternalResponse.dto');
 const verifiedContextRepository = require('./verified-context.repository');
+const personalizationService = require('./personalization/service');
 
 // #99 같은 대화방·같은 사용자 요청을 트랜잭션 안에서 순서대로 처리 (트랜잭션이 끝나면 자동 해제)
 async function advisoryLock(manager, key) {
@@ -109,7 +110,22 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           const verifiedContext = conceptId || conceptCode
             ? await verifiedContextRepository.verifiedContext(manager, { conceptId, conceptCode })
             : null;
-          aiRequest = aiRequestDto.build({ requestId, conversation, userId, input, historyRows, verifiedContext });
+          let personalizedContext = null;
+          try {
+            const personalization = await personalizationService.buildTutorPersonalization(manager, {
+              userId,
+              conceptCode: conceptCode || verifiedContext?.conceptCode || null,
+              conceptId,
+              stageId: input.context?.stageId || null,
+              verifiedContext,
+            });
+            personalizedContext = personalization.personalizedContext;
+          } catch (error) {
+            // Personalization is an optional read path. A data-shape/query issue
+            // must not turn a safe, otherwise valid Tutor request into a failure.
+            console.warn('tutor personalization unavailable', error.name);
+          }
+          aiRequest = aiRequestDto.build({ requestId, conversation, userId, input, historyRows, verifiedContext, personalizedContext });
           userMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, sequenceNo, role: 'USER', content: input.question, clientMessageId, requestId, status: 'PENDING', contextStageId: input.context?.stageId || null, contextConceptId: input.context?.conceptId || null }));
           assistantMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, parentMessageId: userMessage.messageId, sequenceNo: sequenceNo + 1, role: 'ASSISTANT', content: '', requestId, status: 'PENDING' }));
         });
@@ -150,6 +166,29 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
       }
     },
     usage: async (userId) => messageDto.usage(await quota.usage(userId)),
+    async personalization(userId, query = {}) {
+      return dataSource.transaction(async manager => {
+        const verifiedContext = query.conceptId || query.conceptCode
+          ? await verifiedContextRepository.verifiedContext(manager, {
+            conceptId: query.conceptId,
+            conceptCode: query.conceptCode,
+          })
+          : null;
+        const result = await personalizationService.buildTutorPersonalization(manager, {
+          userId,
+          conceptCode: query.conceptCode || verifiedContext?.conceptCode || null,
+          conceptId: query.conceptId || null,
+          stageId: query.stageId || null,
+          verifiedContext,
+        });
+        return {
+          verificationStatus: verifiedContext?.verificationStatus || null,
+          personalizedContext: result.personalizedContext,
+          recommendation: result.recommendation,
+          reassessmentQuestions: result.reassessmentQuestions,
+        };
+      });
+    },
   };
 }
 

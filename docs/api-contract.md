@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | Auth | POST | `/api/v1/auth/signup`, `/login`, `/refresh`, `/logout`, `/kakao` |
 | Users | GET/PATCH | `/api/v1/users/me`, `/api/v1/users/me/notifications` |
-| Tutor | GET/POST | `/api/v1/tutor/conversations`, `/api/v1/tutor/messages`, `/api/v1/tutor/usage` |
+| Tutor | GET/POST | `/api/v1/tutor/conversations`, `/api/v1/tutor/messages`, `/api/v1/tutor/usage`, `/api/v1/tutor/personalization` |
 | Quiz | GET/POST | `/api/v1/quizzes/generate`, `/api/v1/quizzes/{id}/submit` |
 | Health | GET | `/health`, `/api/v1/health/ready`, `/api/v1/health/dependencies` |
 
@@ -45,9 +45,17 @@ x-internal-api-key: <FASTAPI_INTERNAL_TOKEN>
   "summary": null,
   "summaryUntilSeq": null,
   "context": {},
-  "knowledgeScope": {}
+  "knowledgeScope": {},
+  "personalizedContext": {},
+  "verifiedContext": {}
 }
 ```
+
+`personalizedContext`는 Backend가 인증된 사용자의 학습·복습 제출 기록에서
+계산한 취약도와 미확정 오개념 가설이다. `verifiedContext`는 승인된 개념·출처·
+선수 관계 경계이며, AI는 `VERIFIED` 상태의 source document ID만 검색한다.
+`GET /api/v1/tutor/personalization`에서 같은 Context와 승인된 재평가 문항 후보를
+조회할 수 있다. 기존 복습 답안 저장 후 다음 요청에서 취약도가 다시 계산된다.
 
 FastAPI 응답의 `answer`, `rewrittenQuery`, `groundingStatus`, `historyFromSeq`, `sources`, `usage`를 그대로 보존하여 Node.js 소유 AI 테이블에 저장한다. FastAPI가 응답하지 않거나 5초 timeout이 발생하면 외부 API에는 HTTP 503과 `튜터가 바쁩니다`를 반환한다.
 
