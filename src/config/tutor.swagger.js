@@ -107,6 +107,7 @@ const paths = {
       tags: ['AI Tutor'], security: bearer, summary: 'AI 튜터 질문',
       description: 'context.conceptCode와 knowledgeScope.conceptCodes는 공개(PUBLISHED)된 개념 코드만 허용합니다. '
         + 'context.conceptId와 context.conceptCode를 함께 보내면 같은 개념이어야 합니다. '
+        + 'context.attemptId를 보내면 로그인한 사용자의 학습 응시여야 하며, 찾을 수 없으면 404를 반환합니다. '
         + '서버 설정(TUTOR_PERSONALIZATION_ENABLED)이 켜져 있으면 학습 기록 기반 개인화 정보를 AI 서버에 함께 보냅니다 (앱 요청 형식은 같음).',
       parameters: [{ name: 'Idempotency-Key', in: 'header', schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'clientMessageId가 없을 때 중복 방지 키로 사용' }],
       requestBody: { required: true, content: { 'application/json': { schema: ref('TutorMessageRequest') } } },

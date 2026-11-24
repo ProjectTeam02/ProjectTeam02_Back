@@ -54,9 +54,10 @@ WITH refs AS (
   FROM content.concepts c
 )
 SELECT r.concept_code, r.document_id,
-       d.concept_id AS doc_side_concept                  -- 문서 쪽에 적힌 값 (null 포함)
+       d.concept_id AS doc_side_concept
 FROM refs r
 JOIN ai.rag_documents d ON d.document_id = r.document_id
-WHERE d.concept_id IS DISTINCT FROM r.concept_id::text   -- UUID로도
+WHERE d.concept_id IS NOT NULL                         -- 역방향 연결이 있는 문서만 비교
+  AND d.concept_id IS DISTINCT FROM r.concept_id::text   -- UUID로도
   AND d.concept_id IS DISTINCT FROM r.concept_code       -- 코드로도 안 맞음
 ORDER BY r.concept_code;
