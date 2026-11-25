@@ -15,7 +15,10 @@ function aiAnswer(requestId, overrides = {}) {
   };
 }
 
-function fakeDataSource({ concepts = [] } = {}) {
+function fakeDataSource({
+  concepts = [],
+  approvedDocuments = [{ document_id: 'doc-1', review_status: 'approved' }],
+} = {}) {
   const tables = new Map([[AiConversation, []], [AiMessage, []], [AiMessageSource, []], [AiRequest, []], [Concept, concepts]]);
   const keyOf = new Map([[AiConversation, 'conversationId'], [AiMessage, 'messageId'], [AiMessageSource, 'messageSourceId'], [AiRequest, 'requestId'], [Concept, 'conceptId']]);
   const matches = (row, where = {}) => Object.entries(where).every(([key, value]) => {
@@ -53,7 +56,17 @@ function fakeDataSource({ concepts = [] } = {}) {
       count: async ({ where }) => rows.filter(row => row.userId === where.userId).length,
     };
   };
-  const manager = { getRepository: repo };
+  const manager = {
+    getRepository: repo,
+    async query(sql, parameters = []) {
+      if (/pg_advisory_xact_lock/i.test(sql)) return [];
+      if (/FROM\s+ai\.rag_documents/i.test(sql)) {
+        const ids = parameters[0] || [];
+        return approvedDocuments.filter(row => ids.includes(row.document_id));
+      }
+      throw new Error('Unexpected SQL in tutor fake');
+    },
+  };
   return { tables, manager, transaction: async fn => fn(manager) };
 }
 
