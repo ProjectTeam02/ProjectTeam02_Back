@@ -98,6 +98,16 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
       if (attemptId && !(await repoFor(LearningAttempt).existsBy({ attemptId, userId }))) {
         throw AppError.notFound('학습 응시를 찾을 수 없습니다.');
       }
+      const questionId = input.context?.questionId;
+      if (questionId && attemptId) {
+        await require('./attemptQuestion').assertOwnedTutorAttemptQuestion(
+          dataSource.manager, userId, attemptId, questionId
+        );
+      } else if (questionId) {
+        await require('./eligibleQuestion').assertEligibleTutorQuestion(
+          dataSource.manager, questionId
+        );
+      }
       const clientMessageId = input.clientMessageId || idempotencyKey || null;
       const messageRepo = repoFor(AiMessage);
       if (clientMessageId) {
