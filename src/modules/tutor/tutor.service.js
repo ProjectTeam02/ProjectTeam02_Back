@@ -15,6 +15,7 @@ const conversationDto = require('./dto/conversationResponse.dto');
 const messageDto = require('./dto/tutorResponse.dto');
 const aiRequestDto = require('./dto/aiInternalRequest.dto');
 const aiResponseDto = require('./dto/aiInternalResponse.dto');
+const { assertApprovedTutorSources } = require('./approvedSources');
 const personalizedDto = require('./dto/aiPersonalizedContext.dto');
 const { assertKnownConcepts } = require('./conceptScope');
 const { personalizationProvider } = require('./personalization');
@@ -144,6 +145,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
         const completedAt = new Date();
         // (3) 한 트랜잭션: 답변·근거·요청 기록·대화방 시각 저장
         await dataSource.transaction(async (manager) => {
+          await assertApprovedTutorSources(manager, answer.sources);
           const messages = repoFor(AiMessage, manager);
           const answerPatch = { content: answer.answer, rewrittenQuery: answer.rewrittenQuery || null, historyFromSeq: answer.historyFromSeq || null, groundingStatus: answer.groundingStatus || null, status: 'COMPLETED', completedAt };
           await messages.update({ messageId: assistantMessage.messageId }, answerPatch);
