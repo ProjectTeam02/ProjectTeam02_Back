@@ -5,6 +5,11 @@
 const AppError = require('../../common/errors/AppError');
 const { assertEligibleTutorQuestion } = require('./eligibleQuestion');
 
+function currentQuestionOrder(attempt) {
+  const order = attempt.submittedCount + 1;
+  return Number.isSafeInteger(order) && order >= 1 && order <= attempt.maxQuestionCount ? order : null;
+}
+
 async function assertOwnedTutorAttemptQuestion(manager, userId, attemptId, questionId) {
   const unavailable = () => AppError.notFound('해당 응시에서 확인할 수 있는 문항이 아닙니다.');
   const repository = entity => manager.getRepository(entity);
@@ -24,9 +29,8 @@ async function assertOwnedTutorAttemptQuestion(manager, userId, attemptId, quest
   const stage = await repository(Stage).findOneBy({ stageId: attempt.stageId });
   if (!stage || !['NORMAL', 'BOSS'].includes(stage.stageType)) throw unavailable();
 
-  const questionOrder = attempt.submittedCount + 1;
-  if (!Number.isSafeInteger(questionOrder) || questionOrder < 1 ||
-      questionOrder > attempt.maxQuestionCount) throw unavailable();
+  const questionOrder = currentQuestionOrder(attempt);
+  if (questionOrder === null) throw unavailable();
 
   if (stage.stageType === 'BOSS') {
     const snapshots = repository(BossAttemptQuestion);
@@ -45,4 +49,4 @@ async function assertOwnedTutorAttemptQuestion(manager, userId, attemptId, quest
   return question;
 }
 
-module.exports = { assertOwnedTutorAttemptQuestion };
+module.exports = { assertOwnedTutorAttemptQuestion, currentQuestionOrder };

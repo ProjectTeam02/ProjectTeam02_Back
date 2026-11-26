@@ -17,7 +17,9 @@
  * knowledgeScope   { conceptCodes: string[] } | null
  * personalizedContext  PersonalizedTutorContext   (#171 선택. 값이 있을 때만 키를 넣는다 → 이 필드를 모르는 예전 AI 서버도 그대로 동작)
  *                      형식 검사: dto/aiPersonalizedContext.dto.js
+ * eligibleQuestionCandidates #43에서 지원. 메타데이터 플래그가 켜졌을 때만 보낸다.
  */
+const metadataDto = require('./tutorMetadata.dto');
 const MAX_HISTORY = 50;
 const MAX_CONTENT = 4000;
 
@@ -28,7 +30,7 @@ function historyItems(rows) {
     .map(row => ({ sequenceNo: row.sequenceNo, role: row.role, content: row.content.trim().slice(0, MAX_CONTENT) }));
 }
 
-function build({ requestId, conversation, userId, input, historyRows, personalizedContext = null }) {
+function build({ requestId, conversation, userId, input, historyRows, personalizedContext = null, eligibleQuestionCandidates }) {
   const summary = conversation.summary && conversation.summaryUntilSeq ? conversation.summary : null;
   return {
     requestId,
@@ -42,6 +44,7 @@ function build({ requestId, conversation, userId, input, historyRows, personaliz
     context: input.context ?? null,
     knowledgeScope: input.knowledgeScope ?? null,
     ...(personalizedContext ? { personalizedContext } : {}),
+    ...(eligibleQuestionCandidates === undefined ? {} : { eligibleQuestionCandidates: metadataDto.candidates(eligibleQuestionCandidates) }),
   };
 }
 

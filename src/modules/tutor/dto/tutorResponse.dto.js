@@ -40,7 +40,7 @@ function source(entity) {
   };
 }
 
-function message(entity, sources = []) {
+function message(entity, sources = [], metadataEnabled = false) {
   const isAssistant = entity.role === 'ASSISTANT';
   return {
     messageId: entity.messageId,
@@ -54,12 +54,14 @@ function message(entity, sources = []) {
     createdAt: iso(entity.createdAt),
     completedAt: iso(entity.completedAt),
     sources: isAssistant ? [...sources].sort((a, b) => a.rank - b.rank).map(source) : [],
+    ...(isAssistant && metadataEnabled && entity.tutoringMeta ? { tutoringMeta: entity.tutoringMeta } : {}),
+    ...(isAssistant && metadataEnabled && entity.proposedAction ? { proposedAction: entity.proposedAction } : {}),
   };
 }
 
-function list({ items, total }, sourcesByMessage, { page, pageSize }) {
+function list({ items, total }, sourcesByMessage, { page, pageSize }, metadataEnabled) {
   return {
-    items: items.map(item => message(item, sourcesByMessage.get(item.messageId) || [])),
+    items: items.map(item => message(item, sourcesByMessage.get(item.messageId) || [], metadataEnabled)),
     total, page, pageSize,
   };
 }
@@ -70,10 +72,10 @@ function quota(reserved, dailyLimit) {
   return { dailyLimit, used: reserved.used + 1, remaining: reserved.remaining };
 }
 
-function sendResult({ userMessage, assistantMessage, assistantSources, reserved, dailyLimit, duplicate = false }) {
+function sendResult({ userMessage, assistantMessage, assistantSources, reserved, dailyLimit, duplicate = false, metadataEnabled }) {
   return {
     userMessage: message(userMessage),
-    assistantMessage: message(assistantMessage, assistantSources),
+    assistantMessage: message(assistantMessage, assistantSources, metadataEnabled),
     quota: duplicate ? null : quota(reserved, dailyLimit),
     ...(duplicate ? { duplicate: true } : {}),
   };

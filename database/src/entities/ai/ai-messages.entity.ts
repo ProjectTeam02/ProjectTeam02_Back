@@ -74,6 +74,12 @@ export class AiMessage {
   @Column({ name: 'content', type: 'text' })
   content!: string;
 
+  @Column({ name: 'tutoring_meta', type: 'jsonb', nullable: true })
+  tutoringMeta!: Record<string, unknown> | null;
+
+  @Column({ name: 'proposed_action', type: 'jsonb', nullable: true })
+  proposedAction!: Record<string, unknown> | null;
+
   /** USER 메시지: 이전 대화를 반영해 다시 쓴 검색 쿼리 (FastAPI 응답) */
   @Column({ name: 'rewritten_query', type: 'text', nullable: true })
   rewrittenQuery!: string | null;
