@@ -19,6 +19,7 @@ const { assertApprovedTutorSources } = require('./approvedSources');
 const personalizedDto = require('./dto/aiPersonalizedContext.dto');
 const { assertKnownConcepts } = require('./conceptScope');
 const { personalizationProvider } = require('./personalization');
+const recommendation = require('./recommendation');
 
 // #99 같은 대화방·같은 사용자 요청을 트랜잭션 안에서 순서대로 처리 (트랜잭션이 끝나면 자동 해제)
 async function advisoryLock(manager, key) {
@@ -47,6 +48,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
   const repoFor = (entity, manager = dataSource.manager) => manager.getRepository(entity);
   const personalization = options.personalization === undefined ? personalizationProvider() : options.personalization;
   const personalizationEnabled = options.personalizationEnabled ?? env.tutorPersonalizationEnabled;
+  const metadataEnabled = options.metadataEnabled ?? env.tutorMetadataEnabled;
 
   // #171 개인화 정보는 선택 사항: 못 만들거나 계약에 맞지 않으면 개인화 없이 기본 튜터 흐름으로 보낸다
   async function personalizedContextFor(userId, input) {
@@ -88,7 +90,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
       await ownedConversation(userId, conversationId);
       const repo = repoFor(AiMessage);
       const [items, total] = await repo.findAndCount({ where: { conversationId }, order: { sequenceNo: 'ASC' }, skip, take });
-      return messageDto.list({ items, total }, await sourcesFor(items, dataSource.manager), { page, pageSize });
+      return messageDto.list({ items, total }, await sourcesFor(items, dataSource.manager), { page, pageSize }, metadataEnabled);
     },
     async sendMessage(userId, input, idempotencyKey) {
       const conversation = await ownedConversation(userId, input.conversationId);
@@ -117,7 +119,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           const assistant = await messageRepo.findOneBy({ conversationId: conversation.conversationId, parentMessageId: previous.messageId, role: 'ASSISTANT' });
           if (assistant?.status === 'COMPLETED') {
             const sources = await sourcesFor([assistant], dataSource.manager);
-            return messageDto.sendResult({ userMessage: previous, assistantMessage: assistant, assistantSources: sources.get(assistant.messageId) || [], duplicate: true });
+            return messageDto.sendResult({ userMessage: previous, assistantMessage: assistant, assistantSources: sources.get(assistant.messageId) || [], duplicate: true, metadataEnabled });
           }
           if (previous.status === 'FAILED' || assistant?.status === 'FAILED') {
             throw AppError.conflict('이전 요청이 실패했습니다. 새 clientMessageId로 다시 요청해 주세요.');
@@ -130,6 +132,9 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
       //   같은 대화방 요청은 잠금으로 순서대로 처리하고, 이미 답변 생성 중이면 uq_ai_messages_one_pending_answer로 409
       const requestId = crypto.randomUUID();
       const personalizedContext = await personalizedContextFor(userId, input);
+      const recommendationContext = metadataEnabled
+        ? await recommendation.prepare(dataSource.manager, userId, input.context, personalizedContext) : null;
+      const aiInput = recommendationContext ? { ...input, context: recommendationContext.context } : input;
       let quotaResult, aiRequest, userMessage, assistantMessage;
       try {
         await dataSource.transaction(async (manager) => {
@@ -140,8 +145,10 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           const sequenceNo = last ? last.sequenceNo + 1 : 1;
           // 이전 대화는 완료된 메시지만 보낸다 (실패·처리 중 메시지 제외). 최근 50개를 가져와 오래된 순으로 되돌린다
           const historyRows = (await messages.find({ where: { conversationId: conversation.conversationId, status: 'COMPLETED' }, order: { sequenceNo: 'DESC' }, take: aiRequestDto.MAX_HISTORY })).reverse();
-          aiRequest = aiRequestDto.build({ requestId, conversation, userId, input, historyRows, personalizedContext });
-          userMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, sequenceNo, role: 'USER', content: input.question, clientMessageId, requestId, status: 'PENDING', contextStageId: input.context?.stageId || null, contextConceptId: input.context?.conceptId || null }));
+          aiRequest = aiRequestDto.build({ requestId, conversation, userId, input: aiInput, historyRows,
+            personalizedContext: recommendationContext ? recommendationContext.personalizedContext : personalizedContext,
+            eligibleQuestionCandidates: recommendationContext?.candidates });
+          userMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, sequenceNo, role: 'USER', content: input.question, clientMessageId, requestId, status: 'PENDING', contextStageId: aiInput.context?.stageId || null, contextConceptId: input.context?.conceptId || null }));
           assistantMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, parentMessageId: userMessage.messageId, sequenceNo: sequenceNo + 1, role: 'ASSISTANT', content: '', requestId, status: 'PENDING' }));
         });
       } catch (error) {
@@ -151,13 +158,15 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
 
       // (2) AI 호출은 트랜잭션 밖에서
       try {
-        const answer = aiResponseDto.parse(await aiClient.answer(aiRequest), requestId);
+        const answer = aiResponseDto.parse(await aiClient.answer(aiRequest), requestId, metadataEnabled);
         const completedAt = new Date();
         // (3) 한 트랜잭션: 답변·근거·요청 기록·대화방 시각 저장
         await dataSource.transaction(async (manager) => {
           await assertApprovedTutorSources(manager, answer.sources);
+          if (metadataEnabled) await recommendation.validate(manager, userId, aiRequest, answer);
           const messages = repoFor(AiMessage, manager);
-          const answerPatch = { content: answer.answer, rewrittenQuery: answer.rewrittenQuery || null, historyFromSeq: answer.historyFromSeq || null, groundingStatus: answer.groundingStatus || null, status: 'COMPLETED', completedAt };
+          const answerPatch = { content: answer.answer, rewrittenQuery: answer.rewrittenQuery || null, historyFromSeq: answer.historyFromSeq || null, groundingStatus: answer.groundingStatus || null, status: 'COMPLETED', completedAt,
+            ...(metadataEnabled ? { tutoringMeta: answer.tutoringMeta, proposedAction: answer.proposedAction } : {}) };
           await messages.update({ messageId: assistantMessage.messageId }, answerPatch);
           Object.assign(assistantMessage, answerPatch);
           const sourceRepo = repoFor(AiMessageSource, manager);
@@ -170,7 +179,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           await repoFor(AiRequest, manager).update({ requestId }, { status: 'SUCCEEDED', modelId: usage.modelId, embeddingModelId: usage.embeddingModelId, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, latencyMs: usage.latencyMs, cacheHit: usage.cacheHit, retrievalStrategy: usage.retrievalStrategy, estimatedCost: usage.estimatedCost == null ? null : String(usage.estimatedCost), currency: usage.currency, completedAt });
           await repoFor(AiConversation, manager).update({ conversationId: conversation.conversationId }, { updatedAt: completedAt });
         });
-        return messageDto.sendResult({ userMessage, assistantMessage, assistantSources: answer.sources, reserved: quotaResult, dailyLimit: env.aiDailyLimit });
+        return messageDto.sendResult({ userMessage, assistantMessage, assistantSources: answer.sources, reserved: quotaResult, dailyLimit: env.aiDailyLimit, metadataEnabled });
       } catch (error) {
         // (4) 실패: 두 메시지 FAILED, 요청 기록 FAILED (실패 요청은 일일 한도에서 빠진다)
         const errorCode = error.code || 'AI_UNAVAILABLE';
