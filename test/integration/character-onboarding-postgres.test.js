@@ -13,15 +13,20 @@ const selectPath = '/api/v1/users/me/character-class';
 const profilePath = '/api/v1/users/me';
 
 test('character onboarding API against isolated PostgreSQL', { skip: !config, timeout: 120000 }, async t => {
-  const { name, port, password } = JSON.parse(config);
-  assert.match(name, /^leren-character-it-[0-9a-f]{8}$/);
-  const [container] = JSON.parse(execFileSync('docker', ['inspect', name], { encoding: 'utf8' }));
-  assert.equal(container.Config.Labels['codex.purpose'], 'leren-character-onboarding-integration');
-  assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
-  assert.equal(container.HostConfig.AutoRemove, true);
-  assert.deepEqual(container.NetworkSettings.Ports['5432/tcp'], [{ HostIp: '127.0.0.1', HostPort: String(port) }]);
+  const { name, port, password, username = 'postgres' } = JSON.parse(config);
+  // 로컬(run-character-onboarding-postgres.ps1)은 전용 임시 컨테이너인지 확인. GitHub Actions(CI=true)는 job 전용 PostgreSQL 서비스라 생략
+  if (process.env.CI !== 'true') {
+    assert.match(name, /^leren-character-it-[0-9a-f]{8}$/);
+    const [container] = JSON.parse(execFileSync('docker', ['inspect', name], { encoding: 'utf8' }));
+    assert.equal(container.Config.Labels['codex.purpose'], 'leren-character-onboarding-integration');
+    assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
+    assert.equal(container.HostConfig.AutoRemove, true);
+    assert.deepEqual(container.NetworkSettings.Ports['5432/tcp'], [{ HostIp: '127.0.0.1', HostPort: String(port) }]);
+  }
 
-  const { AppDataSource: db, CharacterClass, User, UserCharacter, UserSession } = require('@leren/database');
+  const {
+    AppDataSource: db, CharacterClass, Costume, User, UserCharacter, UserCostume, UserEquippedCostume, UserSession,
+  } = require('@leren/database');
   const env = require('../../src/config/env');
   const previous = { ...db.options };
   const secrets = { jwtAccessSecret: env.jwtAccessSecret, jwtRefreshSecret: env.jwtRefreshSecret };
@@ -33,7 +38,7 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
     Object.assign(env, secrets);
   });
   db.setOptions({
-    host: '127.0.0.1', port, username: 'postgres', password, database: 'leren_character_it',
+    host: '127.0.0.1', port, username, password, database: 'leren_character_it',
     ssl: false, synchronize: false, migrationsRun: false, logging: false,
     migrations: [path.resolve(__dirname, '../../database/dist/migrations/*.js')],
     extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public' },
@@ -43,7 +48,8 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
   assert.equal(database.name, 'leren_character_it');
   assert.equal(database.users, null);
   t.diagnostic(database.version);
-  await db.query('CREATE SCHEMA app');
+  // #98 이후 마이그레이션은 영역별 스키마가 먼저 있어야 함 (운영·CI와 같은 초기화 SQL)
+  await db.query(readFileSync(path.resolve(__dirname, '../../database/sql/init/01_app_schema.sql'), 'utf8'));
   await db.runMigrations();
 
   env.jwtAccessSecret = randomBytes(32).toString('hex');
@@ -52,6 +58,9 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
   const users = db.getRepository(User);
   const classes = db.getRepository(CharacterClass);
   const selections = db.getRepository(UserCharacter);
+  const owned = db.getRepository(UserCostume);
+  const equipment = db.getRepository(UserEquippedCostume);
+  const defaultOutfit = async classCode => (await classes.findOneByOrFail({ classCode })).defaultItemId;
   async function learner(nickname) {
     const user = await users.save({ nickname });
     const session = await db.getRepository(UserSession).save({
@@ -116,15 +125,28 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
     assert.equal(selection.classId, expected.classId);
     assert.ok(selection.firstSelectedAt instanceof Date);
     assert.deepEqual(user.onboardingCompletedAt, selection.firstSelectedAt);
+    const outfit = await defaultOutfit('WARRIOR');
+    assert.deepEqual((await owned.findBy(where)).map(row => [row.itemId, row.acquireType, row.coinLedgerId]),
+      [[outfit, 'DEFAULT', null]]);
+    assert.deepEqual((await equipment.findBy(where)).map(row => [row.category, row.itemId]), [['OUTFIT', outfit]]);
 
     assert.deepEqual(await pick(owner.token, 'WARRIOR'), result);
     assert.equal((await pick(owner.token, 'MAGE')).status, 409);
     assert.equal(await selections.countBy(where), 1);
+    assert.equal(await owned.countBy(where), 1);
+    assert.deepEqual((await equipment.findBy(where)).map(row => row.itemId), [outfit]);
     assert.deepEqual(await selections.findOneByOrFail(where), selection);
     assert.deepEqual((await users.findOneByOrFail(where)).onboardingCompletedAt, user.onboardingCompletedAt);
     const profile = await request(profilePath, { token: owner.token });
     assert.equal(profile.status, 200);
     assert.deepEqual(profile.body.data.characterClass, expected);
+    assert.deepEqual(profile.body.data.equippedCostumes, [
+      { category: 'OUTFIT', itemId: outfit, name: '검사 기본 한벌옷', imageKey: null },
+    ]);
+    const inventory = await request('/api/v1/inventory', { token: owner.token });
+    assert.deepEqual(inventory.body.data.equipped, [{ category: 'OUTFIT', itemId: outfit }]);
+    assert.equal((await request('/api/v1/shop/costumes', { token: owner.token })).body.data.items
+      .some(item => item.itemId === outfit), false);
     assert.equal(profile.body.data.email, null);
     assert.equal((await request(profilePath, { token: other.token })).body.data.characterClass, null);
   });
@@ -160,6 +182,9 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
     const winner = results.find(result => result.status === 200).body.data.characterClass;
     assert.equal(await selections.countBy({ userId: racer.userId }), 1);
     assert.equal((await selections.findOneByOrFail({ userId: racer.userId })).classId, winner.classId);
+    const winnerOutfit = await defaultOutfit(winner.classCode);
+    assert.deepEqual((await owned.findBy({ userId: racer.userId })).map(row => row.itemId), [winnerOutfit]);
+    assert.deepEqual((await equipment.findBy({ userId: racer.userId })).map(row => row.itemId), [winnerOutfit]);
     assert.deepEqual((await request(profilePath, { token: racer.token })).body.data.characterClass, winner);
   });
 
@@ -171,11 +196,24 @@ test('character onboarding API against isolated PostgreSQL', { skip: !config, ti
     try {
       assert.equal((await pick(other.token, 'MAGE')).status, 503);
       assert.equal(await selections.countBy({ userId: other.userId }), 0);
+      assert.equal(await owned.countBy({ userId: other.userId }), 0);
+      assert.equal(await equipment.countBy({ userId: other.userId }), 0);
       assert.equal((await users.findOneByOrFail({ userId: other.userId })).onboardingCompletedAt, null);
     } finally {
       await db.query('DROP TRIGGER reject_test_onboarding ON account.users');
       await db.query('DROP FUNCTION app.reject_test_onboarding()');
     }
+  });
+
+  await t.test('keeps an outfit that is already equipped and still grants the class default', async () => {
+    const dresser = await learner('class dresser');
+    const robe = await db.getRepository(Costume).save({ costumeCode: 'ONBOARDING-ROBE', name: 'robe', category: 'OUTFIT' });
+    await owned.save({ userId: dresser.userId, itemId: robe.itemId, acquireType: 'DEFAULT' });
+    await equipment.save({ userId: dresser.userId, category: 'OUTFIT', itemId: robe.itemId });
+    assert.equal((await pick(dresser.token, 'MAGE')).status, 200);
+    const outfit = await defaultOutfit('MAGE');
+    assert.deepEqual((await owned.findBy({ userId: dresser.userId })).map(row => row.itemId).sort(), [robe.itemId, outfit].sort());
+    assert.deepEqual((await equipment.findBy({ userId: dresser.userId })).map(row => row.itemId), [robe.itemId]);
   });
 
   await t.test('email signup and login preserve onboarding state across sessions', async () => {

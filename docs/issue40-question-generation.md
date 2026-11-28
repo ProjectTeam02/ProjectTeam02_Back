@@ -97,11 +97,41 @@ AI PR #22의 EvidenceSource는 source_id와 document_id를 구분한다. 응답�
 - `QUESTION_GENERATION_ENABLED=false` 기본값. 실제 비용 승인 전 유지.
 - `QUESTION_GENERATION_EVIDENCE_PATH`: 서버 승인 코퍼스 파일 경로.
 - `QUESTION_GENERATION_TIMEOUT_MS=120000`: 생성 전용 타임아웃.
+- `QUESTION_GENERATION_MAX_COUNT=20`: 한 번에 생성할 최대 문제 수. AI 서버 `QUESTION_MAX_COUNT`(기본 20)와
+  같은 값으로 둔다. 넘으면 작업 예약·AI 호출 없이 422를 반환하므로 같은 키로 다시 보낼 수 있다.
+  (1~100 밖이거나 숫자가 아니면 20)
 - 기존 `FASTAPI_BASE_URL`, `FASTAPI_INTERNAL_TOKEN`, `QUESTION_IMPORT_API_KEY` 재사용.
 - 기존 튜터 타임아웃은 변경하지 않음.
 
 실제 호출 설정을 만들거나 실제 키를 문서/테스트에 넣지 않는다. 이번 검증에서는 테스트
 프로세스가 루프백 모의 AI 주소, 임시 근거 파일, 임의 테스트 키를 직접 설정하고 복구한다.
+
+## 실패 원인 코드
+
+생성 작업이 실패하면 응답은 그대로 `503 QUESTION_GENERATION_FAILED`와 같은 메시지를 쓰고,
+원인은 `details.reason`, `tutor.ai_requests.error_code`, `knowledge_scope.failure`에 남긴다.
+서버 로그에는 `[question-generation] 실패 requestId=… reason=…`만 남기고 요청 본문·AI 응답 원문은 남기지 않는다.
+
+| 원인 코드 | 의미 |
+| --- | --- |
+| `AI_TIMEOUT` | 생성 제한 시간(`QUESTION_GENERATION_TIMEOUT_MS`) 초과 또는 AI 504 |
+| `AI_REQUEST_REJECTED` | AI가 422로 거부 (상한 초과·요청 형식) |
+| `AI_HTTP_ERROR` | 그 밖의 AI HTTP 오류 (`upstreamStatus`는 로그에 남김) |
+| `AI_UNREACHABLE` | AI 서버에 연결하지 못함 |
+| `AI_GENERATION_FAILED` | AI가 `status: FAILED` 반환 (`knowledge_scope.failure.aiError`에 AI 오류 코드, 예: `INSUFFICIENT_EVIDENCE`) |
+| `AI_INVALID_RESPONSE` | 응답이 JSON이 아니거나 규격·독립 검증 결과와 맞지 않음 |
+| `EVIDENCE_NOT_APPROVED` | AI 출처가 서버 승인 근거 파일에 없음 |
+| `SAVE_FAILED` | 문제·선택지 저장 또는 작업 완료 기록 실패 (전체 롤백) |
+
+수동 복구로 끝낸 작업은 기존처럼 `QUESTION_GENERATION_INTERRUPTED`이다.
+
+## AI 계약과 DB 기준의 차이
+
+- **정답 번호:** AI 응답 `correctAnswerIndex`·`independentAnswerIndex`는 0~3(AI 계약 그대로).
+  백엔드가 저장할 때 한 곳(`question-generation.schema.js`)에서 선택지 `base_order` 1~4로 바꾼다.
+  DB·앱·내부 API는 모두 1부터 쓴다.
+- **중복 요청 식별:** 백엔드는 동기 `POST /internal/v1/questions/generate`만 호출하고 `Idempotency-Key` 헤더로 중복을 막는다.
+  AI의 `/jobs`(Body `requestId`, AI 메모리 저장)는 사용하지 않는다.
 
 ## 실행 및 검증
 

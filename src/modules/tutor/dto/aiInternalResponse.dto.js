@@ -17,6 +17,7 @@
  *                  inputTokens·outputTokens·latencyMs ≥0 정수, cacheHit boolean, estimatedCost ≥0 (tutor.ai_requests)
  */
 const AppError = require('../../../common/errors/AppError');
+const metadataDto = require('./tutorMetadata.dto');
 
 const SOURCE_LIMITS = Object.freeze({ documentId: 255, documentVersion: 100, chunkId: 255, titleSnapshot: 500, conceptCode: 30 });
 const USAGE_LIMITS = Object.freeze({ modelId: 100, embeddingModelId: 100, retrievalStrategy: 50 });
@@ -85,7 +86,7 @@ function usage(value) {
   };
 }
 
-function parse(body, expectedRequestId) {
+function parse(body, expectedRequestId, metadataEnabled = false) {
   if (!body || typeof body !== 'object') throw invalid('body');
   if (body.requestId !== expectedRequestId) throw invalid('requestId');
   if (!GROUNDING.includes(body.groundingStatus)) throw invalid('groundingStatus');
@@ -100,6 +101,7 @@ function parse(body, expectedRequestId) {
     historyFromSeq: int(body.historyFromSeq, 'historyFromSeq', { min: 1 }),
     sources,
     usage: usage(body.usage),
+    ...(metadataEnabled ? { tutoringMeta: metadataDto.metadata(body.tutoringMeta), proposedAction: metadataDto.action(body.proposedAction) } : {}),
   };
 }
 

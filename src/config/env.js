@@ -19,8 +19,16 @@ module.exports = {
   questionGenerationEnabled: process.env.QUESTION_GENERATION_ENABLED === 'true',
   questionGenerationEvidencePath: process.env.QUESTION_GENERATION_EVIDENCE_PATH,
   questionGenerationTimeoutMs: Number(process.env.QUESTION_GENERATION_TIMEOUT_MS || 120000),
+  // AI 서버 QUESTION_MAX_COUNT(기본 20)와 같은 값. 1~100 밖이거나 숫자가 아니면 20
+  questionGenerationMaxCount: (value => (Number.isInteger(value) && value >= 1 && value <= 100 ? value : 20))(
+    Number(process.env.QUESTION_GENERATION_MAX_COUNT || 20)),
   fastapiTimeoutMs: Number(process.env.FASTAPI_TIMEOUT_MS || 5000),
   aiDailyLimit: Number(process.env.AI_DAILY_LIMIT || 20),
+  // #171 개인화 튜터: true일 때만 personalizedContext를 AI 서버로 보낸다 (운영 AI 서버가 이 필드를 받는 버전인지 확인 후 켜기)
+  tutorPersonalizationEnabled: process.env.TUTOR_PERSONALIZATION_ENABLED === 'true',
+  tutorMetadataEnabled: process.env.TUTOR_METADATA_ENABLED === 'true',
+  // #179 개념 지정 질문에 Backend 승인 근거 경계(verifiedContext)를 보낸다. AI 이미지 b7b9dfb 이상에서만 켠다
+  tutorVerifiedContextEnabled: process.env.TUTOR_VERIFIED_CONTEXT_ENABLED === 'true',
   kakaoRestApiKey: process.env.KAKAO_REST_API_KEY,
   kakaoClientSecret: process.env.KAKAO_CLIENT_SECRET,
   kakaoAllowedRedirectUris: (process.env.KAKAO_ALLOWED_REDIRECT_URIS || '')
@@ -28,6 +36,8 @@ module.exports = {
   kakaoOauthCallbackUrl: process.env.KAKAO_OAUTH_CALLBACK_URL,
   kakaoAppDeepLink: process.env.KAKAO_APP_DEEP_LINK,
   kakaoWebReturnUrl: process.env.KAKAO_WEB_RETURN_URL,
+  // 운영에서 PC 개발용 웹 복귀(http://localhost:<포트>/auth/callback)를 명시적으로 허용할 때만 true
+  kakaoAllowLoopbackWebReturn: process.env.KAKAO_ALLOW_LOOPBACK_WEB_RETURN === 'true',
   kakaoAllowedAppDeepLinks: (process.env.KAKAO_ALLOWED_APP_DEEP_LINKS || '')
     .split(',').map((uri) => uri.trim()).filter(Boolean),
   kakaoOauthStoreMode: process.env.KAKAO_OAUTH_STORE_MODE,

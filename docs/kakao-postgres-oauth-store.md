@@ -26,6 +26,22 @@
 
 - 네이티브 인증에는 기존 `KAKAO_APP_DEEP_LINK`와 `KAKAO_ALLOWED_APP_DEEP_LINKS`를 사용한다. 웹 요청(`client: "web"`)에는 `KAKAO_WEB_RETURN_URL`을 별도로 지정한다. 값을 비워 두면 웹 로그인 시작은 `503`을 반환하고 모바일은 기존대로 동작한다.
 - 웹 복귀 URL은 프론트의 정확한 `/auth/callback` URL이다. 운영은 HTTPS, 개발·테스트는 loopback HTTP도 허용한다(예: `http://localhost:3001/auth/callback`). 쿼리, 프래그먼트, 사용자 정보가 없는 주소를 사용한다.
+- 운영에서 PC 웹 개발용으로 `http://localhost:<포트>/auth/callback`을 쓰려면 `KAKAO_ALLOW_LOOPBACK_WEB_RETURN=true`를 함께 설정한다. 이때도 호스트는 `localhost`, 포트 명시, 경로 `/auth/callback`일 때만 허용하며 `127.0.0.1`과 다른 경로는 거부한다. 이 설정은 누구나 자기 PC의 같은 주소로 운영 로그인 결과를 받을 수 있는 개발 편의 설정이므로, 공개 웹을 배포하면 웹 복귀 주소를 HTTPS로 바꾸고 플래그를 `false`로 끈다.
+
+## 운영 설정 보관 (Parameter Store)
+
+운영 배포(`deploy/deploy.sh`)는 배포할 때마다 Parameter Store `/leren/prod/backend/` 값으로 `/opt/leren/env/backend.env`를 새로 만든다. EC2의 env 파일만 고치면 다음 배포에서 사라지므로, 카카오 설정은 반드시 Parameter Store에 등록한다. 실제 키와 Client Secret은 레포에 넣지 않는다.
+
+| 키 | 운영 값 / 설명 |
+| --- | --- |
+| `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET` | 비밀값 (SecureString) |
+| `KAKAO_OAUTH_CALLBACK_URL`, `KAKAO_ALLOWED_REDIRECT_URIS` | `https://lerenapp.com/api/v1/auth/kakao/callback` |
+| `KAKAO_APP_DEEP_LINK`, `KAKAO_ALLOWED_APP_DEEP_LINKS` | `leren://auth/callback` |
+| `KAKAO_OAUTH_STORE_MODE` | `postgres` |
+| `KAKAO_WEB_RETURN_URL` | PC 웹 개발용 `http://localhost:3001/auth/callback` (공개 웹 배포 후 HTTPS 주소) |
+| `KAKAO_ALLOW_LOOPBACK_WEB_RETURN` | `KAKAO_WEB_RETURN_URL`이 `http://`일 때 `true` |
+
+`deploy.sh`는 이 키가 없거나 조합이 맞지 않으면 마이그레이션과 컨테이너 교체 전에 배포를 중단하고 기존 서버를 그대로 둔다.
 - Kakao Developers에 등록하는 주소는 여전히 백엔드의 `/api/v1/auth/kakao/callback`이다. 프론트 복귀 URL은 백엔드가 거기로 이동시킬 때만 사용하며, 카카오에 보낼 별도 redirect URI가 아니다.
 - 출처가 다른 웹 앱의 시작·교환 요청은 웹 복귀 URL과 동일한 origin에서 온 JSON POST만 CORS 허용한다. 백엔드 앞단이 같은 경로에 CORS 헤더를 추가한다면 중복되지 않도록 구성한다. 이 변경의 CORS 범위는 카카오 시작·교환만이며, 일반 인증 또는 서비스 API의 CORS는 기존 배포 설정을 따른다.
 

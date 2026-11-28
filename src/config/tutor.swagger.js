@@ -2,6 +2,7 @@
  * AI 튜터 Swagger 정의
  * 기준: src/modules/tutor/dto/*.dto.js (요청 검사·응답 필드가 바뀌면 같이 고친다)
  */
+const { MISCONCEPTIONS, ACTIONS, PRIORITIES, MAX_EVIDENCE } = require('../modules/tutor/dto/tutorMetadata.dto');
 const uuid = { type: 'string', format: 'uuid' };
 const nullableUuid = { ...uuid, nullable: true };
 const dateTime = { type: 'string', format: 'date-time' };
@@ -15,6 +16,7 @@ const ok = (description, schema) => ({ description, content: { 'application/json
 const page = { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } };
 const pageSize = { name: 'pageSize', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } };
 const pageFields = { total: { type: 'integer' }, page: { type: 'integer' }, pageSize: { type: 'integer' } };
+const conceptCode = { type: 'string', minLength: 1, maxLength: 30, nullable: true };
 
 const schemas = {
   TutorConversationRequest: {
@@ -57,6 +59,35 @@ const schemas = {
       title: { type: 'string', nullable: true }, conceptCode: { type: 'string', nullable: true },
     },
   },
+  TutorMetadata: {
+    type: 'object', required: ['schemaVersion', 'conceptCode', 'diagnosis', 'strategy'],
+    properties: {
+      schemaVersion: { type: 'string', enum: ['1.0'] }, conceptCode,
+      diagnosis: {
+        type: 'object', required: ['misconceptionType', 'confidence', 'evidenceQuestionIds', 'needsFollowup', 'reasoningSummary'],
+        properties: {
+          misconceptionType: { type: 'string', enum: MISCONCEPTIONS, description: '현재 진단은 UNCERTAIN으로 유지' },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          evidenceQuestionIds: { type: 'array', maxItems: MAX_EVIDENCE, uniqueItems: true, items: uuid },
+          needsFollowup: { type: 'boolean' }, reasoningSummary: { type: 'string', minLength: 1, maxLength: 500 },
+        },
+      },
+      strategy: {
+        type: 'object', required: ['strategyId', 'strategyVersion'], properties: {
+          strategyId: { type: 'string', minLength: 1, maxLength: 100 },
+          strategyVersion: { type: 'string', minLength: 1, maxLength: 50 },
+        },
+      },
+    },
+  },
+  TutorProposedAction: {
+    type: 'object', required: ['type', 'conceptCode', 'questionId', 'stageId', 'attemptId', 'reason', 'priority'],
+    description: 'SOLVE_QUESTION은 백엔드가 검증한 기존 일반 Stage 응시의 현재 문항을 가리킵니다.',
+    properties: {
+      type: { type: 'string', enum: ACTIONS }, conceptCode, questionId: nullableUuid, stageId: nullableUuid, attemptId: nullableUuid,
+      reason: { type: 'string', minLength: 1, maxLength: 500 }, priority: { type: 'string', enum: PRIORITIES },
+    },
+  },
   TutorMessage: {
     type: 'object', required: ['messageId', 'conversationId', 'sequenceNo', 'role', 'content', 'status', 'createdAt', 'sources'],
     properties: {
@@ -67,6 +98,8 @@ const schemas = {
       groundingStatus: { type: 'string', enum: ['GROUNDED', 'INSUFFICIENT'], nullable: true, description: 'ASSISTANT 메시지만' },
       createdAt: dateTime, completedAt: { ...dateTime, nullable: true },
       sources: { type: 'array', items: ref('TutorSource'), description: 'ASSISTANT 메시지만, rank 순' },
+      tutoringMeta: { allOf: [ref('TutorMetadata')], description: '기능 활성화 및 저장값이 있는 ASSISTANT 메시지에 포함' },
+      proposedAction: { allOf: [ref('TutorProposedAction')], description: '기능 활성화 및 저장값이 있는 ASSISTANT 메시지에 포함' },
     },
   },
   TutorUsage: {
@@ -120,12 +153,18 @@ const paths = {
   '/api/v1/tutor/messages': {
     post: {
       tags: ['AI Tutor'], security: bearer, summary: 'AI 튜터 질문',
+      description: 'context.conceptCode와 knowledgeScope.conceptCodes는 공개(PUBLISHED)된 개념 코드만 허용합니다. '
+        + 'context.conceptId와 context.conceptCode를 함께 보내면 같은 개념이어야 합니다. '
+        + 'context.attemptId를 보내면 로그인한 사용자의 학습 응시여야 하며, 찾을 수 없으면 404를 반환합니다. '
+        + '서버 설정(TUTOR_PERSONALIZATION_ENABLED)이 켜져 있으면 학습 기록 기반 개인화 정보를 AI 서버에 함께 보냅니다. '
+        + 'TUTOR_METADATA_ENABLED가 켜져 있으면 검증된 진단·추천을 응답에 포함할 수 있습니다. 앱 요청 형식은 같습니다.',
       parameters: [{ name: 'Idempotency-Key', in: 'header', schema: { type: 'string', minLength: 1, maxLength: 100 }, description: 'clientMessageId가 없을 때 중복 방지 키로 사용' }],
       requestBody: { required: true, content: { 'application/json': { schema: ref('TutorMessageRequest') } } },
       responses: {
         201: ok('답변 저장', ref('TutorSendResult')), 401: error, 404: error,
         409: { ...error, description: '같은 키로 다른 질문을 보냈거나 같은 요청이 처리 중' },
-        422: error, 429: { ...error, description: '오늘 사용량 초과' },
+        422: { ...error, description: '요청 형식 오류, 공개되지 않은 개념 코드(details.unknownConceptCodes), conceptId·conceptCode 불일치' },
+        429: { ...error, description: '오늘 사용량 초과' },
         503: { ...error, description: 'AI 서버 연결 실패·시간 초과 또는 잘못된 응답' },
       },
     },

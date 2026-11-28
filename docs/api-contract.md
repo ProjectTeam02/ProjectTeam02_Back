@@ -52,10 +52,30 @@ x-internal-api-key: <FASTAPI_INTERNAL_TOKEN>
 ```
 
 `personalizedContext`는 Backend가 인증된 사용자의 학습·복습 제출 기록에서
-계산한 취약도와 미확정 오개념 가설이다. `verifiedContext`는 승인된 개념·출처·
-선수 관계 경계이며, AI는 `VERIFIED` 상태의 source document ID만 검색한다.
-`GET /api/v1/tutor/personalization`에서 같은 Context와 승인된 재평가 문항 후보를
-조회할 수 있다. 기존 복습 답안 저장 후 다음 요청에서 취약도가 다시 계산된다.
+계산한 신호다. 오개념 가설은 `learning.misconception_hypotheses`(#164)가 단일 출처이고,
+#179가 `learnerProfile`에 취약도를 더한다.
+
+- 취약도 = 오답률 0.40 + 반복 오답 0.25 + 재평가(복습) 실패 0.20 + 최근 취약도 0.15
+  (`personalization/weakness.js`). `estimatedMastery = 1 - weaknessScore`.
+- 제출 0건이면 점수를 보내지 않고 `uncertainty=1`, `dataSufficiency=NONE`만 보낸다.
+  재평가 0건·마지막 학습 시각 결측은 해당 성분을 0.5로 두고 `uncertainty`를 높인다.
+- `teachingStrategy`: 근거 제출 2건 미만 가설(단일 오답)·데이터 부족이면 `DIAGNOSTIC_CHECK_V1`.
+- 선수 개념 `learnerConceptMastery`는 본인 기록이 있는 승인된 선수 개념에만 붙는다.
+- 학습 신호가 전혀 없는 학습자는 기존처럼 `personalizedContext`를 보내지 않는다.
+
+`verifiedContext`는 승인된 개념·출처·라이선스 경계이며, AI는 `VERIFIED` 상태의
+source document ID만 검색하고 `BLOCKED`면 검색 없이 근거 부족으로 답한다(Fail-Closed).
+미승인 선수 관계는 개념을 막지 않고 목록에서 제외한다. `TUTOR_VERIFIED_CONTEXT_ENABLED=true`일
+때만 보낸다(기본 false).
+
+**배포 순서**: `verifiedContext`, `learnerProfile.uncertainty/dataSufficiency/weaknessComponents`는
+AI `b7b9dfb`(2026-11-24) 이상, `eligibleQuestionCandidates`는 AI `5b147e3`(2026-11-26) 이상만 받는다.
+그 이전 AI 이미지는 모르는 키를 422로 거절 → 외부 503이 되므로 AI 이미지를 먼저(또는 같은
+deploy 실행에서) 올린다.
+
+`GET /api/v1/tutor/personalization`(로그인 필수, `conceptCode`·`conceptId`·`stageId`만 허용)에서
+같은 Context, 취약도 기반 추천, 본인이 아직 풀지 않은 공개 재평가 문항 후보(최대 3개)를
+조회할 수 있다. 복습 답안 저장 후 다음 요청에서 취약도가 다시 계산된다.
 
 FastAPI 응답의 `answer`, `rewrittenQuery`, `groundingStatus`, `historyFromSeq`, `sources`, `usage`를 그대로 보존하여 Node.js 소유 AI 테이블에 저장한다. FastAPI가 응답하지 않거나 5초 timeout이 발생하면 외부 API에는 HTTP 503과 `튜터가 바쁩니다`를 반환한다.
 

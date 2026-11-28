@@ -10,16 +10,19 @@ const configPath = process.env.LEREN_CALENDAR_HISTORY_PG_TEST_CONFIG;
 // Explicit opt-in: ordinary npm test never writes to a database.
 test('calendar and learning history against isolated PostgreSQL', { skip: !configPath, timeout: 120000 }, async t => {
   const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8').replace(/^\uFEFF/, ''));
-  assert.match(cfg.name, /^leren-calendar-it-[0-9a-f]{8}$/);
   assert.equal(cfg.host, '127.0.0.1');
   assert.equal(cfg.database, 'leren_calendar_it');
   assert.ok(Number.isInteger(cfg.port) && cfg.port !== 5433);
-  const [container] = JSON.parse(execFileSync('docker', ['inspect', cfg.name], { encoding: 'utf8' }));
-  assert.equal(container.Config.Labels['codex.purpose'], 'leren-calendar-history-integration');
-  assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
-  const binding = container.NetworkSettings.Ports['5432/tcp'][0];
-  assert.equal(binding.HostIp, '127.0.0.1');
-  assert.equal(Number(binding.HostPort), cfg.port);
+  // 로컬은 전용 임시 컨테이너인지 확인. GitHub Actions(CI=true)는 job 전용 PostgreSQL 서비스라 생략
+  if (process.env.CI !== 'true') {
+    assert.match(cfg.name, /^leren-calendar-it-[0-9a-f]{8}$/);
+    const [container] = JSON.parse(execFileSync('docker', ['inspect', cfg.name], { encoding: 'utf8' }));
+    assert.equal(container.Config.Labels['codex.purpose'], 'leren-calendar-history-integration');
+    assert.equal(container.HostConfig.Tmpfs['/var/lib/postgresql'], 'rw');
+    const binding = container.NetworkSettings.Ports['5432/tcp'][0];
+    assert.equal(binding.HostIp, '127.0.0.1');
+    assert.equal(Number(binding.HostPort), cfg.port);
+  }
 
   const E = require('@leren/database');
   const { DataSource } = require('typeorm');
@@ -28,7 +31,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   const oldSecret = env.jwtAccessSecret;
   const oldOptions = { ...E.AppDataSource.options };
   const options = { ...oldOptions, host: cfg.host, port: cfg.port, database: cfg.database,
-    username: 'postgres', password: cfg.password, ssl: false, synchronize: false, migrationsRun: false,
+    username: cfg.username || 'postgres', password: cfg.password, ssl: false, synchronize: false, migrationsRun: false,
     migrations: [root + '/database/dist/migrations/*.js'], logging: false,
     extra: { options: '-c search_path=app,account,character,content,learning,reward,review,tutor,public', max: 12, application_name: 'leren-calendar-it' } };
   let admin, server;
@@ -45,7 +48,7 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
   const [database] = await admin.query('SELECT current_database() AS name');
   assert.equal(database.name, 'leren_calendar_it');
   assert.equal((await admin.query("SELECT to_regclass('account.users') AS existing"))[0].existing, null);
-  await admin.query('CREATE SCHEMA app');
+  await admin.query(fs.readFileSync(path.join(root, 'database/sql/init/01_app_schema.sql'), 'utf8'));
   await admin.runMigrations();
   E.AppDataSource.setOptions({ ...options, migrations: [] });
   await E.AppDataSource.initialize();
@@ -659,21 +662,17 @@ test('calendar and learning history against isolated PostgreSQL', { skip: !confi
     assert.equal((await quizRequest('POST', `/quizzes/stages/${boss.stageId}/attempts`)).status, 422);
   });
 
-  await t.test('legacy approved-question GET keeps the frontend fields and hides the pre-answer explanation', async () => {
+  await t.test('legacy published-question GET keeps frontend fields and hides the pre-answer explanation', async () => {
     const questionRepo = db.getRepository(E.Question);
-    const questionId = answers[0].questionId;
-    const question = await questionRepo.findOneByOrFail({ questionId });
-    await questionRepo.update({ questionId }, { status: 'APPROVED' });
-    try {
-      const generated = await quizRequest('GET', `/quizzes/generate?conceptId=${question.conceptId}`);
-      assert.equal(generated.status, 200);
-      assert.equal(generated.body.data.id, questionId);
-      assert.equal(generated.body.data.title, question.questionText);
-      assert.equal(generated.body.data.explanation, null);
-      assert.equal(generated.body.data.choices.length, 4);
-      assert.equal('isCorrect' in generated.body.data.choices[0], false);
-    } finally {
-      await questionRepo.update({ questionId }, { status: question.status });
-    }
+    const sample = await questionRepo.findOneByOrFail({ questionId: answers[0].questionId });
+    const generated = await quizRequest('GET', `/quizzes/generate?conceptId=${sample.conceptId}`);
+    assert.equal(generated.status, 200);
+    const question = await questionRepo.findOneByOrFail({ questionId: generated.body.data.id });
+    assert.equal(question.status, 'PUBLISHED');
+    assert.equal(question.conceptId, sample.conceptId);
+    assert.equal(generated.body.data.title, question.questionText);
+    assert.equal(generated.body.data.explanation, null);
+    assert.equal(generated.body.data.choices.length, 4);
+    assert.equal('isCorrect' in generated.body.data.choices[0], false);
   });
 });

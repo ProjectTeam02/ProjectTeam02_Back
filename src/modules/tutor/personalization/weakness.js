@@ -1,7 +1,13 @@
 /**
- * Backend-owned learner weakness calculation.
+ * Backend-owned learner weakness calculation (#179).
  *
- * All inputs are already scoped to one authenticated user.  The AI server only
+ * 정책: 오답률 40% + 반복 오답 25% + 재평가 실패 20% + 최근 취약도(마지막 학습 후 경과) 15%.
+ * 결측 처리
+ *   - 제출 0건: 점수를 만들지 않는다(weaknessScore·estimatedMastery = null, uncertainty 1, dataSufficiency NONE).
+ *     "기록 없음"을 "숙달"로 보내지 않기 위함.
+ *   - 재평가 0건: 재평가 실패 성분을 중립값 0.5로 두고 uncertainty를 높인다.
+ *   - 마지막 학습 시각 결측·이상값: 최근 취약도 성분을 중립값 0.5로 둔다.
+ * All inputs are already scoped to one authenticated user. The AI server only
  * receives the resulting signals and never calculates or persists mastery.
  */
 const WEIGHTS = Object.freeze({
@@ -37,16 +43,17 @@ function recencyRisk(lastStudiedAt, now = new Date(), decayDays = 30) {
 }
 
 function dataSufficiency(totalAttempts, reassessmentCount) {
+  if (totalAttempts === 0) return 'NONE';
   if (totalAttempts < 2) return 'LOW';
   if (totalAttempts < 5 || reassessmentCount === 0) return 'MEDIUM';
   return 'HIGH';
 }
 
 function calculateWeakness(input = {}, now = new Date()) {
-  const totalAttempts = Math.max(0, Number(input.totalAttempts) || 0);
-  const wrongCount = Math.max(0, Number(input.wrongCount) || 0);
-  const reassessmentCount = Math.max(0, Number(input.reassessmentCount) || 0);
-  const reassessmentWrongCount = Math.max(0, Number(input.reassessmentWrongCount) || 0);
+  const totalAttempts = Math.max(0, Math.trunc(Number(input.totalAttempts) || 0));
+  const wrongCount = Math.min(totalAttempts, Math.max(0, Math.trunc(Number(input.wrongCount) || 0)));
+  const reassessmentCount = Math.min(totalAttempts, Math.max(0, Math.trunc(Number(input.reassessmentCount) || 0)));
+  const reassessmentWrongCount = Math.min(reassessmentCount, Math.max(0, Math.trunc(Number(input.reassessmentWrongCount) || 0)));
   const components = {
     errorRate: totalAttempts ? clamp(wrongCount / totalAttempts) : 0,
     repeatError: wrongCount > 1 ? clamp((wrongCount - 1) / wrongCount) : 0,
@@ -55,8 +62,9 @@ function calculateWeakness(input = {}, now = new Date()) {
       : 0.5,
     recencyRisk: recencyRisk(input.lastStudiedAt, now),
   };
+  for (const key of Object.keys(components)) components[key] = round(components[key]);
   const weaknessScore = totalAttempts === 0
-    ? 0
+    ? null
     : round(
       WEIGHTS.errorRate * components.errorRate
       + WEIGHTS.repeatError * components.repeatError
@@ -68,7 +76,7 @@ function calculateWeakness(input = {}, now = new Date()) {
     : round(1 - Math.min(1, totalAttempts / 5) * (reassessmentCount ? 1 : 0.8));
   return {
     weaknessScore,
-    estimatedMastery: round(1 - weaknessScore),
+    estimatedMastery: weaknessScore === null ? null : round(1 - weaknessScore),
     uncertainty,
     dataSufficiency: dataSufficiency(totalAttempts, reassessmentCount),
     components,

@@ -28,6 +28,7 @@ const p1 = [
   ['GET', '/api/v1/statistics/overall'],
   ['GET', '/api/v1/statistics/concepts'],
   ['GET', '/api/v1/reviews/due'],
+  ['POST', '/api/v1/reviews/attempts'],
   ['GET', `/api/v1/reviews/missions/${uuid}`],
   ['POST', `/api/v1/reviews/missions/${uuid}/attempts`],
   ['POST', `/api/v1/review-attempts/${uuid}/answers`],

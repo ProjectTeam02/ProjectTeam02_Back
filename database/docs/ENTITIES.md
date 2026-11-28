@@ -25,7 +25,7 @@
 
 | 테이블 | 엔티티 | 관계 속성 → 대상 |
 | --- | --- | --- |
-| `character_classes` | `CharacterClass` | — |
+| `character_classes` | `CharacterClass` | `defaultCostume` → Costume (직업 기본 한벌옷) |
 | `costumes` | `Costume` | — |
 | `user_characters` | `UserCharacter` | `user` → User (1:1)<br>`characterClass` → CharacterClass |
 | `user_costumes` | `UserCostume` | `user` → User<br>`costume` → Costume<br>`coinLedger` → CoinLedger |

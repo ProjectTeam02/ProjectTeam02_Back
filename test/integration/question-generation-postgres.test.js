@@ -82,6 +82,8 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
     env.questionGenerationEnabled = false;
     assert.equal((await post(payload())).status, 503); env.questionGenerationEnabled = true;
     assert.equal((await post({ ...payload(), questionCount: 0 })).status, 422);
+    // AI 서버 상한(기본 20) 초과는 예약·AI 호출 없이 422
+    assert.equal((await post({ ...payload(), questionCount: 21 })).status, 422);
     assert.equal((await post(input())).status, 404);
     const saved = env.questionGenerationEvidencePath; env.questionGenerationEvidencePath = undefined;
     assert.equal((await post(payload())).status, 503); env.questionGenerationEvidencePath = saved;
@@ -116,14 +118,21 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
   await t.test('AI failure, invalid batch and unknown source save no partial questions and mark job FAILED', async () => {
     const before = await counts();
     const scenarios = [
-      () => { aiCode = 503; aiBody = {}; },
-      () => { aiBody = { ...result(), status: 'FAILED', error: 'INSUFFICIENT_EVIDENCE', questions: [] }; },
-      () => { aiBody = result(); aiBody.questions[0].sourceIds = ['UNKNOWN']; aiBody.sourceIds = ['UNKNOWN']; },
-      () => { aiBody = result(); aiBody.validation[0].independentAnswerIndex = 2; },
+      ['AI_HTTP_ERROR', null, () => { aiCode = 503; aiBody = {}; }],
+      ['AI_GENERATION_FAILED', 'INSUFFICIENT_EVIDENCE', () => { aiBody = { ...result(), status: 'FAILED', error: 'INSUFFICIENT_EVIDENCE', questions: [] }; }],
+      ['EVIDENCE_NOT_APPROVED', null, () => { aiBody = result(); aiBody.questions[0].sourceIds = ['UNKNOWN']; aiBody.sourceIds = ['UNKNOWN']; }],
+      ['AI_INVALID_RESPONSE', null, () => { aiBody = result(); aiBody.validation[0].independentAnswerIndex = 2; }],
     ];
-    for (const scenario of scenarios) {
+    for (const [reason, aiError, scenario] of scenarios) {
       aiCode = 200; scenario();
-      assert.equal((await post(payload())).status, 503); assert.deepEqual(await counts(), before);
+      const response = await post(payload());
+      assert.equal(response.status, 503); assert.deepEqual(await counts(), before);
+      // 응답 코드·메시지는 그대로, 원인은 details.reason과 작업 기록에 남김
+      assert.equal(response.body.code, 'QUESTION_GENERATION_FAILED');
+      assert.equal(response.body.details.reason, reason);
+      const job = await db.getRepository(E.AiRequest).findOneByOrFail({ requestId: response.body.details.requestId });
+      assert.equal(job.errorCode, reason);
+      assert.deepEqual(job.knowledgeScope.failure, { reason, aiError });
     }
     assert.equal(await db.getRepository(E.AiRequest).countBy({ status: 'FAILED' }), scenarios.length);
     assert.equal(await db.getRepository(E.AiRequest).countBy({ status: 'RESERVED' }), 0);
@@ -138,6 +147,7 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
     try {
       failed = await post(payload(3), env.questionImportApiKey, '/generate', retryKey);
       assert.equal(failed.status, 503); assert.deepEqual(await counts(), before);
+      assert.equal(failed.body.details.reason, 'SAVE_FAILED');
       assert.equal(await db.getRepository(E.AiRequest).countBy({ status: 'RESERVED' }), 0);
     } finally { await db.query('DROP TRIGGER question_it_fail ON content.question_choices'); await db.query('DROP FUNCTION app.fail_second_question()'); }
     const beforeRetry = calls;
@@ -245,6 +255,8 @@ test('question generation: mock AI HTTP -> Express -> isolated PostgreSQL', { sk
     try {
       const failed = await generate(db, { client: timeoutClient }).generate(payload(), timeoutKey);
       assert.equal(failed.httpStatus, 503);
+      assert.equal(failed.body.details.reason, 'AI_TIMEOUT');
+      assert.equal((await db.getRepository(E.AiRequest).findOneByOrFail({ requestId: failed.body.details.requestId })).errorCode, 'AI_TIMEOUT');
       const retried = await generate(db).generate(payload(), timeoutKey);
       assert.deepEqual(retried, failed); assert.equal(calls, timeoutBefore + 1);
     } finally { hold = null; release(); }

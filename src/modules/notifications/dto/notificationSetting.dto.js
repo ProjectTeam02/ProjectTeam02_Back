@@ -49,11 +49,12 @@ function parseUpdate(input) {
 
 /** 공식 응답 */
 function response(setting) {
+  // Match the DB defaults without constructing or persisting a replacement row.
   return {
-    reminderEnabled: Boolean(setting.reminderEnabled),
-    reminderTime: setting.reminderTime ?? null,
-    timezone: setting.timezone ?? 'Asia/Seoul',
-    updatedAt: setting.updatedAt ?? null,
+    reminderEnabled: Boolean(setting?.reminderEnabled),
+    reminderTime: setting?.reminderTime ?? null,
+    timezone: setting?.timezone ?? 'Asia/Seoul',
+    updatedAt: setting?.updatedAt ?? null,
   };
 }
 

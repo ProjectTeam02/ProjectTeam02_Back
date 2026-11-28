@@ -1,8 +1,10 @@
+
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { randomBytes, randomUUID } = require('node:crypto');
 const path = require('node:path');
 const listenTestServer = require('../helpers/listen-test-server');
+const { In } = require('typeorm');
 
 const config = process.env.LEREN_EXTENDED_API_PG_TEST_CONFIG;
 
@@ -10,7 +12,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const options = JSON.parse(config);
   const { AppDataSource: db, User, UserSession, AccountToken, Topic, Stage, Concept, Question,
     QuestionChoice, StageQuestion, LearningAttempt, UserStageProgress, ReviewItem, ReviewMission,
-    Costume, UserCostume, UserWallet, CharacterClass } = require('@leren/database');
+    Costume, UserCostume, UserEquippedCostume, UserWallet, UserGrowth, CharacterClass, UserCharacter, CoinLedger } = require('@leren/database');
   const env = require('../../src/config/env');
   const previous = { ...db.options };
   const secrets = { jwtAccessSecret: env.jwtAccessSecret, jwtRefreshSecret: env.jwtRefreshSecret };
@@ -38,7 +40,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const user = await users.save({ email: `extended-${suffix}@example.com`, passwordHash: hashPassword('old-password-123'), nickname: `확장${suffix}` });
   const session = await db.getRepository(UserSession).save({ userId: user.userId, refreshTokenHash: randomBytes(32).toString('hex'),
     loginMethod: 'EMAIL', expiresAt: new Date(Date.now() + 3600000) });
-  const token = issueAccessToken(user, session.sessionId);
+  let token = issueAccessToken(user, session.sessionId);
   const otherUser = await users.save({ nickname: `타사용자${suffix}` });
   const otherSession = await db.getRepository(UserSession).save({ userId: otherUser.userId, refreshTokenHash: randomBytes(32).toString('hex'),
     loginMethod: 'EMAIL', expiresAt: new Date(Date.now() + 3600000) });
@@ -75,13 +77,14 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
     firstReason: 'WRONG', wrongCount: 1, isBookmarked: true });
   const mission = await db.getRepository(ReviewMission).save({ userId: user.userId, conceptCode: concept.conceptCode,
     firstRegisteredAt: new Date(), dueDate: new Date().toISOString().slice(0, 10), status: 'AVAILABLE', targetQuestionCount: 1 });
-  for (const [classCode, name, sortOrder] of [['WARRIOR', '전사', 1], ['MAGE', '마법사', 2]]) {
+  for (const [classCode, name, sortOrder] of [['WARRIOR', '전사', 1], ['MAGE', '마법사', 2], ['ARCHER', '궁수', 3]]) {
     const found = await db.getRepository(CharacterClass).findOneBy({ classCode });
-    if (!found) await db.getRepository(CharacterClass).save({ classCode, name, isActive: true, sortOrder });
+    const defaultItemId = (await db.getRepository(Costume).findOneByOrFail({ costumeCode: `${classCode}_DEFAULT_OUTFIT` })).itemId;
+    if (!found) await db.getRepository(CharacterClass).save({ classCode, name, isActive: true, sortOrder, defaultItemId });
     else if (!found.isActive) await db.getRepository(CharacterClass).update({ classId: found.classId }, { isActive: true });
   }
-  const ownedCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-OWN-${suffix}`, name: '보유 코스튬', category: 'OUTFIT', isOnSale: false, isDefault: false });
-  const saleCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-SALE-${suffix}`, name: '판매 코스튬', category: 'OUTFIT', priceCoin: 10, isOnSale: true, isDefault: false });
+  const ownedCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-OWN-${suffix}`, name: '보유 코스튬', category: 'OUTFIT', isOnSale: false });
+  const saleCostume = await db.getRepository(Costume).save({ costumeCode: `EXT-SALE-${suffix}`, name: '판매 코스튬', category: 'OUTFIT', priceCoin: 10, isOnSale: true });
   await db.getRepository(UserCostume).save({ userId: user.userId, itemId: ownedCostume.itemId, acquireType: 'DEFAULT' });
   await db.getRepository(UserWallet).save({ userId: user.userId, coinBalance: 100, version: 0 });
 
@@ -113,13 +116,16 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   ok(await request('/api/v1/topics/tree'));
   ok(await request(`/api/v1/topics/${topic.topicId}`));
 
-  ok(await request('/api/v1/auth/password-reset/request', { method: 'POST', body: { email: user.email }, auth: false }));
+  t.mock.method(require('../../src/modules/auth/password-reset.delivery'), 'create', () => null);
+  assert.equal((await request('/api/v1/auth/password-reset/request', { method: 'POST', body: { email: user.email }, auth: false })).status, 503);
   const resetToken = `reset-${suffix}`;
   await db.getRepository(AccountToken).save({ userId: user.userId, tokenType: 'PASSWORD_RESET', tokenHash: hashToken(resetToken),
     targetEmail: user.email, expiresAt: new Date(Date.now() + 1800000) });
   ok(await request('/api/v1/auth/password-reset/confirm', { method: 'POST', body: { resetToken, newPassword: 'new-password-123' }, auth: false }));
   const reusedReset = await request('/api/v1/auth/password-reset/confirm', { method: 'POST', body: { resetToken, newPassword: 'new-password-123' }, auth: false });
   assert.equal(reusedReset.status, 401);
+  assert.equal((await request('/api/v1/users/me')).status, 401);
+  token = ok(await request('/api/v1/auth/login', { method: 'POST', body: { email: user.email, password: 'new-password-123' }, auth: false })).accessToken;
   ok(await request('/api/v1/home/summary'));
   ok(await request('/api/v1/mypage/summary'));
   ok(await request('/api/v1/learning/progress/active'));
@@ -228,7 +234,7 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
   const duplicatePurchase = ok(await request('/api/v1/shop/purchases', { method: 'POST', body: { itemId: saleCostume.itemId, requestId: `purchase-${suffix}` } }), 201);
   assert.equal(duplicatePurchase.duplicate, true);
   assert.equal(duplicatePurchase.coinBalance, purchase.coinBalance);
-   // 같은 문항 북마크 동시 요청은 모두 200, review_items는 1행
+  // 같은 문항 북마크 동시 요청은 모두 200, review_items는 1행
   const bookmarkTarget = questions[2].question;
   const concurrentBookmarks = await Promise.all([1, 2, 3, 4, 5].map(() => request(`/api/v1/questions/${bookmarkTarget.questionId}/bookmark`, { method: 'PUT' })));
   assert.deepEqual(concurrentBookmarks.map(result => result.status), [200, 200, 200, 200, 200]);
@@ -240,4 +246,72 @@ test('P0~P2 확장 API는 실제 Express·PostgreSQL 성공 경로를 사용한�
     body: { itemId: saleCostume.itemId, requestId: `purchase-${suffix}` } });
   assert.equal(otherUserSameRequestId.status, 409, JSON.stringify(otherUserSameRequestId.body));
 
+  await t.test('job changes are scoped to the signed-in account and preserve outfit, rewards and history', async () => {
+    const path = '/api/v1/users/me/character/class';
+    const change = (body, options = {}) => request(path, { method: 'PATCH', body, ...options });
+    // 보유 코스튬은 직업 변경 시 기본 한벌옷이 추가되므로(#147) 따로 비교한다
+    const snapshot = () => Promise.all([UserGrowth, UserWallet, CoinLedger, UserEquippedCostume, LearningAttempt, UserStageProgress]
+      .map(entity => db.getRepository(entity).findBy({ userId: user.userId })));
+    const ownedCostumes = async () => (await db.getRepository(UserCostume).findBy({ userId: user.userId }))
+      .sort((a, b) => a.itemId.localeCompare(b.itemId));
+    const before = await snapshot();
+    const costumesBefore = await ownedCostumes();
+    assert.equal((await change({ classCode: 'MAGE' }, { auth: false })).status, 401);
+
+    for (const payload of [
+      {},
+      { classCode: 'INVALID' },
+      { classId: user.userId },
+      { userId: otherUser.userId, classCode: 'MAGE' }
+    ]) {
+      assert.equal((await change(payload)).status, 422);
+    }
+
+    for (const classCode of ['MAGE', 'ARCHER', 'WARRIOR']) {
+      assert.equal(ok(await change({ classCode })).classCode, classCode);
+      assert.equal(ok(await request('/api/v1/users/me')).characterClass.classCode, classCode);
+    }
+
+    const selected = await db.getRepository(UserCharacter).findOneByOrFail({ userId: user.userId });
+    assert.equal(ok(await change({ classCode: 'WARRIOR' })).classId, selected.classId);
+
+    assert.deepEqual(
+      await db.getRepository(UserCharacter).findOneByOrFail({ userId: user.userId }),
+      selected
+    );
+
+    assert.equal(
+      ok(await request('/api/v1/users/me', { requestToken: otherToken })).characterClass,
+      null
+    );
+
+    token = ok(await request('/api/v1/auth/login', {
+      method: 'POST',
+      body: {
+        email: user.email,
+        password: 'new-password-123'
+      },
+      auth: false
+    })).accessToken;
+
+    assert.equal(ok(await request('/api/v1/users/me')).characterClass.classCode, 'WARRIOR');
+
+    // 기본 코스튬 지급은 허용하되 보상과 학습 기록은 그대로 유지
+    assert.deepEqual(await snapshot(), before);
+
+    // 기존 보유 코스튬은 그대로, 새로 생긴 것은 거쳐 간 직업의 기본 한벌옷(DEFAULT, 코인 사용 없음)만
+    const defaultItemIds = new Set((await db.getRepository(CharacterClass).findBy({ classCode: In(['MAGE', 'ARCHER', 'WARRIOR']) }))
+      .map(row => row.defaultItemId));
+    const beforeItemIds = new Set(costumesBefore.map(row => row.itemId));
+    const costumesAfter = await ownedCostumes();
+    assert.deepEqual(costumesAfter.filter(row => beforeItemIds.has(row.itemId)), costumesBefore);
+    const added = costumesAfter.filter(row => !beforeItemIds.has(row.itemId));
+    assert.ok(added.length > 0, '직업 변경으로 지급된 기본 한벌옷이 있어야 합니다.');
+    for (const row of added) {
+      assert.ok(defaultItemIds.has(row.itemId), `직업 기본 한벌옷이 아닌 코스튬이 지급됨: ${row.itemId}`);
+      assert.equal(row.acquireType, 'DEFAULT');
+      assert.equal(row.coinLedgerId, null);
+    }
+    for (const itemId of defaultItemIds) assert.ok(costumesAfter.some(row => row.itemId === itemId), `기본 한벌옷 미보유: ${itemId}`);
+  });
 });

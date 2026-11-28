@@ -167,6 +167,64 @@ test('web configuration is exact and failure does not disable mobile', async () 
   assert.equal(calls.length, 0);
 });
 
+// 운영(production)에서 PC 웹 개발용 localhost 복귀는 플래그로 명시할 때만 허용
+const { webReturnUrl } = require('../src/modules/auth/kakao-web-return');
+const LOCAL_WEB = 'http://localhost:3001/auth/callback';
+const productionConfig = extra => ({
+  ...env, nodeEnv: 'production', kakaoOauthStoreMode: 'postgres', kakaoWebReturnUrl: LOCAL_WEB,
+  kakaoAllowLoopbackWebReturn: true, ...extra,
+});
+
+test('production allows the configured localhost web return only when the flag is on', () => {
+  assert.equal(webReturnUrl(productionConfig({})).href, LOCAL_WEB);
+  assert.equal(webReturnUrl(productionConfig({ kakaoWebReturnUrl: WEB })).href, WEB);
+  for (const extra of [
+    { kakaoAllowLoopbackWebReturn: false },
+    { kakaoAllowLoopbackWebReturn: undefined },
+    { kakaoWebReturnUrl: 'http://127.0.0.1:3001/auth/callback' },
+    { kakaoWebReturnUrl: 'http://[::1]:3001/auth/callback' },
+    { kakaoWebReturnUrl: 'http://localhost/auth/callback' },
+    { kakaoWebReturnUrl: 'http://localhost:3001/other' },
+    { kakaoWebReturnUrl: 'http://localhost:3001/auth/callback?next=/' },
+    { kakaoWebReturnUrl: 'http://web.test/auth/callback' },
+  ]) {
+    assert.equal(webReturnUrl(productionConfig(extra)), null, JSON.stringify(extra));
+  }
+});
+
+test('production web and mobile start/callback both work with the loopback flag', async () => {
+  const config = productionConfig({});
+  const service = createMobileService({}, { config, postgresStore: new MemoryOAuthStore() });
+  const web = await service.start({ codeChallenge: challenge(verifier()), codeChallengeMethod: 'S256', client: 'web' });
+  const webState = new URL(web.authorizationUrl).searchParams.get('state');
+  const webReturn = new URL(await service.callback({ state: webState, error: 'access_denied' }));
+  assert.equal(webReturn.origin + webReturn.pathname, LOCAL_WEB);
+  assert.equal(webReturn.searchParams.get('error'), 'login_cancelled');
+
+  const mobile = await service.start({ codeChallenge: challenge(verifier()), codeChallengeMethod: 'S256' });
+  const mobileState = new URL(mobile.authorizationUrl).searchParams.get('state');
+  const mobileReturn = new URL(await service.callback({ state: mobileState, error: 'access_denied' }));
+  assert.equal(mobileReturn.protocol + '//' + mobileReturn.host + mobileReturn.pathname, APP);
+
+  const off = createMobileService({}, { config: productionConfig({ kakaoAllowLoopbackWebReturn: false }), postgresStore: new MemoryOAuthStore() });
+  await assert.rejects(off.start({ codeChallenge: challenge(verifier()), codeChallengeMethod: 'S256', client: 'web' }), { statusCode: 503 });
+  const stillMobile = await off.start({ codeChallenge: challenge(verifier()), codeChallengeMethod: 'S256' });
+  assert.ok(stillMobile.authorizationUrl.startsWith('https://kauth.kakao.com/'));
+});
+
+test('production CORS allows only the configured localhost origin when the flag is on', async () => {
+  Object.assign(env, { nodeEnv: 'production', kakaoWebReturnUrl: LOCAL_WEB, kakaoAllowLoopbackWebReturn: true });
+  const url = base + '/api/v1/auth/kakao/start';
+  const headers = { Origin: 'http://localhost:3001', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' };
+  const allowed = await fetch(url, { method: 'OPTIONS', headers });
+  assert.equal(allowed.status, 204);
+  assert.equal(allowed.headers.get('access-control-allow-origin'), 'http://localhost:3001');
+  assert.equal((await fetch(url, { method: 'OPTIONS', headers: { ...headers, Origin: 'http://localhost:3002' } })).status, 403);
+  assert.equal((await fetch(url, { method: 'OPTIONS', headers: { ...headers, Origin: 'http://127.0.0.1:3001' } })).status, 403);
+  env.kakaoAllowLoopbackWebReturn = false;
+  assert.equal((await fetch(url, { method: 'OPTIONS', headers })).status, 403);
+});
+
 test('in-flight mobile state issued before client was added remains usable', async () => {
   const store = new MemoryOAuthStore();
   const id = crypto.randomUUID();

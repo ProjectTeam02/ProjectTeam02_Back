@@ -8,6 +8,7 @@ const AppError = require('../../common/errors/AppError');
 const repository = require('./stage.repository');
 const topicDto = require('../topics/dto/topicResponse.dto');
 const dto = require('./dto/stageResponse.dto');
+const quizReadiness = require('../quizzes/normal-stage-readiness');
 
 async function unlocked(repo, userId, stage, progress) {
   if (progress?.progressStatus === 'PASSED') return true;
@@ -43,7 +44,9 @@ module.exports = function service(dataSource = AppDataSource) {
       if (!stage || stage.topic?.status !== 'PUBLISHED') throw AppError.notFound('공개된 Stage를 찾을 수 없습니다.');
       const progress = await repo.progress(userId, stageId);
       const concepts = await repo.publishedConcepts(stageId);
-      return dto.detail(stage, progress, await unlocked(repo, userId, stage, progress), concepts);
+      const isUnlocked = await unlocked(repo, userId, stage, progress);
+      const readiness = stage.stageType === 'NORMAL' ? await quizReadiness.describe(manager, stage) : undefined;
+      return dto.detail(stage, progress, isUnlocked, concepts, readiness);
     }),
   };
 };

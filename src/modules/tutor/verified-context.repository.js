@@ -4,7 +4,8 @@
  * This module only reads existing content and AI metadata. It never promotes
  * a concept, source, or prerequisite relationship to an approved state.
  */
-const APPROVED_LICENSE_STATUSES = new Set(['approved', 'cleared', 'verified']);
+// ai.rag_documents.license_review_status (#164: PENDING / APPROVED / REJECTED). 대소문자 무시
+const APPROVED_LICENSE_STATUSES = new Set(['approved']);
 
 const unique = values => [...new Set((values || []).filter(value => typeof value === 'string' && value.trim()))];
 
@@ -43,8 +44,7 @@ async function loadConcept(manager, { conceptId, conceptCode }) {
 async function loadSources(manager, documentIds) {
   if (!documentIds.length) return [];
   return manager.query(`
-    SELECT document_id, version, title, review_status,
-           metadata_json ->> 'license_review_status' AS license_review_status
+    SELECT document_id, version, title, review_status, license_review_status
       FROM ai.rag_documents
      WHERE document_id = ANY($1::varchar[])
   `, [documentIds]);
@@ -80,14 +80,10 @@ function sourceProblems(documentIds, rows) {
   return reasons;
 }
 
-function prerequisiteProblems(rows) {
-  return rows
-    .filter(row => (
-      String(row.review_status || '').toUpperCase() !== 'APPROVED'
-      || !row.reviewed_by
-      || !row.reviewed_at
-    ))
-    .map(row => `PREREQUISITE_REVIEW_NOT_APPROVED:${row.concept_code}->${row.prerequisite_concept_code}`);
+// 선수 관계는 승인·검수 기록이 모두 있는 것만 근거로 쓴다.
+// 미승인 관계는 개념 전체를 막지 않고 Context에서 제외한다 (conceptContext.js와 같은 정책, #164 운영 26행은 PENDING으로 시작).
+function approvedPrerequisite(row) {
+  return String(row.review_status || '').toUpperCase() === 'APPROVED' && Boolean(row.reviewed_by) && Boolean(row.reviewed_at);
 }
 
 async function verifiedContext(manager, identifiers) {
@@ -103,10 +99,7 @@ async function verifiedContext(manager, identifiers) {
     loadSources(manager, sourceDocumentIds),
     loadPrerequisites(manager, concept.concept_code),
   ]);
-  const reasons = [
-    ...sourceProblems(sourceDocumentIds, sources),
-    ...prerequisiteProblems(prerequisites),
-  ];
+  const reasons = sourceProblems(sourceDocumentIds, sources);
   if (reasons.length) return blocked('VERIFIED_CONTEXT_BLOCKED', concept, reasons);
 
   const sourceById = new Map(sources.map(row => [row.document_id, row]));
@@ -128,7 +121,7 @@ async function verifiedContext(manager, identifiers) {
         licenseReviewStatus: row.license_review_status,
       };
     }),
-    prerequisiteConcepts: prerequisites.map(row => ({
+    prerequisiteConcepts: prerequisites.filter(approvedPrerequisite).map(row => ({
       conceptCode: row.prerequisite_concept_code,
       relationshipType: 'PREREQUISITE',
       relationReviewStatus: row.review_status,
@@ -140,5 +133,6 @@ async function verifiedContext(manager, identifiers) {
 
 module.exports = {
   APPROVED_LICENSE_STATUSES,
+  approvedPrerequisite,
   verifiedContext,
 };

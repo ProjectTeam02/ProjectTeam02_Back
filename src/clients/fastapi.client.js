@@ -6,6 +6,15 @@
 const AppError = require('../common/errors/AppError');
 const env = require('../config/env');
 
+// 실패 원인 코드: 응답 메시지·HTTP 코드는 그대로 두고, 호출한 쪽이 원인을 기록할 수 있게 붙임
+function unavailable(message, reason, details) {
+  const error = AppError.unavailable(message);
+  error.reason = reason;
+  if (details) error.details = details;
+  return error;
+}
+const reasonForStatus = status => (status === 504 ? 'AI_TIMEOUT' : status === 422 ? 'AI_REQUEST_REJECTED' : 'AI_HTTP_ERROR');
+
 async function requestJson(path, options = {}, config = env) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.fastapiTimeoutMs);
@@ -26,20 +35,19 @@ async function requestJson(path, options = {}, config = env) {
     try {
       body = text ? JSON.parse(text) : null;
     } catch (_error) {
-      throw AppError.unavailable('AI 서버가 잘못된 응답을 반환했습니다.');
+      throw unavailable('AI 서버가 잘못된 응답을 반환했습니다.', 'AI_INVALID_RESPONSE');
     }
     if (!response.ok) {
-      const error = AppError.unavailable(
+      throw unavailable(
         response.status === 504 ? '튜터가 바쁩니다.' : 'AI 서버 요청에 실패했습니다.',
+        reasonForStatus(response.status), { upstreamStatus: response.status },
       );
-      error.details = { upstreamStatus: response.status };
-      throw error;
     }
     return body;
   } catch (error) {
-    if (error.name === 'AbortError') throw AppError.unavailable('튜터가 바쁩니다.');
+    if (error.name === 'AbortError') throw unavailable('튜터가 바쁩니다.', 'AI_TIMEOUT');
     if (error.code === 'SERVICE_UNAVAILABLE') throw error;
-    throw AppError.unavailable('AI 서버에 연결할 수 없습니다.');
+    throw unavailable('AI 서버에 연결할 수 없습니다.', 'AI_UNREACHABLE');
   } finally {
     clearTimeout(timer);
   }
