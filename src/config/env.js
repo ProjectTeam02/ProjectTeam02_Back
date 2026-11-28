@@ -22,11 +22,14 @@ module.exports = {
   // AI 서버 QUESTION_MAX_COUNT(기본 20)와 같은 값. 1~100 밖이거나 숫자가 아니면 20
   questionGenerationMaxCount: (value => (Number.isInteger(value) && value >= 1 && value <= 100 ? value : 20))(
     Number(process.env.QUESTION_GENERATION_MAX_COUNT || 20)),
-  fastapiTimeoutMs: Number(process.env.FASTAPI_TIMEOUT_MS || 5000),
+  // AI 내부 요청 상한 45초(AI internal_request_timeout_seconds) + 네트워크·직렬화 여유. 5초면 정상 답변도 끊긴다
+  fastapiTimeoutMs: Number(process.env.FASTAPI_TIMEOUT_MS || 50000),
   aiDailyLimit: Number(process.env.AI_DAILY_LIMIT || 20),
   // #171 개인화 튜터: true일 때만 personalizedContext를 AI 서버로 보낸다 (운영 AI 서버가 이 필드를 받는 버전인지 확인 후 켜기)
   tutorPersonalizationEnabled: process.env.TUTOR_PERSONALIZATION_ENABLED === 'true',
   tutorMetadataEnabled: process.env.TUTOR_METADATA_ENABLED === 'true',
+  // P5 긴 대화 누적 요약 (AI 계약의 기존 summary·summaryUntilSeq만 사용 → 모든 AI 버전과 호환). false로 끌 수 있음
+  tutorSummaryEnabled: process.env.TUTOR_SUMMARY_ENABLED !== 'false',
   kakaoRestApiKey: process.env.KAKAO_REST_API_KEY,
   kakaoClientSecret: process.env.KAKAO_CLIENT_SECRET,
   kakaoAllowedRedirectUris: (process.env.KAKAO_ALLOWED_REDIRECT_URIS || '')

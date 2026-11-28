@@ -20,6 +20,7 @@ const personalizedDto = require('./dto/aiPersonalizedContext.dto');
 const { assertKnownConcepts } = require('./conceptScope');
 const { personalizationProvider } = require('./personalization');
 const recommendation = require('./recommendation');
+const conversationSummary = require('./conversationSummary');
 
 // #99 같은 대화방·같은 사용자 요청을 트랜잭션 안에서 순서대로 처리 (트랜잭션이 끝나면 자동 해제)
 async function advisoryLock(manager, key) {
@@ -49,6 +50,20 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
   const personalization = options.personalization === undefined ? personalizationProvider() : options.personalization;
   const personalizationEnabled = options.personalizationEnabled ?? env.tutorPersonalizationEnabled;
   const metadataEnabled = options.metadataEnabled ?? env.tutorMetadataEnabled;
+  const summaryEnabled = options.summaryEnabled ?? env.tutorSummaryEnabled;
+
+  // P5 긴 대화 누적 요약: 답변 저장 뒤 별도 트랜잭션. 실패해도 답변은 성공 (다음 요청에서 다시 시도)
+  async function refreshSummary(conversationId, requestId) {
+    if (!summaryEnabled) return;
+    try {
+      await dataSource.transaction(async (manager) => {
+        await advisoryLock(manager, `tutor:conversation:${conversationId}`);
+        await conversationSummary.refresh(manager, conversationId, { requestId });
+      });
+    } catch (error) {
+      console.warn(`[tutor] 대화 요약 생략 (${error.code || error.name})`);
+    }
+  }
 
   // #171 개인화 정보는 선택 사항: 못 만들거나 계약에 맞지 않으면 개인화 없이 기본 튜터 흐름으로 보낸다
   async function personalizedContextFor(userId, input) {
@@ -165,7 +180,8 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           await assertApprovedTutorSources(manager, answer.sources);
           if (metadataEnabled) await recommendation.validate(manager, userId, aiRequest, answer);
           const messages = repoFor(AiMessage, manager);
-          const answerPatch = { content: answer.answer, rewrittenQuery: answer.rewrittenQuery || null, historyFromSeq: answer.historyFromSeq || null, groundingStatus: answer.groundingStatus || null, status: 'COMPLETED', completedAt,
+          const summaryId = summaryEnabled ? await conversationSummary.summaryIdFor(manager, conversation) : null;
+          const answerPatch = { summaryId, content: answer.answer, rewrittenQuery: answer.rewrittenQuery || null, historyFromSeq: answer.historyFromSeq || null, groundingStatus: answer.groundingStatus || null, status: 'COMPLETED', completedAt,
             ...(metadataEnabled ? { tutoringMeta: answer.tutoringMeta, proposedAction: answer.proposedAction } : {}) };
           await messages.update({ messageId: assistantMessage.messageId }, answerPatch);
           Object.assign(assistantMessage, answerPatch);
@@ -179,6 +195,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           await repoFor(AiRequest, manager).update({ requestId }, { status: 'SUCCEEDED', modelId: usage.modelId, embeddingModelId: usage.embeddingModelId, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, latencyMs: usage.latencyMs, cacheHit: usage.cacheHit, retrievalStrategy: usage.retrievalStrategy, estimatedCost: usage.estimatedCost == null ? null : String(usage.estimatedCost), currency: usage.currency, completedAt });
           await repoFor(AiConversation, manager).update({ conversationId: conversation.conversationId }, { updatedAt: completedAt });
         });
+        await refreshSummary(conversation.conversationId, requestId);
         return messageDto.sendResult({ userMessage, assistantMessage, assistantSources: answer.sources, reserved: quotaResult, dailyLimit: env.aiDailyLimit, metadataEnabled });
       } catch (error) {
         // (4) 실패: 두 메시지 FAILED, 요청 기록 FAILED (실패 요청은 일일 한도에서 빠진다)

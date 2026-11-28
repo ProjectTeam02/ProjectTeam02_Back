@@ -49,7 +49,9 @@ x-internal-api-key: <FASTAPI_INTERNAL_TOKEN>
 }
 ```
 
-FastAPI 응답의 `answer`, `rewrittenQuery`, `groundingStatus`, `historyFromSeq`, `sources`, `usage`를 그대로 보존하여 Node.js 소유 AI 테이블에 저장한다. FastAPI가 응답하지 않거나 5초 timeout이 발생하면 외부 API에는 HTTP 503과 `튜터가 바쁩니다`를 반환한다.
+FastAPI 응답의 `answer`, `rewrittenQuery`, `groundingStatus`, `historyFromSeq`, `sources`, `usage`를 그대로 보존하여 Node.js 소유 AI 테이블에 저장한다. FastAPI가 응답하지 않거나 timeout(`FASTAPI_TIMEOUT_MS`, 기본 50초 — AI 내부 상한 45초보다 길게)이 발생하면 외부 API에는 HTTP 503과 `튜터가 바쁩니다`를 반환한다. 재시도는 하지 않는다(LLM 호출은 멱등하지 않으며 AI가 단계별 재시도·대체 모델을 이미 수행). 앱은 같은 `clientMessageId`로 재요청하면 완료된 답변을 그대로 받는다.
+
+긴 대화는 Backend가 누적 요약을 만든다(`src/modules/tutor/conversationSummary.js`). 요약되지 않은 완료 메시지가 10개를 넘으면 최근 6개를 남기고 앞 턴을 결정적으로 축약(질문 앞부분 + 답변 첫 문장, 1500자 이하)해 `tutor.ai_conversation_summaries`에 추가하고 `ai_conversations.summary·summary_until_seq`를 갱신한다. 다음 요청부터 `summary·summaryUntilSeq`로 전달되며 답변의 `ai_messages.summary_id`에 사용한 요약을 기록한다. 요약 실패는 답변을 실패시키지 않는다. `TUTOR_SUMMARY_ENABLED=false`로 끌 수 있다.
 
 ## 오류 및 상태 코드
 

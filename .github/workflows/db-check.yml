@@ -113,6 +113,10 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test --test-concurrency=1 test/integration/tutor-user-isolation-postgres.test.js test/integration/tutor-metadata-postgres.test.js
+      - name: AI 튜터 긴 대화 누적 요약 (P5, PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
+        run: node --test test/integration/tutor-conversation-summary-postgres.test.js
       - name: 판매 한벌옷 시드 2회 적용 (빈 PostgreSQL)
         env:
           PGPASSWORD: admin_ci

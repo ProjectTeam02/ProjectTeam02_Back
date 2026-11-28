@@ -3,7 +3,7 @@
  * fakeDataSource({ concepts }): 개념 행을 넣으면 #171 개념 코드 검증(conceptScope)도 같은 저장소로 테스트할 수 있다
  */
 const crypto = require('node:crypto');
-const { AiConversation, AiMessage, AiMessageSource, AiRequest, Concept } = require('@leren/database');
+const { AiConversation, AiConversationSummary, AiMessage, AiMessageSource, AiRequest, Concept } = require('@leren/database');
 
 function aiAnswer(requestId, overrides = {}) {
   return {
@@ -19,8 +19,8 @@ function fakeDataSource({
   concepts = [],
   approvedDocuments = [{ document_id: 'doc-1', review_status: 'approved' }],
 } = {}) {
-  const tables = new Map([[AiConversation, []], [AiMessage, []], [AiMessageSource, []], [AiRequest, []], [Concept, concepts]]);
-  const keyOf = new Map([[AiConversation, 'conversationId'], [AiMessage, 'messageId'], [AiMessageSource, 'messageSourceId'], [AiRequest, 'requestId'], [Concept, 'conceptId']]);
+  const tables = new Map([[AiConversation, []], [AiConversationSummary, []], [AiMessage, []], [AiMessageSource, []], [AiRequest, []], [Concept, concepts]]);
+  const keyOf = new Map([[AiConversation, 'conversationId'], [AiConversationSummary, 'summaryId'], [AiMessage, 'messageId'], [AiMessageSource, 'messageSourceId'], [AiRequest, 'requestId'], [Concept, 'conceptId']]);
   const matches = (row, where = {}) => Object.entries(where).every(([key, value]) => {
     if (value && typeof value === 'object' && 'type' in value && 'value' in value) {
       if (value.type === 'in') return value.value.includes(row[key]);
