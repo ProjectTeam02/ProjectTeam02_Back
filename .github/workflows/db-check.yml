@@ -113,6 +113,10 @@ jobs:
         env:
           LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local"}'
         run: node --test --test-concurrency=1 test/integration/tutor-user-isolation-postgres.test.js test/integration/tutor-metadata-postgres.test.js
+      - name: AI 튜터 Verified Context·취약도·개인화 조회 (#179, PostgreSQL)
+        env:
+          LEREN_EXTENDED_API_PG_TEST_CONFIG: '{"port":5432,"database":"leren","username":"app_user","password":"app_local","aiUsername":"ai_user","aiPassword":"ai_local"}'
+        run: node --test test/integration/tutor-p179-personalization-postgres.test.js
       - name: 판매 한벌옷 시드 2회 적용 (빈 PostgreSQL)
         env:
           PGPASSWORD: admin_ci

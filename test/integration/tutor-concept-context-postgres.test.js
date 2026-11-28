@@ -164,7 +164,9 @@ test('tutor concept graph and misconception context against isolated PostgreSQL'
     await service.sendMessage(owner.userId, { conversationId: conversation.conversationId, question: '실질금리가 뭐야?', modelTier: 'BASIC',
       clientMessageId: `cc-${suffix}`, context: { conceptCode: code('A') }, knowledgeScope: null }, null);
     const pc = sent.personalizedContext;
-    assert.deepEqual(Object.keys(pc).sort(), ['conceptGraphContext', 'diagnosisEvidence', 'learnerProfile', 'misconceptionHypotheses', 'recentAssessments']);
+    assert.deepEqual(Object.keys(pc).sort(), ['conceptGraphContext', 'diagnosisEvidence', 'learnerProfile', 'misconceptionHypotheses', 'recentAssessments', 'teachingStrategy']);
+    // #179 복습 제출은 재평가로 집계된다 (위에서 만든 본인 복습 제출 1건이 오답)
+    assert.equal(pc.learnerProfile.weaknessComponents.reassessmentFailure, 1);
     assert.deepEqual(personalizedDto.normalize(pc), pc);        // 이미 계약 형식 (다시 정리해도 같음)
     assert.equal(pc.learnerProfile.accuracyRate, 0.6667);       // 12개 중 8개 정답
     if (process.env.TUTOR_CONTRACT_DUMP) require('node:fs').writeFileSync(process.env.TUTOR_CONTRACT_DUMP, JSON.stringify(sent));

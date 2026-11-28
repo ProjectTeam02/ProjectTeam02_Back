@@ -6,7 +6,7 @@
  *     · 선수 개념(prerequisiteConcepts): 대상 개념에서 거슬러 올라가 깊이 2까지 (AI 서버도 깊이 2까지만 사용), 순환은 끊는다
  *     · 다음 개념(relatedConcepts, relationshipType=NEXT): 대상 개념을 선수로 두는 개념 (깊이 1)
  *     · 공개(PUBLISHED)된 개념만, 이름은 코드별 기준 버전(PUBLISHED 중 최신)
- *     · 학습자 숙련도(learnerConceptMastery)는 계산 정책이 없어 보내지 않는다
+ *     · 학습자 숙련도(learnerConceptMastery)는 personalization/index.js가 본인 기록이 있는 선수 개념에만 붙인다 (#179)
  *   - 오개념 가설: 본인 가설 중 REJECTED가 아닌 것, 대상 개념이 있으면 그 개념만, 최근 수정 순 10개
  *     · 상태(UNCONFIRMED/CONFIRMED)를 그대로 보내 불확실한 가설이 확정 정보처럼 전달되지 않게 한다
  *     · 근거 ID는 본인 문제 제출 기록인 것만 남긴다 (다른 사용자 기록 차단)

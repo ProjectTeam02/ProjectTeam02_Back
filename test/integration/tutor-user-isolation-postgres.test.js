@@ -155,7 +155,17 @@ test('Tutor HTTP user isolation with PostgreSQL and a loopback FastAPI mock', { 
       assert.equal(sent.userId, user.id);
       assert.equal(sent.conversationId, user.room);
       assert.deepEqual(sent.context, { conceptCode, attemptId });
-      assert.deepEqual(sent.personalizedContext, {
+      const { weaknessScore, estimatedMastery, uncertainty, dataSufficiency, weaknessComponents, ...profile } = sent.personalizedContext.learnerProfile;
+      // #179 취약도는 본인 제출 1건만으로 계산된다 (다른 사용자의 반대 결과가 섞이면 errorRate가 달라짐)
+      assert.equal(weaknessComponents.errorRate, Number(!isCorrect));
+      assert.equal(weaknessComponents.repeatError, 0);
+      assert.equal(dataSufficiency, 'LOW');
+      assert.equal(uncertainty, 0.84);
+      assert.ok(weaknessScore >= 0 && weaknessScore <= 1 && estimatedMastery >= 0);
+      // 근거 제출 1건의 UNCONFIRMED 가설은 유형별 전략을 고르지 않는다 (단일 오답 확정 금지)
+      assert.deepEqual(sent.personalizedContext.teachingStrategy, { strategyId: 'DIAGNOSTIC_CHECK_V1', strategyVersion: 'personalization-v1' });
+      const { learnerProfile: _lp, teachingStrategy: _ts, ...rest } = sent.personalizedContext;
+      assert.deepEqual({ learnerProfile: profile, ...rest }, {
         learnerProfile: { currentStageId: stageId, conceptCode, accuracyRate: Number(isCorrect),
           recentIncorrectCount: Number(!isCorrect), lastStudiedAt: studiedAt },
         misconceptionHypotheses: [{ conceptCode, hypothesisType: user.hypothesis, status: 'UNCONFIRMED', evidenceIds: [submissionId] }],

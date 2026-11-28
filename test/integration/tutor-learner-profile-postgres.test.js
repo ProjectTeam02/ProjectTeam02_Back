@@ -112,8 +112,17 @@ test('tutor learner profile against isolated PostgreSQL', { skip: !config, timeo
     const result = await service.sendMessage(owner.userId, { conversationId: conversation.conversationId, question: '물가상승률이 뭐야?', modelTier: 'BASIC',
       clientMessageId: `lp-${suffix}`, context: { conceptCode: codeX }, knowledgeScope: null }, null);
     assert.equal(result.assistantMessage.status, 'COMPLETED');
-    assert.deepEqual(sent.personalizedContext.learnerProfile, {
+    const { weaknessScore, estimatedMastery, uncertainty, dataSufficiency, weaknessComponents, ...profile } = sent.personalizedContext.learnerProfile;
+    assert.deepEqual(profile, {
       conceptCode: codeX, accuracyRate: 0.75, recentIncorrectCount: 1, lastStudiedAt: lastAt, currentStageId: stage.stageId });
+    // #179 취약도: 오답률 성분은 BE-04 정답률과 같은 제출 기록에서 나온다 (최근 취약도는 실행 시각에 따라 달라 범위만 확인)
+    assert.equal(weaknessComponents.errorRate, 0.25);
+    assert.equal(weaknessComponents.reassessmentFailure, 0.5);
+    assert.ok(weaknessScore > 0 && weaknessScore <= 1);
+    assert.equal(Math.round((weaknessScore + estimatedMastery) * 10000), 10000);
+    assert.ok(['LOW', 'MEDIUM', 'HIGH'].includes(dataSufficiency));
+    assert.ok(uncertainty >= 0 && uncertainty <= 1);
+    assert.equal(sent.personalizedContext.teachingStrategy.strategyVersion, 'personalization-v1');
 
     const off = tutorService(db, aiClient, { personalizationEnabled: false });
     await off.sendMessage(owner.userId, { conversationId: conversation.conversationId, question: '구매력은?', modelTier: 'BASIC',

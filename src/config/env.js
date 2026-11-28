@@ -27,6 +27,8 @@ module.exports = {
   // #171 개인화 튜터: true일 때만 personalizedContext를 AI 서버로 보낸다 (운영 AI 서버가 이 필드를 받는 버전인지 확인 후 켜기)
   tutorPersonalizationEnabled: process.env.TUTOR_PERSONALIZATION_ENABLED === 'true',
   tutorMetadataEnabled: process.env.TUTOR_METADATA_ENABLED === 'true',
+  // #179 개념 지정 질문에 Backend 승인 근거 경계(verifiedContext)를 보낸다. AI 이미지 b7b9dfb 이상에서만 켠다
+  tutorVerifiedContextEnabled: process.env.TUTOR_VERIFIED_CONTEXT_ENABLED === 'true',
   kakaoRestApiKey: process.env.KAKAO_REST_API_KEY,
   kakaoClientSecret: process.env.KAKAO_CLIENT_SECRET,
   kakaoAllowedRedirectUris: (process.env.KAKAO_ALLOWED_REDIRECT_URIS || '')

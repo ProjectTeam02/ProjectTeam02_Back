@@ -101,6 +101,7 @@ Repository / Client → PostgreSQL / FastAPI / Kakao
 - `GET /api/v1/tutor/conversations/:id/messages`
 - `POST /api/v1/tutor/messages`
 - `GET /api/v1/tutor/usage`
+- `GET /api/v1/tutor/personalization`
 
 ### Quizzes
 
@@ -118,6 +119,12 @@ Repository / Client → PostgreSQL / FastAPI / Kakao
 ## FastAPI 및 Kakao 연동
 
 AI Tutor 요청은 Node.js가 인증·대화 저장·사용량을 관리하고 `src/clients/fastapi.client.js`를 통해 FastAPI의 `POST /internal/v1/tutor/answer`로 전달합니다. URL·내부 인증 토큰·Timeout은 환경변수로 관리합니다.
+
+`/tutor/personalization`은 사용자 소유의 학습·복습 제출 기록에서 취약도를
+계산하고, 미확정 오개념 가설·교수 전략·승인된 재평가 문항 후보를 반환합니다.
+취약도는 `0.40*errorRate + 0.25*repeatError + 0.20*reassessmentFailure +
+0.15*recencyRisk`로 계산하며, 오답 1건만으로 오개념을 확정하지 않습니다.
+재평가 답안은 기존 복습 API가 저장하고 다음 요청에서 다시 계산합니다.
 
 Kakao OAuth 통신은 `src/clients/kakao.client.js`에서 담당하며, OAuth 토큰과 Secret을 코드나 로그에 남기지 않습니다.
 

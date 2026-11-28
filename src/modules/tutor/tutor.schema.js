@@ -4,6 +4,7 @@
  * 주의: 기존 필드명과 오류 응답 형식을 유지한다. 실제 규칙은 dto/tutorRequest.dto.js에 있다.
  */
 const request = require('./dto/tutorRequest.dto');
+const f = require('../../common/dto/fields');
 
 function message({ body, headers }) {
   return { body: request.parseMessage(body, headers) };
@@ -21,4 +22,16 @@ function messages({ params, query }) {
   return { params: request.parseConversationId(params), query: request.parseListQuery(query) };
 }
 
-module.exports = { message, conversation, list, messages };
+function personalization({ query }) {
+  const value = f.object(query, 'query');
+  f.onlyKeys(value, ['conceptCode', 'conceptId', 'stageId'], 'query');
+  return {
+    query: {
+      conceptCode: f.optionalString(value.conceptCode, 'conceptCode', request.LIMITS.conceptCode),
+      conceptId: f.optionalUuid(value.conceptId, 'conceptId'),
+      stageId: f.optionalUuid(value.stageId, 'stageId'),
+    },
+  };
+}
+
+module.exports = { message, conversation, list, messages, personalization };

@@ -20,6 +20,9 @@ const personalizedDto = require('./dto/aiPersonalizedContext.dto');
 const { assertKnownConcepts } = require('./conceptScope');
 const { personalizationProvider } = require('./personalization');
 const recommendation = require('./recommendation');
+const verifiedContextRepository = require('./verified-context.repository');
+const personalizationSignals = require('./personalization/service');
+const personalizationRepository = require('./personalization/repository');
 
 // #99 같은 대화방·같은 사용자 요청을 트랜잭션 안에서 순서대로 처리 (트랜잭션이 끝나면 자동 해제)
 async function advisoryLock(manager, key) {
@@ -49,6 +52,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
   const personalization = options.personalization === undefined ? personalizationProvider() : options.personalization;
   const personalizationEnabled = options.personalizationEnabled ?? env.tutorPersonalizationEnabled;
   const metadataEnabled = options.metadataEnabled ?? env.tutorMetadataEnabled;
+  const verifiedContextEnabled = options.verifiedContextEnabled ?? env.tutorVerifiedContextEnabled;
 
   // #171 개인화 정보는 선택 사항: 못 만들거나 계약에 맞지 않으면 개인화 없이 기본 튜터 흐름으로 보낸다
   async function personalizedContextFor(userId, input) {
@@ -58,6 +62,20 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
     } catch (error) {
       console.warn(`[tutor] personalizedContext 생략 (${error.code || error.name}): ${error.message}`);
       return null;
+    }
+  }
+
+  // #179 개념이 지정된 질문은 Backend가 승인 근거 경계(verifiedContext)를 만들어 보낸다.
+  // 승인되지 않은 개념·출처·라이선스는 BLOCKED로 보내고 AI가 Fail-Closed 한다. 조회 실패 시에도 BLOCKED로 보낸다.
+  async function verifiedContextFor(context) {
+    const conceptId = context?.conceptId || null;
+    const conceptCode = context?.conceptCode || null;
+    if (!verifiedContextEnabled || (!conceptId && !conceptCode)) return null;
+    try {
+      return await verifiedContextRepository.verifiedContext(dataSource.manager, { conceptId, conceptCode });
+    } catch (error) {
+      console.warn(`[tutor] verifiedContext 조회 실패 (${error.code || error.name})`);
+      return { verificationStatus: 'BLOCKED', conceptCode: conceptCode || 'UNKNOWN', blockingReasons: ['VERIFIED_CONTEXT_UNAVAILABLE'] };
     }
   }
 
@@ -132,6 +150,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
       //   같은 대화방 요청은 잠금으로 순서대로 처리하고, 이미 답변 생성 중이면 uq_ai_messages_one_pending_answer로 409
       const requestId = crypto.randomUUID();
       const personalizedContext = await personalizedContextFor(userId, input);
+      const verifiedContext = await verifiedContextFor(input.context);
       const recommendationContext = metadataEnabled
         ? await recommendation.prepare(dataSource.manager, userId, input.context, personalizedContext) : null;
       const aiInput = recommendationContext ? { ...input, context: recommendationContext.context } : input;
@@ -147,6 +166,7 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
           const historyRows = (await messages.find({ where: { conversationId: conversation.conversationId, status: 'COMPLETED' }, order: { sequenceNo: 'DESC' }, take: aiRequestDto.MAX_HISTORY })).reverse();
           aiRequest = aiRequestDto.build({ requestId, conversation, userId, input: aiInput, historyRows,
             personalizedContext: recommendationContext ? recommendationContext.personalizedContext : personalizedContext,
+            verifiedContext,
             eligibleQuestionCandidates: recommendationContext?.candidates });
           userMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, sequenceNo, role: 'USER', content: input.question, clientMessageId, requestId, status: 'PENDING', contextStageId: aiInput.context?.stageId || null, contextConceptId: input.context?.conceptId || null }));
           assistantMessage = await messages.save(messages.create({ conversationId: conversation.conversationId, parentMessageId: userMessage.messageId, sequenceNo: sequenceNo + 1, role: 'ASSISTANT', content: '', requestId, status: 'PENDING' }));
@@ -191,6 +211,25 @@ function tutorService(dataSource = AppDataSource, aiClient = new FastApiClient()
       }
     },
     usage: async (userId) => messageDto.usage(await quota.usage(userId)),
+    // #179 로그인한 본인의 개인화 Context·취약도 추천·승인 재평가 후보 조회 (다른 사용자 지정 불가)
+    async personalization(userId, query = {}) {
+      const manager = dataSource.manager;
+      const input = { context: { conceptCode: query.conceptCode || null, conceptId: query.conceptId || null, stageId: query.stageId || null } };
+      await assertKnownConcepts(manager, input);
+      const verifiedContext = await verifiedContextFor(input.context);
+      const personalizedContext = personalization
+        ? personalizedDto.normalize(await personalization.build(userId, input, manager)) : null;
+      const conceptCode = personalizedContext?.learnerProfile?.conceptCode || verifiedContext?.conceptCode || query.conceptCode || null;
+      const candidates = conceptCode && conceptCode !== 'UNKNOWN'
+        ? await personalizationRepository.reassessmentCandidates(manager, userId, conceptCode) : [];
+      const weakness = (await personalizationSignals.learnerWeakness(manager, userId)).get(conceptCode) || null;
+      return {
+        verificationStatus: verifiedContext?.verificationStatus || null,
+        personalizedContext,
+        recommendation: personalizationSignals.recommendationFor(conceptCode, weakness, candidates.length),
+        reassessmentQuestions: personalizationSignals.reassessmentQuestions(candidates),
+      };
+    },
   };
 }
 

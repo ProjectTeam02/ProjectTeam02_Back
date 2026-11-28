@@ -42,6 +42,9 @@ const SPEC = obj({
     weaknessScore: num01(),
     lastStudiedAt: dateTime(),
     currentStageId: str(0, 255),
+    dataSufficiency: str(1, 20),
+    uncertainty: num01(),
+    weaknessComponents: { type: 'scoreMap', maxItems: 10, keyMax: 40 },
   }),
   misconceptionHypotheses: list(obj({
     hypothesisType: str(1, 40, { required: true }),
@@ -107,6 +110,12 @@ function check(rule, value, path) {
       if (!Array.isArray(value)) fail('배열이어야 합니다');
       if (value.length > rule.maxItems) fail(`최대 ${rule.maxItems}개`);
       return value.map((item, index) => check(rule.item, item, `${path}[${index}]`));
+    }
+    case 'scoreMap': {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) fail('객체여야 합니다');
+      const entries = Object.entries(value);
+      if (entries.length > rule.maxItems) fail(`최대 ${rule.maxItems}개`);
+      return Object.fromEntries(entries.map(([key, score]) => [check(str(1, rule.keyMax), key, `${path}.key`), check(num01(), score, `${path}.${key}`)]));
     }
     case 'masteryMap': {
       if (typeof value !== 'object' || Array.isArray(value)) fail('객체여야 합니다');

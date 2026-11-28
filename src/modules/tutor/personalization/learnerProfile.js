@@ -10,7 +10,7 @@
  *   - 최근 오답 수 = 그 개념의 최근 제출 RECENT_WINDOW(10)개 중 오답 수. 제출이 없으면 null
  *   - 마지막 학습 시각 = 대상 개념이 있으면 그 개념의 마지막 제출, 없으면 전체 마지막 제출
  *   - 현재 Stage = context.stageId → 진행 중(IN_PROGRESS)인 Stage 중 가장 최근에 바뀐 것
- *   - 숙련도(estimatedMastery)·취약도(weaknessScore)는 계산 정책이 없어 보내지 않는다 (임의 수치를 만들지 않음)
+ *   - 숙련도(estimatedMastery)·취약도(weaknessScore)는 여기서 만들지 않고 personalization/index.js가 weakness.js 정책(#179)으로 붙인다
  *   - 보낼 값이 하나도 없으면 null → 기본 튜터 흐름
  */
 const RECENT_WINDOW = 10;

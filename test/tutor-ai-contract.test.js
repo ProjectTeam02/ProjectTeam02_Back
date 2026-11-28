@@ -1,6 +1,7 @@
 /**
  * #171 BE-03: 백엔드 ↔ FastAPI 내부 튜터 API 계약 테스트
- * - AI_CONTRACT: ProjectTeam02_AI app/schemas/tutor.py (commit 8ece8c7, 운영 AI 이미지 8ece8c7befbf)의 pydantic 모델 키 목록.
+ * - AI_CONTRACT: ProjectTeam02_AI app/schemas/tutor.py (main 641b080, 2026-11-26)의 pydantic 모델 키 목록.
+ *   verifiedContext·learnerProfile 취약도 필드는 b7b9dfb, eligibleQuestionCandidates는 5b147e3부터 지원 (그 이전 AI 이미지는 422).
  *   모든 모델이 extra="forbid"라 이 목록에 없는 키를 보내면 AI 서버가 422로 거절한다. AI 계약이 바뀌면 이 목록부터 고친다.
  * - 가짜 FastAPI 서버(node:http)가 실제 서버처럼 모르는 키를 422로 거절하는지까지 확인한다.
  */
@@ -20,12 +21,16 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const isValidation = error => error.statusCode === 422 && error.code === 'VALIDATION_ERROR';
 
 const AI_CONTRACT = {
-  request: ['context', 'conversationId', 'history', 'knowledgeScope', 'modelTier', 'personalizedContext', 'question', 'requestId', 'summary', 'summaryUntilSeq', 'userId'],
+  request: ['context', 'conversationId', 'eligibleQuestionCandidates', 'history', 'knowledgeScope', 'modelTier', 'personalizedContext', 'question', 'requestId', 'summary', 'summaryUntilSeq', 'userId', 'verifiedContext'],
+  'request.verifiedContext': ['blockingReasons', 'conceptCode', 'conceptId', 'prerequisiteConcepts', 'shortDefinition', 'sourceDocumentIds', 'sources', 'title', 'verificationStatus', 'version'],
+  'request.verifiedContext.sources[]': ['documentId', 'documentVersion', 'licenseReviewStatus', 'reviewStatus', 'title'],
+  'request.verifiedContext.prerequisiteConcepts[]': ['conceptCode', 'depth', 'learnerConceptMastery', 'relationReviewStatus', 'relationshipType', 'title'],
+  'request.eligibleQuestionCandidates[]': ['attemptId', 'conceptCode', 'questionId', 'stageId'],
   'request.history[]': ['content', 'role', 'sequenceNo'],
   'request.context': ['attemptId', 'conceptCode', 'conceptId', 'entryPoint', 'questionId', 'stageId', 'topicId'],
   'request.knowledgeScope': ['conceptCodes'],
   personalizedContext: ['conceptGraphContext', 'diagnosisEvidence', 'learnerProfile', 'misconceptionHypotheses', 'recentAssessments', 'teachingStrategy'],
-  'personalizedContext.learnerProfile': ['accuracyRate', 'conceptCode', 'currentStageId', 'estimatedMastery', 'lastStudiedAt', 'recentIncorrectCount', 'weaknessScore'],
+  'personalizedContext.learnerProfile': ['accuracyRate', 'conceptCode', 'currentStageId', 'dataSufficiency', 'estimatedMastery', 'lastStudiedAt', 'recentIncorrectCount', 'uncertainty', 'weaknessComponents', 'weaknessScore'],
   'personalizedContext.misconceptionHypotheses[]': ['conceptCode', 'evidenceIds', 'hypothesisType', 'status'],
   'personalizedContext.diagnosisEvidence[]': ['chunkId', 'documentId', 'evidenceId', 'evidenceType', 'questionId', 'reviewStatus'],
   'personalizedContext.recentAssessments[]': ['assessedAt', 'assessmentId', 'conceptCode', 'isCorrect', 'questionId'],
@@ -208,4 +213,21 @@ test('#171 가짜 FastAPI: 개인화를 끄면 personalizedContext를 모르는 
     await assert.rejects(ask(on, 'q-on'), error => error.statusCode === 503 && error.reason === 'AI_REQUEST_REJECTED');
     assert.equal(dataSource.tables.get(AiRequest)[0].status, 'FAILED'); // 실패 요청은 기록하고 사용량에서 빠진다
   } finally { await ai.close(); }
+});
+
+test('#179 verifiedContext는 플래그를 켰을 때만 보내고, 조회 실패도 BLOCKED(Fail-Closed)로 계약 키만 보낸다', async () => {
+  const ai = await fakeFastApi();
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const off = tutorService(fakeDataSource({ concepts }), new FastApiClient({ baseUrl: ai.url, timeoutMs: 2000 }), { personalizationEnabled: false });
+    await ask(off, 'q-verified-off');
+    assert.equal('verifiedContext' in ai.received.at(-1), false);
+
+    const on = tutorService(fakeDataSource({ concepts }), new FastApiClient({ baseUrl: ai.url, timeoutMs: 2000 }), { personalizationEnabled: false, verifiedContextEnabled: true });
+    const result = await ask(on, 'q-verified-on');
+    assert.equal(result.assistantMessage.status, 'COMPLETED');
+    const sent = ai.received.at(-1);
+    assert.equal(sent.verifiedContext.verificationStatus, 'BLOCKED');
+    assert.deepEqual(forbiddenKeys(sent), []);
+  } finally { console.warn = warn; await ai.close(); }
 });
